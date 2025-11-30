@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1090027455248",
+    "project_id": "workshop2-project-001",
+    "storage_bucket": "workshop2-project-001.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1090027455248:android:4170896f5bbcc539c41b95",
+        "android_client_info": {
+          "package_name": "com.example.inventryx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj_TBrcXw_MlM3uU41imcbIhmi8SVzM4I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1090027455248:android:334ff0817f3ed0b4c41b95",
+        "android_client_info": {
+          "package_name": "com.example.workshop_2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj_TBrcXw_MlM3uU41imcbIhmi8SVzM4I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
