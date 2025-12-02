@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // [PENTING] Untuk gambar rangkaian
+import 'package:cached_network_image/cached_network_image.dart';
 
 // Import halaman-halaman dalaman
 import 'admin_features/user_management_page.dart';
@@ -8,10 +8,14 @@ import 'admin_features/profile_page.dart';
 import 'admin_features/sales_page.dart';
 import 'admin_features/report_page.dart';
 import 'admin_settings_page.dart';
-import 'user_list_page.dart'; // Halaman Senarai Pengguna (User List)
+import 'user_list_page.dart';
+// Import dummy pages baru (jika ada, saya akan gunakan placeholder)
+class ProductPage extends StatelessWidget { @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text("Product Management")), body: Center(child: Text("Product Management Page"))); }
+class SupplierPage extends StatelessWidget { @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text("Supplier List")), body: Center(child: Text("Supplier List Page"))); }
+class RecommendationPage extends StatelessWidget { @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text("Recommendation")), body: Center(child: Text("Recommendation Page"))); }
 
 
-// --- 1. Widget Reusable untuk Struktur Halaman & Icons (DIUBAH KE STATEFUL) ---
+// --- 1. Widget Reusable untuk Struktur Halaman & Icons ---
 
 class MenuContainer extends StatefulWidget {
   final Widget child;
@@ -34,7 +38,7 @@ class _MenuContainerState extends State<MenuContainer> {
   @override
   void initState() {
     super.initState();
-    _fetchAdminProfilePicture(); // [BARU] Mula fetching data
+    _fetchAdminProfilePicture();
   }
 
   // FUNGSI BARU: Mengambil URL Gambar Profil Admin
@@ -50,7 +54,7 @@ class _MenuContainerState extends State<MenuContainer> {
         var userData = adminSnap.docs.first.data() as Map<String, dynamic>;
         if (mounted) {
           setState(() {
-            _adminProfilePictureUrl = userData['profilePictureUrl'];
+            _adminProfilePictureUrl = userData['profilePictureUrl']; // Anda perlu medan ini di Firestore
             _isDataLoading = false;
           });
         }
@@ -74,7 +78,7 @@ class _MenuContainerState extends State<MenuContainer> {
 
   @override
   Widget build(BuildContext context) {
-    // Tentukan Image Provider
+    // Tentukan Image Provider (menggunakan CachedNetworkImage untuk Firebase Storage)
     ImageProvider avatarImage = _adminProfilePictureUrl != null && _adminProfilePictureUrl!.isNotEmpty
         ? CachedNetworkImageProvider(_adminProfilePictureUrl!) as ImageProvider
         : const AssetImage('assets/profile.png');
@@ -86,11 +90,10 @@ class _MenuContainerState extends State<MenuContainer> {
           padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 8),
           child: Row(
             children: [
-              // [DIUBAH] Menggunakan gambar rangkaian
+              // Avatar
               CircleAvatar(
                 radius: 18,
-                backgroundImage: avatarImage, // Gunakan URL Gambar
-                // Tambah loading indicator jika data masih dimuat
+                backgroundImage: avatarImage,
                 child: _isDataLoading ? const SizedBox(
                     width: 15,
                     height: 15,
@@ -173,8 +176,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   // Data dummy (kekal)
   final int productTypes = 2500;
+  final int totalSuppliers = 24; // BARU: Untuk Supplier Card
   final double userGrowth = 3.2;
   final double productGrowth = 5.1;
+  final double supplierGrowth = 5.1;
+
 
   @override
   void initState() {
@@ -233,6 +239,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
               growth: "+${productGrowth.toStringAsFixed(1)}% vs last month",
               icon: Icons.inventory_2,
               onViewPressed: () { /* Tindakan untuk View Product Types */ },
+            ),
+            const SizedBox(height: 20),
+
+            // Card 3: Supplier (BARU)
+            DashboardCard(
+              title: "Supplier",
+              value: totalSuppliers.toString(),
+              growth: "+${supplierGrowth.toStringAsFixed(1)}% vs last month",
+              icon: Icons.local_shipping_outlined,
+              onViewPressed: () { /* Tindakan untuk View Supplier */ },
             ),
           ],
         ),
@@ -338,34 +354,34 @@ class _AdminPageState extends State<AdminPage> {
     ];
   }
 
-  // WIDGET BAR ICON SEKUNDER
+  // WIDGET BAR ICON SEKUNDER - KEMAS KINI STRUKTUR IKON
   Widget _buildFeatureIconBar(BuildContext context) {
     return Container(
-      height: 80,
+      height: 160, // Ketinggian lebih besar untuk 2 baris ikon
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
       color: Colors.white,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _FeatureIcon(
-            icon: Icons.person_outline,
-            label: "Profile",
-            page: ProfilePage(username: widget.loggedInUsername),
+          // Baris 1
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _FeatureIcon(icon: Icons.person_outline, label: "Profile", page: ProfilePage(username: widget.loggedInUsername)),
+              _FeatureIcon(icon: Icons.inventory_2_outlined, label: "Product", page: ProductPage()), // BARU: Product
+              _FeatureIcon(icon: Icons.local_shipping_outlined, label: "Supplier", page: SupplierPage()), // BARU: Supplier
+              // Ruang kosong untuk seimbang
+            ],
           ),
-          _FeatureIcon(
-            icon: Icons.group_add_outlined,
-            label: "User Management",
-            page: UserManagementPage(username: widget.loggedInUsername),
-          ),
-          _FeatureIcon(
-            icon: Icons.trending_up,
-            label: "Sales",
-            page: SalesPage(),
-          ),
-          _FeatureIcon(
-            icon: Icons.bar_chart,
-            label: "Report",
-            page: ReportPage(),
+          const SizedBox(height: 10),
+          // Baris 2
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _FeatureIcon(icon: Icons.trending_up, label: "Sales", page: SalesPage()), // Sales
+              _FeatureIcon(icon: Icons.star_outline, label: "Recommendation", page: RecommendationPage()), // BARU: Recommendation
+              _FeatureIcon(icon: Icons.bar_chart, label: "Report", page: ReportPage()), // Report
+              // Ruang kosong untuk seimbang
+            ],
           ),
         ],
       ),
@@ -380,18 +396,19 @@ class _AdminPageState extends State<AdminPage> {
       body: Stack(
         children: [
           // 1. Kandungan Utama (Body)
+          // Padding kini hanya untuk BottomNavBar standard 56px
           Padding(
-            padding: const EdgeInsets.only(bottom: 80 + 56.0),
+            padding: EdgeInsets.only(bottom: 56.0 + (_currentIndex == 1 ? 160 : 0)), // Padang dinamik
             child: _pages[_currentIndex],
           ),
 
           // 2. Ikon Bar Sekunder (Bar Features)
           if (_currentIndex == 1) // HANYA dipaparkan apabila tab Features aktif
             Positioned(
-              bottom: 56, // Letakkan di atas BottomNavBar (yang ketinggiannya default 56)
+              bottom: 56, // Letakkan di atas BottomNavBar (56)
               left: 0,
               right: 0,
-              child: _buildFeatureIconBar(context),
+              child: _buildFeatureIconBar(context), // Ikon bar 2-tingkat
             ),
 
           // 3. Bottom Navigation Bar (BottomNavBar)
