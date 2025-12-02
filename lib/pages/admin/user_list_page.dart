@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-// Import halaman-halaman dalaman
+// Import untuk navigasi Features
 import 'admin_features/profile_page.dart';
 import 'admin_features/user_management_page.dart';
 import 'admin_features/sales_page.dart';
 import 'admin_features/report_page.dart';
 import 'admin_page.dart';
 import 'user_edit_page.dart';
-import 'user_delete_page.dart'; // Import UserDeletePage
+import 'user_delete_page.dart';
 
 class UserListPage extends StatefulWidget {
   final String loggedInUsername;
@@ -25,16 +24,16 @@ class _UserListPageState extends State<UserListPage> {
   String selectedRole = 'All';
   int totalUsersCount = 0;
   List<QueryDocumentSnapshot> users = [];
-  String? adminProfilePictureUrl; // State untuk URL Gambar Admin
+  String? adminProfilePictureUrl;
 
   @override
   void initState() {
     super.initState();
     fetchUsers();
-    _fetchAdminProfilePicture(); // Muatkan gambar Admin
+    _fetchAdminProfilePicture();
   }
 
-  // --- FUNGSI BARU: Muatkan Gambar Profil Admin ---
+  // --- FUNGSI MUATKAN GAMBAR ADMIN (Dikekalkan) ---
   Future<void> _fetchAdminProfilePicture() async {
     try {
       QuerySnapshot adminSnap = await FirebaseFirestore.instance
@@ -56,8 +55,7 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-
-  // --- Fungsi Modal/Pop-up Features ---
+  // --- Fungsi Modal/Pop-up Features (Dikekalkan) ---
   void _showFeaturesModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -100,7 +98,7 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-  // --- Fungsi Filter Users (Menapis pengguna semasa) ---
+  // --- Fungsi Filter Users ---
   List<QueryDocumentSnapshot> get filteredUsers {
     // 1. Tapis pengguna sedia ada untuk mengecualikan pengguna semasa (loggedInUsername)
     final List<QueryDocumentSnapshot> listWithoutCurrentUser = users.where((user) {
@@ -140,53 +138,39 @@ class _UserListPageState extends State<UserListPage> {
   // --- Widget Item Pengguna dalam Senarai ---
   Widget _buildUserListItem(QueryDocumentSnapshot doc) {
     final userData = doc.data() as Map<String, dynamic>;
-    final userId = doc.id; // Mendapatkan Document ID
+    final userId = doc.id;
 
     bool isActive = userData['status'] == 'Active';
     String role = userData['role'] ?? 'staff';
     String username = userData['username'] ?? 'Username Unknown';
     String statusLabel = isActive ? 'Active' : 'Disable';
 
-    // Ambil URL Gambar dari dokumen pengguna
-    String? userProfilePictureUrl = userData['profilePictureUrl'];
-
-    // Tentukan ImageProvider untuk pengguna individu
-    ImageProvider userAvatarImage = userProfilePictureUrl != null && userProfilePictureUrl.isNotEmpty
-        ? CachedNetworkImageProvider(userProfilePictureUrl) as ImageProvider
+    ImageProvider userAvatarImage = userData['profilePictureUrl'] != null && userData['profilePictureUrl']!.isNotEmpty
+        ? CachedNetworkImageProvider(userData['profilePictureUrl']!) as ImageProvider
         : const AssetImage('assets/profile.png');
-
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       elevation: 2,
       child: ListTile(
         leading: CircleAvatar(
-          // [DIUBAH] Gunakan Avatar Dinamik pengguna
           backgroundImage: userAvatarImage,
           backgroundColor: Colors.grey[200],
         ),
-        title: Text(
-          username,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(role.toUpperCase()),
 
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Status Button (Hanya Paparan/Placeholder)
+            // Status Button
             ElevatedButton(
-              onPressed: () {
-                // Tindakan Ubah Status (Toggle Active/Disable) - Biasanya diuruskan di UserEditPage
-              },
+              onPressed: () { /* Tindakan Ubah Status */ },
               style: ElevatedButton.styleFrom(
                 backgroundColor: isActive ? Colors.green[600] : Colors.red[600],
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
-              child: Text(
-                statusLabel,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
+              child: Text(statusLabel, style: const TextStyle(color: Colors.white, fontSize: 12)),
             ),
             const SizedBox(width: 8),
 
@@ -198,35 +182,137 @@ class _UserListPageState extends State<UserListPage> {
               ),
               onPressed: () {
                 if (isActive) {
-                  // NAVIGASI KE USER EDIT PAGE (Pensil)
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => UserEditPage(
-                        userData: userData,
-                        userId: userId, // Hantar Document ID
-                        loggedInUsername: widget.loggedInUsername,
-                      ),
+                      builder: (_) => UserEditPage(userData: userData, userId: userId, loggedInUsername: widget.loggedInUsername),
                     ),
-                  ).then((_) => fetchUsers()); // Muat semula senarai selepas edit
+                  ).then((_) => fetchUsers());
                 } else {
-                  // NAVIGASI KE USER DELETE PAGE (Tong Sampah)
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => UserDeletePage(
-                        userData: userData,
-                        userId: userId,
-                        loggedInUsername: widget.loggedInUsername,
-                      ),
+                      builder: (_) => UserDeletePage(userData: userData, userId: userId, loggedInUsername: widget.loggedInUsername),
                     ),
-                  ).then((_) => fetchUsers()); // Muat semula senarai selepas delete
+                  ).then((_) => fetchUsers());
                 }
               },
             ),
           ],
         ),
       ),
+    );
+  }
+
+
+  // --- KANDUNGAN HEADER DAN FILTER ---
+  Widget _buildHeader(ImageProvider adminAvatarImage) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start, // Penting untuk meletakkan butang +
+      children: [
+        // Header Manual (menggantikan AppBar) - BUANG ICON SEARCH
+        Padding(
+          padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 0),
+          child: Row(
+            children: [
+              const BackButton(), // Butang Back (Anak Panah)
+
+              // Avatar Admin
+              CircleAvatar(radius: 18, backgroundImage: adminAvatarImage),
+              const SizedBox(width: 8),
+              Text(widget.loggedInUsername, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Spacer(),
+              // IKON SEARCH & IKON FEATURES DIBUANG DARI SINI
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Card Total Users
+        Container(
+          padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF233E99),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.people_alt, color: Colors.white, size: 30),
+              const SizedBox(width: 10),
+              Text(
+                totalUsersCount.toString(),
+                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const Spacer(),
+              const Text("Total Users", style: TextStyle(fontSize: 16, color: Colors.white70)),
+            ],
+          ),
+        ),
+
+        // Filter Buttons dan Butang Tambah Pengguna Baru
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Filter Buttons (Kekal)
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: ['All', 'Admin', 'Staff', 'Manager'].map((role) {
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              selectedRole = role;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: selectedRole == role ? const Color(0xFF233E99) : Colors.grey[200],
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          child: Text(
+                            role,
+                            style: TextStyle(
+                              color: selectedRole == role ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              // BUTANG TAMBAH PENGGUNA BARU (Ikon +)
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(color: Colors.grey.withOpacity(0.3), spreadRadius: 1, blurRadius: 3),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.person_add_alt_1, color: Color(0xFF233E99)),
+                  onPressed: () {
+                    // Navigasi ke Halaman Pendaftaran Pengguna
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => UserManagementPage(username: widget.loggedInUsername)));
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -240,44 +326,10 @@ class _UserListPageState extends State<UserListPage> {
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        // KEMAS KINI LEADING: Gunakan Row untuk Avatar dan Username
-        leadingWidth: 180,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16.0, top: 8.0),
-          child: Row(
-            children: [
-              // [DIUBAH] Gunakan Avatar Dinamik Admin
-              CircleAvatar(
-                radius: 18,
-                backgroundImage: adminAvatarImage,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                  widget.loggedInUsername,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-              ),
-            ],
-          ),
-        ),
-        title: null,
-        centerTitle: false,
-        actions: [
-          const IconButton(
-            icon: Icon(Icons.search),
-            onPressed: null, // Biarkan null jika tiada fungsi carian
-          ),
-          IconButton(
-            icon: const Icon(Icons.apps),
-            onPressed: () {
-              _showFeaturesModal(context);
-            },
-          ),
-        ],
-      ),
       body: Column(
         children: [
-          _buildHeader(),
+          // PENTING: Gunakan Widget Header yang diperbaharui
+          _buildHeader(adminAvatarImage),
 
           // Senarai Pengguna
           Expanded(
@@ -298,10 +350,7 @@ class _UserListPageState extends State<UserListPage> {
           // Navigasi kembali ke AdminPage (Dashboard/Settings)
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (context) => AdminPage(
-                loggedInUsername: widget.loggedInUsername,
-                initialIndex: index,
-              ),
+              builder: (context) => AdminPage(loggedInUsername: widget.loggedInUsername, initialIndex: index),
             ),
                 (Route<dynamic> route) => false,
           );
@@ -315,73 +364,6 @@ class _UserListPageState extends State<UserListPage> {
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Setting'),
         ],
       ),
-    );
-  }
-
-  // --- KANDUNGAN HEADER DAN FILTER (Dikekalkan) ---
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        // Card Total Users
-        Container(
-          padding: const EdgeInsets.all(20),
-          margin: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF233E99),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.people_alt, color: Colors.white, size: 30),
-              const SizedBox(width: 10),
-              Text(
-                totalUsersCount.toString(),
-                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              const Spacer(),
-              const Text(
-                "Total Users",
-                style: TextStyle(fontSize: 16, color: Colors.white70),
-              ),
-            ],
-          ),
-        ),
-
-        // Filter Buttons
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: ['All', 'Admin', 'Staff', 'Manager'].map((role) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        selectedRole = role;
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: selectedRole == role ? const Color(0xFF233E99) : Colors.grey[200],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                    child: Text(
-                      role,
-                      style: TextStyle(
-                        color: selectedRole == role ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 }
