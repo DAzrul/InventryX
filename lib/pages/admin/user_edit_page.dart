@@ -1,291 +1,283 @@
+// File: user_edit_page.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Firebase Auth diimport hanya untuk rujukan UID, tiada operasi password klien dilakukan di sini
-// import 'package:firebase_auth/firebase_auth.dart'; // Tidak diperlukan lagi dalam file ini
+import 'package:cached_network_image/cached_network_image.dart';
+
+// Import komponen UI yang dipisah (Pastikan path ke widgets betul)
+import 'widgets/user_header_status.dart';
+import 'widgets/user_info_fields.dart';
 
 class UserEditPage extends StatefulWidget {
-  final Map<String, dynamic> userData; // Data pengguna yang dipilih
-  final String userId; // Document ID pengguna (UID Firebase Auth)
-  final String loggedInUsername; // Username Admin sesi semasa
+  final String userId;
+  final String loggedInUsername;
 
   const UserEditPage({
     super.key,
-    required this.userData,
     required this.userId,
-    required this.loggedInUsername
+    required this.loggedInUsername, required username, required Map<dynamic, dynamic> userData,
   });
+
+  get username => null;
 
   @override
   State<UserEditPage> createState() => _UserEditPageState();
 }
 
 class _UserEditPageState extends State<UserEditPage> {
-  // Controllers
-  late TextEditingController emailController;
-  late TextEditingController nameController;
-  late TextEditingController phoneNoController;
-  late TextEditingController positionController;
-  // [DIBUANG] passwordController, confirmPasswordController
+  // Controllers untuk field yang boleh diedit
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _positionController = TextEditingController();
+  final TextEditingController _roleController = TextEditingController();
 
-  final List<String> availableRoles = ['admin', 'manager', 'staff'];
-  String? selectedRole;
+  // State untuk data dan kemaskini
+  String _currentStatus = 'Active';
+  String? _profilePictureUrl;
+  bool _isLoading = true;
+  String _displayName = 'Loading...';
 
-  late bool isActive;
-  // [DIBUANG] showPassword
-  bool loading = false;
+  // Data asal untuk perbandingan
+  String _initialRole = '';
+  String _initialStatus = '';
+  String _initialName = '';
+  String _initialPhone = '';
+  String _initialPosition = '';
+
 
   @override
   void initState() {
     super.initState();
-    emailController = TextEditingController(text: widget.userData['email'] ?? '');
-    nameController = TextEditingController(text: widget.userData['name'] ?? '');
-    phoneNoController = TextEditingController(text: widget.userData['phoneNo'] ?? '');
-    positionController = TextEditingController(text: widget.userData['position'] ?? '');
-
-    selectedRole = widget.userData['role'];
-
-    // [DIBUANG] Inisialisasi controller password
-
-    isActive = widget.userData['status'] == 'Active';
+    if (widget.userId.isNotEmpty) {
+      _fetchUserData();
+    } else {
+      _isLoading = false;
+      _displayName = 'Invalid User ID';
+    }
   }
 
-  // FUNGSI POPUP MESSAGE
-  Future<void> _showPopupMessage(String title, String message) async {
-    return await showDialog(
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _positionController.dispose();
+    _roleController.dispose();
+    super.dispose();
+  }
+
+  // --- FUNGSI POPUP ALERDIALOG (DIUBAH: Mengembalikan Future<void>) ---
+  Future<void> _showAlertDialog(String title, String message, bool success) async {
+    return showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        title: Row(
+          children: [
+            Icon(success ? Icons.check_circle : Icons.error, color: success ? Colors.green : Colors.red),
+            const SizedBox(width: 10),
+            Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: success ? Colors.green : Colors.red)),
+          ],
+        ),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
+          // Tombol OK akan menutup dialog, dan kita menunggu hasil pop ini
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK", style: TextStyle(color: Color(0xFF233E99)))),
         ],
       ),
     );
   }
 
 
-  // --- Fungsi Update Status (Active/Disable) ---
-  Future<void> _toggleUserStatus() async {
-    setState(() => loading = true);
-    bool newStatus = !isActive;
-    String statusString = newStatus ? 'Active' : 'Disable';
+  // --- Fungsi Memuat Data Pengguna ---
+  Future<void> _fetchUserData() async {
+    if (!mounted) return;
 
     try {
-      // Hanya kemas kini status di Firestore
-      await FirebaseFirestore.instance
+      DocumentSnapshot doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
-          .update({'status': statusString});
+          .get();
 
-      // Kemas kini state local
-      setState(() {
-        isActive = newStatus;
-        loading = false;
-      });
-      await _showPopupMessage("Success", "Status updated to $statusString.");
+      if (doc.exists && mounted) {
+        var data = doc.data() as Map<String, dynamic>;
 
-      // Navigasi kembali selepas kemas kini status berjaya
-      Navigator.pop(context, true); // Hantar 'true' untuk refresh
+        // Isi Controllers 
+        _emailController.text = data['email'] ?? '';
+        _nameController.text = data['name'] ?? '';
+        _phoneController.text = data['phoneNo'] ?? '';
+        _positionController.text = data['position'] ?? '';
+        _roleController.text = data['role'] ?? '';
 
+        setState(() {
+          _displayName = data['username'] ?? 'User';
+          _currentStatus = data['status'] ?? 'Active';
+          _profilePictureUrl = data['profilePictureUrl'];
+
+          // Simpan state awal
+          _initialRole = _roleController.text;
+          _initialStatus = _currentStatus;
+          _initialName = _nameController.text;
+          _initialPhone = _phoneController.text;
+          _initialPosition = _positionController.text;
+
+          _isLoading = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _displayName = 'User Not Found';
+        });
+      }
     } catch (e) {
-      _showPopupMessage("Error", "Failed to update status: ${e.toString()}");
-      setState(() => loading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _displayName = 'Error Loading Data';
+        });
+      }
+      print("Error loading user data: $e");
     }
   }
 
-  // --- Fungsi Update Data Profil (Data Teks Sahaja) ---
-  Future<void> _updateProfile() async {
-    // [DIBUANG] Tiada validasi password
+  // --- Fungsi untuk Menyimpan Perubahan (Status dan Field) ---
+  void _saveChanges() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
 
-    setState(() => loading = true);
-    Map<String, dynamic> updateData = {
-      'email': emailController.text.trim(),
-      'name': nameController.text.trim(),
-      'phoneNo': phoneNoController.text.trim(),
-      'position': positionController.text.trim(),
-      'role': selectedRole, // Guna state Dropdown
-    };
+    Map<String, dynamic> updateData = {};
+
+    // 1. Kemaskini Status
+    if (_currentStatus != _initialStatus) {
+      updateData['status'] = _currentStatus;
+    }
+
+    // 2. Kemaskini Field Editable Lain 
+    if (_nameController.text != _initialName) {
+      updateData['name'] = _nameController.text;
+    }
+    if (_phoneController.text != _initialPhone) {
+      updateData['phoneNo'] = _phoneController.text;
+    }
+    if (_positionController.text != _initialPosition) {
+      updateData['position'] = _positionController.text;
+    }
+    // Role perlu disimpan dalam lowercase di Firebase
+    if (_roleController.text != _initialRole) {
+      updateData['role'] = _roleController.text.toLowerCase();
+    }
+
+    if (updateData.isEmpty) {
+      if (mounted) {
+        await _showAlertDialog(
+            "No Changes",
+            'No changes detected. Nothing to save.',
+            false
+        );
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
 
     try {
-      // 1. Kemas kini data Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .update(updateData);
 
-
-      await _showPopupMessage("Success", "User profile updated successfully.");
-
-      // Navigasi kembali selepas kemas kini profil
-      Navigator.pop(context, true); // Hantar 'true' untuk refresh
-
-    } catch (e) {
-      _showPopupMessage("Error", "Failed to update profile: ${e.toString()}");
-    } finally {
       if (mounted) {
-        setState(() => loading = false);
+        // PERBAIKAN: AWAIT DIHADAPAN _showAlertDialog untuk menyelesaikan konflik navigasi
+        await _showAlertDialog(
+            "Update Success",
+            'User ${widget.username} successfully updated.',
+            true
+        );
+
+        // BARU SELEPAS POPUP DITUTUP, kita kembali ke UserListPage
+        Navigator.pop(context);
       }
+    } catch (e) {
+      if (mounted) {
+        _showAlertDialog(
+            "Update Failed",
+            'Failed to update user data. Details: ${e.toString()}',
+            false
+        );
+        setState(() => _isLoading = false);
+      }
+      print("Error saving changes: $e");
     }
   }
 
-
-  // Widget Tag Status Statik KECIL
-  Widget _buildStatusDisplayTag({required String status, required Color textColor}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.grey[200], // Latar belakang kelabu
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          color: textColor, // Warna Hijau atau Merah
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+  // --- Fungsi untuk Menukar Status (Dipanggil dari UserHeaderStatus) ---
+  void _onStatusChange(String newStatus) {
+    if (mounted) {
+      setState(() {
+        _currentStatus = newStatus;
+      });
+    }
   }
-
-  // [DIBUANG] _passwordDecoration (Widget Pembantu password)
 
   @override
   Widget build(BuildContext context) {
-    // Tombol Aksi yang akan mengubah status (Warna Penuh)
-    String currentStatus = isActive ? 'Active' : 'Disable';
-    Color currentStatusTextColor = isActive ? Colors.green[600]! : Colors.red[600]!;
-
-    String toggleActionLabel = isActive ? 'Disable' : 'Activate';
-    Color toggleActionColor = isActive ? Colors.red[600]! : Colors.green[600]!;
-
-
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("User Management", style: TextStyle(fontWeight: FontWeight.w600)),
+        title: const Text('User Management', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SingleChildScrollView(
+
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- HEADER & STATUS ---
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const CircleAvatar(radius: 24, backgroundImage: AssetImage('assets/profile.png')),
-                const SizedBox(width: 15),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.userData['username'] ?? 'Username',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      widget.userData['role'] ?? 'Staff',
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
-                  ],
+            // 1. HEADER & STATUS TOGGLE
+            UserHeaderStatus(
+              username: _displayName,
+              role: _roleController.text,
+              currentStatus: _currentStatus,
+              profilePictureUrl: _profilePictureUrl,
+              onStatusChange: _onStatusChange, // Panggil fungsi tukar status di sini
+              isLoading: _isLoading,
+            ),
+            const SizedBox(height: 30),
+
+            // 2. INPUT FIELDS 
+            UserInfoFields(
+              emailController: _emailController,
+              nameController: _nameController,
+              phoneController: _phoneController,
+              positionController: _positionController,
+              roleController: _roleController,
+              isReadOnly: false, // Membenarkan editing
+            ),
+
+            const SizedBox(height: 30),
+
+            // 3. SAVE CHANGES BUTTON
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saveChanges,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF233E99),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                const Spacer(),
-              ],
+                child: const Text('Save Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
             ),
-
-            const SizedBox(height: 10),
-
-            // --- STATUS DISPLAY & TOMBOL AJKSI ---
-            Row(
-              children: [
-                // 1. TOMBOL AKSI SEMASA (Hijau/Merah Penuh) - Memanggil _toggleUserStatus
-                ElevatedButton(
-                  onPressed: loading ? null : _toggleUserStatus,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: toggleActionColor,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                      minimumSize: const Size(100, 35)
-                  ),
-                  child: loading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text(
-                    toggleActionLabel,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 10),
-
-                // 2. STATUS DISPLAY STATIK KECIL (TAG STATUS SEMASA)
-                _buildStatusDisplayTag(status: currentStatus, textColor: currentStatusTextColor),
-              ],
-            ),
-
-            const Divider(height: 30),
-
-            // Email
-            const Text("Email", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(controller: emailController, keyboardType: TextInputType.emailAddress, decoration: _inputDecoration("Username@gmail.com", Icons.email_outlined)),
-            const SizedBox(height: 15),
-
-            // Name
-            const Text("Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(controller: nameController, decoration: _inputDecoration("Username", Icons.person_outline)),
-            const SizedBox(height: 15),
-
-            // Phone Number
-            const Text("Phone Number", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(controller: phoneNoController, keyboardType: TextInputType.phone, decoration: _inputDecoration("0123456789", Icons.phone_outlined)),
-            const SizedBox(height: 30),
-
-            // Position
-            const Text("Position", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(controller: positionController, decoration: _inputDecoration("Position/Jawatan", Icons.work_outline)),
-            const SizedBox(height: 30),
-
-            // Role (Dropdown)
-            const Text("Role", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              decoration: _inputDecoration("Role/Akses", Icons.people_outline),
-              value: selectedRole,
-              items: availableRoles.map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value.toUpperCase()),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() { selectedRole = newValue; });
-              },
-            ),
-            const SizedBox(height: 30),
-
-            // [DIBUANG] Change Password Section
-
-            // --- UPDATE BUTTON ---
-
-            const SizedBox(height: 50),
           ],
         ),
       ),
-    );
-  }
-
-  // Widget Pembantu Decoration
-  InputDecoration _inputDecoration(String hint, IconData? icon) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: icon != null ? Icon(icon, size: 20, color: Colors.grey[600]) : null,
-      filled: true,
-      fillColor: Colors.grey[100],
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blue)),
     );
   }
 }

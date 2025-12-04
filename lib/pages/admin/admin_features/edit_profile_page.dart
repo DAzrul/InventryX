@@ -1,3 +1,4 @@
+// File: EditProfilePage.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -22,18 +23,23 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-
+  // --- Controllers dan Variables ---
   late TextEditingController nameController;
   late TextEditingController emailController;
   late TextEditingController phoneNoController;
   late TextEditingController nameCompanyController;
-  // [BARU] Controller untuk Position
   late TextEditingController positionController;
+  late TextEditingController roleController; // Tambah controller untuk Role
+
+  // [DIHAPUS] Logik Role Dropdown tidak diperlukan lagi
+  // String? _selectedRole;
+  // final List<String> availableRoles = ['Staff', 'Manager', 'Admin'];
 
   File? _imageFile;
   String? _currentImageUrl;
   bool _isUploading = false;
   bool _isLoading = false;
+  final _formKey = GlobalKey<FormState>(); // Kunci untuk validasi borang
 
   @override
   void initState() {
@@ -42,10 +48,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
     emailController = TextEditingController(text: widget.initialData['email']);
     phoneNoController = TextEditingController(text: widget.initialData['phoneNo']);
     nameCompanyController = TextEditingController(text: widget.initialData['nameCompany']);
-    // [BARU] Inisialisasi controller Position
     positionController = TextEditingController(text: widget.initialData['position']);
+    // [BARU] Inisialisasi Role Controller
+    roleController = TextEditingController(text: widget.initialData['role']);
 
     _currentImageUrl = widget.initialData['profilePictureUrl'];
+
+    // Logik role dropdown DIHAPUS
   }
 
   @override
@@ -54,8 +63,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     emailController.dispose();
     phoneNoController.dispose();
     nameCompanyController.dispose();
-    // [BARU] Dispose controller Position
     positionController.dispose();
+    roleController.dispose(); // Dispose roleController
     super.dispose();
   }
 
@@ -87,7 +96,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   // --- FUNGSI BARU: Padam Imej Lama di Storage ---
   Future<void> _deleteOldImage(String? oldUrl) async {
     if (oldUrl == null || oldUrl.isEmpty || !oldUrl.contains('firebasestorage')) return;
-
     try {
       Reference oldRef = FirebaseStorage.instance.refFromURL(oldUrl);
       await oldRef.delete();
@@ -99,16 +107,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   // --- 2. MUAT NAIK GAMBAR KE FIREBASE STORAGE & KEMASKINI URL DI FIRESTORE ---
   Future<String?> _uploadImageAndGetUrl() async {
-    // Jika pengguna tidak memilih gambar baharu, jangan teruskan muat naik.
     if (_imageFile == null) return _currentImageUrl;
 
     setState(() => _isUploading = true);
 
     try {
-      // ⚠️ LANGKAH 1: Padam gambar lama sebelum upload yang baru
       await _deleteOldImage(_currentImageUrl);
 
-      // LANGKAH 2: Cipta path unik dan muat naik
       String fileName = 'profile_pictures/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       Reference ref = FirebaseStorage.instance.ref().child(fileName);
 
@@ -116,7 +121,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       TaskSnapshot snapshot = await uploadTask;
       String downloadUrl = await snapshot.ref.getDownloadURL();
 
-      // LANGKAH 3: Kemaskini medan 'profilePictureUrl' di Firestore
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'profilePictureUrl': downloadUrl,
       });
@@ -129,7 +133,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     } catch (e) {
       setState(() => _isUploading = false);
-      // Maklumkan jika gagal (contoh: masalah sambungan atau Peraturan Storage)
       _showPopupMessage("Error Upload", "Gagal memuat naik gambar. Sila pastikan Peraturan Storage anda membenarkan akses: ${e.toString()}");
       return null;
     }
@@ -137,8 +140,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   // --- 3. FUNGSI KEMAS KINI DATA PROFIL (Dipanggil oleh Save Button) ---
   Future<void> _updateProfile() async {
-    if (nameController.text.trim().isEmpty || emailController.text.trim().isEmpty) {
-      _showPopupMessage("Validation", "Name and Email cannot be empty.");
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
@@ -147,9 +149,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     try {
       String activityDescription = "Profile data updated.";
       int iconCode = Icons.person_outline.codePoint;
-      bool imageUpdated = (_imageFile != null); // Semak jika imej baru dipilih
+      bool imageUpdated = (_imageFile != null);
 
-      // LANGKAH 1: Lakukan muat naik gambar terlebih dahulu (jika ada yang baharu)
+      // Muat naik imej jika ada
       await _uploadImageAndGetUrl();
 
       if (imageUpdated) {
@@ -163,11 +165,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'email': emailController.text.trim(),
         'phoneNo': phoneNoController.text.trim(),
         'nameCompany': nameCompanyController.text.trim(),
-        'position': positionController.text.trim(), // [BARU] Simpan Position
-        // 'profilePictureUrl' sudah dikemaskini dalam _uploadImageAndGetUrl
+        'position': positionController.text.trim(),
+        // Role dikecualikan dari update kerana ia read-only/dikendalikan admin lain
+        // 'role': _selectedRole,
       });
 
-      // 3. [BARU] REKOD AKTIVITI KE FIRESTORE
+      // 3. REKOD AKTIVITI KE FIRESTORE
       await FirebaseFirestore.instance
           .collection('users').doc(widget.userId)
           .collection('activities').add({
@@ -176,14 +179,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'iconCode': iconCode,
       });
 
-      // 4. Berjaya: Tutup halaman dan hantar 'true' untuk refresh ProfilePage
+      // 4. Berjaya: Tutup halaman dan hantar 'true'
       Navigator.pop(context, true);
 
     } catch (e) {
       setState(() => _isLoading = false);
       _showPopupMessage("System Error", "Failed to update profile: ${e.toString()}");
     } finally {
-      // Pastikan state direset hanya jika masih mounted (untuk elak ralat)
       if(mounted) {
         setState(() => _isLoading = false);
       }
@@ -201,141 +203,168 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- Pemilih Gambar Profil ---
-            Center(
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 60,
-                    // Logik Paparan Imej
-                    backgroundImage: _imageFile != null
-                        ? FileImage(_imageFile!) as ImageProvider
-                        : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider(_currentImageUrl!)
-                        : const AssetImage('assets/profile.png')) as ImageProvider,
-                    child: _isUploading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: InkWell(
-                      onTap: _pickImage,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF42A5F5),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // --- Pemilih Gambar Profil ---
+              Center(
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 60,
+                      backgroundImage: _imageFile != null
+                          ? FileImage(_imageFile!) as ImageProvider
+                          : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
+                          ? CachedNetworkImageProvider(_currentImageUrl!)
+                          : const AssetImage('assets/profile.png')) as ImageProvider,
+                      child: _isUploading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: InkWell(
+                        onTap: _pickImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF233E99),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                         ),
-                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // Full Name
-            const Text("Full Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                hintText: "Enter Full Name",
-                prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Name Company
-            const Text("Company Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: nameCompanyController,
-              decoration: InputDecoration(
-                hintText: "Enter Company Name",
-                prefixIcon: const Icon(Icons.business_outlined, color: Colors.grey), // Icon Syarikat
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // [BARU] Position
-            const Text("Position", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: positionController,
-              decoration: InputDecoration(
-                hintText: "Enter Position/Title",
-                prefixIcon: const Icon(Icons.work_outline, color: Colors.grey), // Icon Jawatan
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-
-            // Email Address
-            const Text("Email Address", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                hintText: "Enter Email Address",
-                prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Phone Number
-            const Text("Phone Number", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: phoneNoController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                hintText: "Enter Phone Number",
-                prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Save Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF42A5F5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ],
                 ),
-                onPressed: (_isLoading || _isUploading) ? null : _updateProfile,
-                icon: const Icon(Icons.save_outlined, color: Colors.white),
-                label: (_isLoading || _isUploading)
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Save Changes", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+
+              // Full Name
+              const Text("Full Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  hintText: "Enter Full Name",
+                  prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter your full name.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // Name Company
+              const Text("Company Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: nameCompanyController,
+                decoration: InputDecoration(
+                  hintText: "Enter Company Name",
+                  prefixIcon: const Icon(Icons.business_outlined, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Position
+              const Text("Position", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: positionController,
+                decoration: InputDecoration(
+                  hintText: "Enter Position/Title",
+                  prefixIcon: const Icon(Icons.work_outline, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // --- [KOREKSI] User Role (Read-Only Field) ---
+              const Text("User Role", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: roleController,
+                readOnly: true, // Field kini hanya untuk display
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.shield_outlined, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk menunjukkan read-only
+                  hintText: "Role",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // --- END [KOREKSI] User Role ---
+
+
+              // Email Address (Read-Only)
+              const Text("Email Address", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                readOnly: true, // Biasanya email tidak boleh diubah tanpa Auth logic
+                decoration: InputDecoration(
+                  hintText: "Enter Email Address",
+                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk read-only
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Phone Number
+              const Text("Phone Number", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: phoneNoController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  hintText: "Enter Phone Number",
+                  prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF233E99),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: (_isLoading || _isUploading) ? null : _updateProfile,
+                  icon: const Icon(Icons.save_outlined, color: Colors.white),
+                  label: (_isLoading || _isUploading)
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Save Changes", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

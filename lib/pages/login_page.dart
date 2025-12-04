@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // [BARU] Import
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
-import 'register_page.dart';
+import 'register_page.dart'; // Walaupun pautan dibuang, import dikekalkan jika diperlukan di masa hadapan
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
+  // Fungsi utiliti statik untuk membersihkan status log masuk (Digunakan oleh Logout)
   static Future<void> clearLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
     await prefs.remove('savedUsername');
     await prefs.remove('savedRole');
-    // Pastikan anda juga log keluar dari Firebase Auth di sini jika anda mahu
-    // FirebaseAuth.instance.signOut(); // Pilihan
+    // Pilihan: FirebaseAuth.instance.signOut();
   }
 
   @override
@@ -45,14 +45,14 @@ class _LoginPageState extends State<LoginPage> {
       );
     } else if (role == "manager") {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => ManagerPage()));
+          context, MaterialPageRoute(builder: (_) => const ManagerPage()));
     } else {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => StaffPage()));
+          context, MaterialPageRoute(builder: (_) => const StaffPage()));
     }
   }
 
-  // --- FUNGSI SEMAK STATUS LOG MASUK DALAM INITSTATE ---
+  // --- FUNGSI SEMAK STATUS LOG MASUK DALAM INITSTATE (Autologin) ---
   @override
   void initState() {
     super.initState();
@@ -69,27 +69,18 @@ class _LoginPageState extends State<LoginPage> {
     final savedRole = prefs.getString('savedRole');
 
     if (isLoggedIn && savedUsername != null && savedRole != null) {
-      // [TINDAKAN] Jika status disimpan, navigasi terus tanpa meminta login
+      // Jika status disimpan, navigasi terus tanpa meminta login
       _navigateToHomePage(savedUsername, savedRole);
     }
   }
 
-  // --- FUNGSI UNTUK KOSONGKAN MEDAN (Dikekalkan) ---
+  // --- FUNGSI UNTUK KOSONGKAN MEDAN ---
   void _clearControllers() {
     usernameController.clear();
     passwordController.clear();
   }
 
-  // --- FUNGSI UNTUK KOSONGKAN STATE 'REMEMBER ME' (Untuk Log Keluar) ---
-  static Future<void> clearLoginState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', false);
-    await prefs.remove('savedUsername');
-    await prefs.remove('savedRole');
-    // Penting: Fungsi ini perlu dipanggil di halaman logout anda (cth: ProfilePage/AdminPage)
-  }
-
-
+  // --- POPUP MESSAGE ---
   void showPopupMessage(String title, {String? details}) {
     showDialog(
       context: context,
@@ -126,10 +117,11 @@ class _LoginPageState extends State<LoginPage> {
     String password = passwordController.text.trim();
 
     if (inputId.isEmpty || password.isEmpty) {
-      showPopupMessage("Incomplete Information", details: "Please enter your username/email and password.");
+      showPopupMessage("Incomplete Information", details: "Please enter your email and password.");
       return;
     }
 
+    // Pastikan input adalah e-mel untuk Firebase Auth
     final String email = inputId.contains('@') ? inputId : '';
 
     if (email.isEmpty) {
@@ -155,7 +147,7 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // ... (Firestore check and status check logic remains the same) ...
+      // LANGKAH 2: Semak data pengguna dalam Firestore (untuk Role & Status)
       QuerySnapshot userSnap = await FirebaseFirestore.instance
           .collection("users")
           .where('email', isEqualTo: email)
@@ -193,7 +185,8 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       _clearControllers();
-      _navigateToHomePage(loggedInUsername, role); // Navigasi menggunakan fungsi helper
+      showPopupMessage("Login Successful!", details: "Welcome, $loggedInUsername."); // Pemberitahuan ringkas
+      _navigateToHomePage(loggedInUsername, role); // Navigasi ke halaman utama
 
     } on FirebaseAuthException catch (e) {
       String errorMessage = "Login failed.";
@@ -225,8 +218,6 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // ... (UI untuk Logo, Welcome, Sign in to continue) ...
-
                   // Logo
                   SizedBox(
                     height: isPortrait
@@ -356,10 +347,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
-                  SizedBox(height: constraints.maxHeight * 0.02),
-
-                  // Pautan ke Register Page telah dibuang.
 
                   SizedBox(height: constraints.maxHeight * 0.02),
 

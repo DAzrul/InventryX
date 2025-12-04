@@ -241,7 +241,7 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
                 height: 50,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF42A5F5),
+                    backgroundColor: const Color(0xFF233E99),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: loading ? null : _changePassword,
