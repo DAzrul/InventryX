@@ -17,7 +17,7 @@ class UserDeletePage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.loggedInUsername,
-    required this.username,
+    required this.username, required Map<String, dynamic> userData,
   });
 
   @override

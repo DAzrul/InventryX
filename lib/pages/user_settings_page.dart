@@ -1,13 +1,14 @@
-// File: user_settings_page.dart
+// File: lib/pages/user_settings_page.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-// Import dependencies
+import 'package:flutter/foundation.dart';
+
+// Import dependencies (Path disesuaikan)
 import 'admin/admin_features/dummy_pages.dart';
 import 'admin/features_grid.dart';
 
-
-// Widget Reusable untuk Item Menu (Tidak Berubah)
+// Widget Reusable untuk Item Menu
 class _SettingsMenuItem extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -39,7 +40,7 @@ class _SettingsMenuItem extends StatelessWidget {
   }
 }
 
-// Widget Bantuan untuk Avatar Profil (Dibuat terpisah agar lebih bersih)
+// Widget Bantuan untuk Avatar Profil
 Widget _buildProfileAvatar(String? profilePictureUrl) {
   const double radius = 40;
   final bool isUrlValid = profilePictureUrl != null && profilePictureUrl.isNotEmpty;
@@ -74,14 +75,12 @@ Widget _buildProfileAvatar(String? profilePictureUrl) {
   }
 }
 
-// --- Fungsi untuk Membangun Konten Settings Utama (dengan perbaikan avatar) ---
+// --- Fungsi untuk Membangun Konten Settings Utama ---
 Widget _buildSettingsContent(BuildContext context, String username, Map<String, dynamic> userData) {
-  // Menggunakan data dari Firebase atau default
   final String displayName = userData['displayName'] ?? username;
   final String email = userData['email'] ?? 'No email available';
   final String? profilePictureUrl = userData['profilePictureUrl'];
 
-  // State lokal (perlu diangkat jika Anda ingin fungsional)
   bool _isDarkModeEnabled = false;
 
   return Column(
@@ -91,9 +90,7 @@ Widget _buildSettingsContent(BuildContext context, String username, Map<String, 
       Center(
         child: Column(
           children: [
-            // MENGGUNAKAN WIDGET BANTUAN YANG KONSISTEN
             _buildProfileAvatar(profilePictureUrl),
-
             const SizedBox(height: 8),
             Text(
               displayName,
@@ -181,11 +178,13 @@ Widget _buildSettingsContent(BuildContext context, String username, Map<String, 
 class UserSettingsPage extends StatefulWidget {
   final String username;
   final bool displayFullNavBar;
+  final String userId;
 
   const UserSettingsPage({
     super.key,
     required this.username,
     required this.displayFullNavBar,
+    required this.userId,
   });
 
   @override
@@ -226,7 +225,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
         }
       }
     } catch (e) {
-      print("Error fetching user data for settings: $e");
+      debugPrint("Error fetching user data for settings: $e");
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -239,16 +238,14 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Menghilangkan tombol kembali secara eksplisit
+        automaticallyImplyLeading: false,
+
         title: const Text("Settings", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 15.0),
-            child: Icon(Icons.more_vert, color: Colors.black),
-          )
-        ],
+        // actions: dihapus
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

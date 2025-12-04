@@ -1,13 +1,15 @@
+// File: login_page.dart (KODE BARU)
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'; // Untuk debugPrint
 
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
-import 'register_page.dart'; // Walaupun pautan dibuang, import dikekalkan jika diperlukan di masa hadapan
+import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -37,11 +39,11 @@ class _LoginPageState extends State<LoginPage> {
   bool loading = false;
 
   // --- FUNGSI NAVIGASI UTAMA ---
-  void _navigateToHomePage(String username, String role) {
+  void _navigateToHomePage(String username, String role, String userId) {
     if (role == "admin") {
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => AdminPage(loggedInUsername: username))
+          MaterialPageRoute(builder: (_) => AdminScreen(loggedInUsername: username, userId: userId,))
       );
     } else if (role == "manager") {
       Navigator.pushReplacement(
@@ -60,7 +62,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _checkLoginState() async {
-    // Pastikan widget masih mounted sebelum guna context atau state
     if (!mounted) return;
 
     final prefs = await SharedPreferences.getInstance();
@@ -68,9 +69,11 @@ class _LoginPageState extends State<LoginPage> {
     final savedUsername = prefs.getString('savedUsername');
     final savedRole = prefs.getString('savedRole');
 
+    // userId harus disimpan jika diperlukan untuk navigasi
+    final savedUserId = prefs.getString('savedUserId') ?? '';
+
     if (isLoggedIn && savedUsername != null && savedRole != null) {
-      // Jika status disimpan, navigasi terus tanpa meminta login
-      _navigateToHomePage(savedUsername, savedRole);
+      _navigateToHomePage(savedUsername, savedRole, savedUserId);
     }
   }
 
@@ -111,31 +114,79 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // --- Logik Log Masuk DENGAN Firebase Authentication ---
+  // --- Logik Log Masuk Email/Username DENGAN Firebase Authentication ---
   Future<void> loginUser() async {
-    String inputId = usernameController.text.trim();
+    String input = usernameController.text.trim();
     String password = passwordController.text.trim();
+    String emailToAuthenticate = '';
+    String usernameForNavigation = '';
+    String firestoreDocId = '';
+    Map<String, dynamic>? userData;
 
-    if (inputId.isEmpty || password.isEmpty) {
-      showPopupMessage("Incomplete Information", details: "Please enter your email and password.");
+    if (input.isEmpty || password.isEmpty) {
+      showPopupMessage("Incomplete Information", details: "Please enter your username/email and password.");
       return;
     }
-
-    // Pastikan input adalah e-mel untuk Firebase Auth
-    final String email = inputId.contains('@') ? inputId : '';
-
-    if (email.isEmpty) {
-      showPopupMessage("Login Failed", details: "Please enter a valid email address to log in.");
-      return;
-    }
-
 
     setState(() => loading = true);
 
     try {
-      // LANGKAH 1: Log masuk menggunakan Firebase Authentication
+      // LANGKAH 1: Cari Pengguna di Firestore berdasarkan Email ATAU Username
+      QuerySnapshot userSnap;
+
+      if (input.contains('@')) {
+        // Input adalah Email
+        userSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .where('email', isEqualTo: input)
+            .limit(1)
+            .get();
+        emailToAuthenticate = input;
+        usernameForNavigation = input; // Guna email sebagai username sementara
+      } else {
+        // Input adalah Username
+        userSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .where('username', isEqualTo: input)
+            .limit(1)
+            .get();
+      }
+
+      if (userSnap.docs.isEmpty) {
+        // Jika tidak ditemukan, coba autentikasi sebagai email
+        if (!input.contains('@')) {
+          showPopupMessage("Login Failed", details: "Username or email not found.");
+          setState(() => loading = false);
+          return;
+        }
+        // Jika input adalah email dan Firestore kosong, kita biarkan Firebase Auth yang mencarinya.
+        emailToAuthenticate = input;
+      } else {
+        // Data pengguna ditemukan di Firestore
+        userData = userSnap.docs.first.data() as Map<String, dynamic>;
+        emailToAuthenticate = userData['email'];
+        usernameForNavigation = userData['username'] ?? userData['email'];
+        firestoreDocId = userSnap.docs.first.id;
+
+        // Semak Status Akaun (HANYA jika data ditemukan di Firestore)
+        if (userData["status"] != "Active") {
+          showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
+          await _auth.signOut();
+          setState(() => loading = false);
+          return;
+        }
+      }
+
+      // Jika emailToAuthenticate masih kosong, ia adalah username yang tidak sah.
+      if (emailToAuthenticate.isEmpty) {
+        showPopupMessage("Login Failed", details: "Could not determine authentication email.");
+        setState(() => loading = false);
+        return;
+      }
+
+      // LANGKAH 2: Log masuk menggunakan Firebase Authentication
       final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
+        email: emailToAuthenticate,
         password: password,
       );
 
@@ -147,57 +198,62 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // LANGKAH 2: Semak data pengguna dalam Firestore (untuk Role & Status)
-      QuerySnapshot userSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+      // LANGKAH 3: Semak semula data dan kemas kini ID jika perlu (jika langkah 1 tidak menemukan ID)
+      if (userData == null) {
+        // Jika input adalah EMAIL, dan Firestore KOSONG di Langkah 1, kita cari ID sekarang
+        userSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .where('email', isEqualTo: emailToAuthenticate)
+            .limit(1)
+            .get();
 
-      if (userSnap.docs.isEmpty) {
-        showPopupMessage("Login Failed", details: "User data not found in Firestore.");
-        await _auth.signOut();
-        setState(() => loading = false);
-        return;
+        if (userSnap.docs.isEmpty) {
+          showPopupMessage("Login Failed", details: "User data not found in Firestore after authentication.");
+          await _auth.signOut();
+          setState(() => loading = false);
+          return;
+        }
+        userData = userSnap.docs.first.data() as Map<String, dynamic>;
+        usernameForNavigation = userData['username'] ?? userData['email'];
+        firestoreDocId = userSnap.docs.first.id;
+
+        if (userData["status"] != "Active") {
+          showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
+          await _auth.signOut();
+          setState(() => loading = false);
+          return;
+        }
       }
 
-      var userDoc = userSnap.docs.first;
-      var user = userDoc.data() as Map<String, dynamic>;
-
-      // Semak Status Akaun
-      if (user["status"] != "Active") {
-        showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
-        await _auth.signOut();
-        setState(() => loading = false);
-        return;
-      }
-
-      // Jika berjaya dan status Active
-      String loggedInUsername = user["username"] ?? user["email"] ?? "User";
-      String role = user["role"];
+      String role = userData!["role"] ?? 'staff';
 
       // --- FUNGSI 'REMEMBER ME' ---
       if (rememberMe) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
-        await prefs.setString('savedUsername', loggedInUsername);
+        await prefs.setString('savedUsername', usernameForNavigation);
         await prefs.setString('savedRole', role);
+        await prefs.setString('savedUserId', firestoreDocId); // Simpan ID
       }
 
       _clearControllers();
-      showPopupMessage("Login Successful!", details: "Welcome, $loggedInUsername."); // Pemberitahuan ringkas
-      _navigateToHomePage(loggedInUsername, role); // Navigasi ke halaman utama
+      // Debug log (gunakan debugPrint dalam produksi)
+      debugPrint("Login Successful for: $usernameForNavigation ($role)");
+
+      showPopupMessage("Login Successful!", details: "Welcome, $usernameForNavigation.");
+      _navigateToHomePage(usernameForNavigation, role, firestoreDocId);
 
     } on FirebaseAuthException catch (e) {
       String errorMessage = "Login failed.";
       if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-        errorMessage = "Invalid email or password.";
+        errorMessage = "Invalid username/email or password.";
       } else if (e.code == 'invalid-email') {
         errorMessage = "The email address format is invalid.";
       }
       showPopupMessage("Authentication Failed", details: errorMessage);
     } catch (e) {
       showPopupMessage("System Error", details: "Failed to process login: ${e.toString()}");
+      debugPrint("Login General Error: $e");
     } finally {
       setState(() => loading = false);
     }
@@ -251,13 +307,13 @@ class _LoginPageState extends State<LoginPage> {
                   SizedBox(height: constraints.maxHeight * 0.03),
 
 
-                  // Email field
+                  // Email/Username field
                   TextField(
                     controller: usernameController,
-                    keyboardType: TextInputType.emailAddress,
+                    keyboardType: TextInputType.emailAddress, // Dikekalkan
                     decoration: InputDecoration(
-                      labelText: "Email Address",
-                      prefixIcon: const Icon(Icons.email_outlined),
+                      labelText: "Email or Username", // Diubah
+                      prefixIcon: const Icon(Icons.person_outline), // Diubah
                       filled: true,
                       fillColor: Colors.grey[200],
                       border: OutlineInputBorder(

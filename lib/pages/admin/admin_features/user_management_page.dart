@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // [BARU] Import Cache Network
+import 'package:cached_network_image/cached_network_image.dart';
 
 // Import untuk navigasi Features
 import '../admin_page.dart';
+// --- PENGUBAHSUAIAN BERMULA DI SINI ---
+// Sila ganti './user_list_page.dart' dengan laluan fail yang betul untuk UserListPage anda
+import '../user_list_page.dart';
+// --- PENGUBAHSUAIAN BERAKHIR DI SINI ---
 
 
 class UserManagementPage extends StatefulWidget {
@@ -28,7 +32,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
   String? selectedDefaultPassword;
   bool loading = false;
 
-  // [BARU] State untuk URL gambar Admin yang sedang log masuk
   String? adminProfilePictureUrl;
 
   final List<String> roles = ['admin', 'manager', 'staff'];
@@ -37,7 +40,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
   @override
   void initState() {
     super.initState();
-    _loadAdminProfilePicture(); // [BARU] Muatkan gambar admin
+    _loadAdminProfilePicture();
   }
 
   // --- FUNGSI BARU: Muatkan Gambar Profil Admin ---
@@ -161,15 +164,16 @@ class _UserManagementPageState extends State<UserManagementPage> {
               onPressed: () {
                 Navigator.pop(context); // Tutup dialog
 
-                // Navigasi ke AdminPage (Dashboard/Home Index 0)
+                // --- PENGUBAHSUAIAN BERMULA DI SINI ---
+                // Navigasi ke UserListPage
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
-                    builder: (context) => AdminPage(
-                      loggedInUsername: widget.username,
-                      initialIndex: 0,
-                    ),
+                    // *GANTIKAN DENGAN WIDGET USERLISTPAGE ANDA YANG BETUL*
+                    builder: (context) => UserListPage(loggedInUsername: widget.username),
+                    // Jika UserListPage anda memerlukan parameter tambahan, sila tambah di sini
                   ),
                 );
+                // --- PENGUBAHSUAIAN BERAKHIR DI SINI ---
               },
               child: const Text("OK"),
             )

@@ -21,7 +21,7 @@ class _LaunchPageState extends State<LaunchPage> {
     if (role == "admin") {
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => AdminPage(loggedInUsername: username))
+          MaterialPageRoute(builder: (_) => AdminScreen(loggedInUsername: username, userId: '',))
       );
     } else if (role == "manager") {
       Navigator.pushReplacement(

@@ -434,7 +434,7 @@ class _UserListPageState extends State<UserListPage> {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => UserDeletePage(
                           userId: docId,
                           loggedInUsername: widget.loggedInUsername,
-                          username: itemUsername,
+                          username: itemUsername, userData: {},
                         )));
                       },
 

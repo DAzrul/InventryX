@@ -1,10 +1,12 @@
-// File: admin/utils/features_modal.dart
+// File: lib/pages/admin/utils/features_modal.dart
 import 'package:flutter/material.dart';
-import '../features_grid.dart'; // Import FeaturesGrid widget
+import '../features_grid.dart'; // Path disesuaikan
 
 class FeaturesModal {
   // Fungsi statik untuk memanggil bottom sheet
   static void show(BuildContext context, String loggedInUsername) {
+    final double bottomNavHeight = 60.0; // Anggaran tinggi BottomNavBar
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -16,8 +18,12 @@ class FeaturesModal {
             borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
           padding: const EdgeInsets.all(16.0),
-          // Margin di atas BottomNavBar (~60)
-          margin: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 60),
+
+          // KOREKSI: Tambahkan tinggi Bottom Navigation Bar + Safe Area ke margin bawah.
+          margin: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom + bottomNavHeight,
+          ),
+
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
