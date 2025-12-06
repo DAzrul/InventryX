@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // Import untuk semakan rangkaian
+
 import 'login_page.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -14,6 +16,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _isLoading = false;
 
+  // --- FUNGSI POPUP MESSAGE (DIPERBAIKI) ---
+  // Parameter pertama (message) adalah MESEJ/TAJUK yang akan dipaparkan
   void showPopupMessage(String message, {bool success = false}) {
     showDialog(
       context: context,
@@ -44,20 +48,33 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
-  // --- Fungsi Hantar Pautan Reset Sebenar ---
+  // --- FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+  // --- Fungsi Hantar Pautan Reset Sebenar (DIPERBAIKI PANGGILAN) ---
   void sendResetLink() async {
     String email = emailController.text.trim();
 
     if (email.isEmpty) {
+      // PANGGILAN BETUL: HANYA SATU PARAMETER POSITIONAL
       showPopupMessage("Please enter your email");
       return;
     }
 
-    // simple email validation
     if (!email.contains("@") || !email.contains(".")) {
       showPopupMessage("Please enter a valid email");
       return;
     }
+
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    if (!await _isNetworkAvailable()) {
+      showPopupMessage("Offline Mode: You must be online to request a password reset link.");
+      return;
+    }
+
 
     setState(() {
       _isLoading = true;
@@ -67,8 +84,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       // Panggil Firebase Authentication untuk menghantar emel
       await _auth.sendPasswordResetEmail(email: email);
 
-      // Pemberitahuan kejayaan (DIUBAH UNTUK KETERANGAN PAUTAN)
       if (!mounted) return;
+      // PANGGILAN BETUL
       showPopupMessage("Pautan penetapan semula kata laluan telah dihantar ke $email. Sila semak emel anda.", success: true);
 
     } on FirebaseAuthException catch (e) {
@@ -76,14 +93,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
       if (e.code == 'user-not-found') {
         errorMessage = "Emel tidak berdaftar. Sila semak semula alamat yang dimasukkan.";
+      } else if (e.code == 'network-request-failed') {
+        errorMessage = "Network connection failed. Please check your internet.";
       }
 
       if (!mounted) return;
+      // PANGGILAN BETUL
       showPopupMessage(errorMessage);
 
     } catch (e) {
       if (!mounted) return;
-      showPopupMessage("System Error: ${e.toString()}");
+      showPopupMessage("System Error: Failed to process request: ${e.toString()}");
     } finally {
       if (mounted) {
         setState(() {

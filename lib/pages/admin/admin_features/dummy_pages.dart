@@ -1,18 +1,34 @@
-// File: admin/admin_features/dummy_pages.dart
+// File: lib/pages/admin/admin_features/dummy_pages.dart
 import 'package:flutter/material.dart';
+
+// --- [BARU] Dummy Page generik untuk mengelakkan ralat rujukan ---
+class DummyPage extends StatelessWidget {
+  final String title;
+  const DummyPage({super.key, this.title = "Coming Soon"});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+          child: Text("$title Page", style: TextStyle(fontSize: 18, color: Colors.grey[600]))
+      )
+  );
+}
 
 // --- Dummy Pages untuk Dashboard & Features Grid ---
 class ProductPage extends StatelessWidget {
   const ProductPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Product Management")), body: const Center(child: Text("Product Management Page"))); }
+  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Product Management")), body: const Center(child: Text("Product Management Page")));
+}
 
 class SupplierPage extends StatelessWidget {
   const SupplierPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Supplier List")), body: const Center(child: Text("Supplier List Page"))); }
+  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Supplier List")), body: const Center(child: Text("Supplier List Page")));
+}
 
 class RecommendationPage extends StatelessWidget {
   const RecommendationPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Recommendation")), body: const Center(child: Text("Recommendation Page"))); }
+  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Recommendation")), body: const Center(child: Text("Recommendation Page")));
+}
 
 
 // --- Dummy Pages untuk Settings & Navigasi ---

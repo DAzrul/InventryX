@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
 
 // Import komponen UI yang dipisah
 import 'widgets/user_header_status.dart';
@@ -60,7 +61,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
     super.dispose();
   }
 
-  // --- FUNGSI POPUP ALERDIALOG (DIKEMASKINI: Ditukar kepada Future<void>) ---
+  // --- FUNGSI POPUP ALERDIALOG ---
   Future<void> _showAlertDialog(String title, String message, bool success) async {
     return showDialog(
       context: context,
@@ -74,11 +75,16 @@ class _UserDeletePageState extends State<UserDeletePage> {
         ),
         content: Text(message),
         actions: [
-          // Navigasi dilakukan oleh fungsi pemanggil selepas dialog ini ditutup
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK", style: TextStyle(color: Color(0xFF233E99)))),
         ],
       ),
     );
+  }
+
+  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
   }
 
   // --- Fungsi Memuat Data Pengguna (Hanya Display) ---
@@ -124,9 +130,19 @@ class _UserDeletePageState extends State<UserDeletePage> {
     }
   }
 
-  // --- FUNGSI BARU: Mengubah Status Inactive ke Active ---
+  // --- FUNGSI BARU: Mengubah Status Inactive ke Active (DIPERBAIKI) ---
   void _activateUserStatus() async {
     if (_isLoading) return;
+
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    if (!await _isNetworkAvailable()) {
+      await _showAlertDialog(
+          "Offline Mode",
+          'Cannot activate user status while offline. Please connect to the internet.',
+          false
+      );
+      return;
+    }
 
     // Konfirmasi sebelum aktivasi
     bool confirm = await showDialog(
@@ -155,7 +171,6 @@ class _UserDeletePageState extends State<UserDeletePage> {
           .update({'status': 'Active'});
 
       if (mounted) {
-        // PERBAIKAN: Gunakan await pada pemanggilan fungsi AlertDialog
         await _showAlertDialog(
             "Activation Success",
             'User ${widget.username} successfully activated.',
@@ -168,7 +183,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
       if (mounted) {
         _showAlertDialog(
             "Activation Failed",
-            'Failed to activate user account. Details: ${e.toString()}',
+            'Failed to activate user account. Please check connection. Details: ${e.toString()}',
             false
         );
         setState(() => _isLoading = false);
@@ -177,9 +192,19 @@ class _UserDeletePageState extends State<UserDeletePage> {
     }
   }
 
-  // --- Fungsi DELETE Permanen (Memanggil Cloud Function) ---
+  // --- Fungsi DELETE Permanen (Memanggil Cloud Function) (DIPERBAIKI) ---
   void _deleteUserPermanently() async {
     if (_isLoading) return;
+
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    if (!await _isNetworkAvailable()) {
+      await _showAlertDialog(
+          "Offline Mode",
+          'Cannot delete user permanently while offline. Please connect to the internet.',
+          false
+      );
+      return;
+    }
 
     // 1. Tunjukkan dialog konfirmasi sebelum pemadaman
     bool confirm = await showDialog(
@@ -202,6 +227,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
         setState(() => _isLoading = true);
 
         final adminUid = FirebaseAuth.instance.currentUser?.uid;
+        // Panggilan Cloud Function memerlukan sambungan yang stabil.
         final callable = FirebaseFunctions.instance.httpsCallable('deleteUserAndData');
 
         final result = await callable.call({
@@ -213,7 +239,6 @@ class _UserDeletePageState extends State<UserDeletePage> {
 
         if (result.data['status'] == 'success') {
           if (mounted) {
-            // PERBAIKAN: Gunakan await pada pemanggilan fungsi AlertDialog
             await _showAlertDialog(
                 "Deletion Success",
                 'User ${widget.username} successfully deleted from all services.',
@@ -226,7 +251,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
           if (mounted) {
             _showAlertDialog(
                 "Deletion Failed",
-                'Failed to delete account: ${result.data['message']}',
+                'Failed to delete account: ${result.data['message']}. Please check connection and try again.',
                 false
             );
           }
@@ -236,7 +261,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
           setState(() => _isLoading = false);
           _showAlertDialog(
               "Deletion Error",
-              'An error occurred during deletion process: ${e.toString()}',
+              'An error occurred during deletion process. Please check connection. Details: ${e.toString()}',
               false
           );
         }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
 
 import '../../../pages/login_page.dart';
 import 'change_password_profile.dart';
@@ -31,7 +32,6 @@ class _ProfilePageState extends State<ProfilePage> {
   bool isLoading = true;
   String? profilePictureUrl;
 
-  // Gantikan list dummy dengan list untuk data aktiviti sebenar
   List<Map<String, dynamic>> realActivityData = [];
 
   @override
@@ -40,7 +40,13 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadUserProfile();
   }
 
-  // [BARU] FUNGSI PEMBANTU: Untuk format Firestore Timestamp ke "X time ago"
+  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+  // FUNGSI PEMBANTU: Untuk format Firestore Timestamp ke "X time ago"
   String _formatTimestamp(Timestamp? timestamp) {
     if (timestamp == null) return 'N/A';
 
@@ -54,9 +60,15 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
 
-  // --- Fungsi Mengambil Data Pengguna dan Aktiviti dari Firestore ---
+  // --- Fungsi Mengambil Data Pengguna dan Aktiviti dari Firestore (DIPERBAIKI) ---
   Future<void> _loadUserProfile() async {
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    final isOnline = await _isNetworkAvailable();
+
     try {
+      // Pilihan: Tambah 'source: Source.cache' jika offline di sini untuk memuatkan cache dahulu.
+      // Walau bagaimanapun, kita bergantung pada caching automatik Firestore.
+
       QuerySnapshot userSnap = await FirebaseFirestore.instance
           .collection("users")
           .where("username", isEqualTo: widget.username)
@@ -68,60 +80,88 @@ class _ProfilePageState extends State<ProfilePage> {
         String userId = userSnap.docs.first.id;
 
         // FUNGSI 1: AMBIL DATA AKTIVITI SEBENAR
-        QuerySnapshot activitySnap = await FirebaseFirestore.instance
-            .collection("users").doc(userId)
-            .collection("activities")
-            .orderBy('timestamp', descending: true)
-            .limit(4) // Ambil 4 aktiviti terkini
-            .get();
+        QuerySnapshot activitySnap;
+        if (isOnline) {
+          // Hanya muatkan log aktiviti jika online
+          activitySnap = await FirebaseFirestore.instance
+              .collection("users").doc(userId)
+              .collection("activities")
+              .orderBy('timestamp', descending: true)
+              .limit(4)
+              .get();
+        } else {
+          // Jika offline, guna senarai kosong untuk mengelakkan ralat load
+          activitySnap = await FirebaseFirestore.instance.collection("users").doc(userId).collection("activities").get(const GetOptions(source: Source.cache));
+          // Jika cache aktiviti tidak wujud, biarkan kosong.
+        }
 
+        // Memproses aktiviti
         List<Map<String, dynamic>> tempActivities = [];
         for (var doc in activitySnap.docs) {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
           String timeAgo = _formatTimestamp(data['timestamp']);
           tempActivities.add({
-            // [PENTING] Menggunakan IconData(codePoint, fontFamily)
             'icon': IconData(data['iconCode'] ?? Icons.info_outline.codePoint, fontFamily: 'MaterialIcons'),
             'text': data['description'] ?? 'Activity recorded.',
             'time': timeAgo,
           });
         }
 
-        setState(() {
-          currentUserId = userId;
+        // ... (Logik set state untuk data profil) ...
+        if(mounted) {
+          setState(() {
+            currentUserId = userId;
+            nameController.text = userData['name'] ?? 'N/A';
+            emailController.text = userData['email'] ?? 'N/A';
+            phoneNoController.text = userData['phoneNo'] ?? 'N/A';
+            userRole = userData['role'] ?? 'N/A';
+            userPosition = userData['position'] ?? 'N/A';
+            companyController.text = userData['nameCompany'] ?? 'N/A';
+            profilePictureUrl = userData['profilePictureUrl'];
+            realActivityData = tempActivities;
+            isLoading = false;
+          });
+        }
 
-          nameController.text = userData['name'] ?? 'Ahmad Zaki';
-          emailController.text = userData['email'] ?? 'N/A';
-          phoneNoController.text = userData['phoneNo'] ?? 'N/A';
-          userRole = userData['role'] ?? 'Pengurus Stok Kanan';
-          // Ambil Name Company dari Firestore
-          userPosition = userData['position'] ?? 'N/A';
-          companyController.text = userData['nameCompany'] ?? 'Syarikat ABC Sdn Bhd';
+        // BERI AMARAN JIKA OFFLINE
+        if (!isOnline && mounted) {
+          _showPopupMessage("Offline Mode", "Displaying cached data. Latest activity logs may be unavailable.");
+        }
 
-          profilePictureUrl = userData['profilePictureUrl'];
-          realActivityData = tempActivities; // Simpan data aktiviti sebenar
-          isLoading = false;
-        });
       } else {
-        setState(() {
-          isLoading = false;
-          nameController.text = 'Ahmad Zaki';
-          userRole = 'Pengurus Stok Kanan';
-        });
-        _showPopupMessage("Warning", "User data not found. Displaying dummy data.");
+        if(mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+        if (isOnline) {
+          _showPopupMessage("Warning", "User data not found. Displaying dummy data.");
+        }
       }
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-      _showPopupMessage("Error Loading Data", e.toString());
+      if(mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+      print("Error loading user data: $e");
+      if (isOnline) {
+        _showPopupMessage("Error Loading Data", e.toString());
+      }
     }
   }
 
   // --- Fungsi Navigasi Edit Profile ---
   void _editProfile() async {
+    // ... (Semakan ID dan Panggilan Navigasi kekal sama) ...
     if (currentUserId == null || isLoading) {
       _showPopupMessage("Error", "User data is still loading or ID not available.");
+      return;
+    }
+
+    // [BARU] Semakan Rangkaian sebelum edit
+    if (!await _isNetworkAvailable()) {
+      _showPopupMessage("Offline Mode", "You must be online to edit your profile.");
       return;
     }
 
@@ -131,7 +171,7 @@ class _ProfilePageState extends State<ProfilePage> {
       'phoneNo': phoneNoController.text,
       'role': userRole,
       'profilePictureUrl': profilePictureUrl ?? '',
-      'nameCompany': companyController.text, // Hantar Name Company
+      'nameCompany': companyController.text,
       'position': userPosition,
     };
 
@@ -152,32 +192,36 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- Fungsi Logout (Memadam Sesi) ---
+  // --- Fungsi Logout (Memadam Sesi) (DIPERBAIKI) ---
   void _logout() async {
+    final isOnline = await _isNetworkAvailable();
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('users').doc(currentUserId!)
-          .collection('activities').add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'description': 'Signed out of account.',
-        'iconCode': Icons.logout.codePoint,
-      });
-    } catch (e) {
-      // Abaikan ralat logging jika ia tidak kritikal
-      print('Failed to log logout activity: $e');
+    // 1. Log Aktiviti (Hanya jika online)
+    if (isOnline) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users').doc(currentUserId!)
+            .collection('activities').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'description': 'Signed out of account.',
+          'iconCode': Icons.logout.codePoint,
+        });
+      } catch (e) {
+        print('Failed to log logout activity: $e');
+      }
     }
 
-    // 1. Padamkan status 'Remember Me' (shared_preferences)
+    // 2. Padamkan status 'Remember Me' (shared_preferences)
     await LoginPage.clearLoginState();
 
-    // 2. Log keluar dari Firebase Authentication
+    // 3. Log keluar dari Firebase Authentication
+    // Log keluar Auth adalah asynchronous, tetapi Auth SDK biasanya berfungsi dengan baik offline untuk clear credentials.
     await FirebaseAuth.instance.signOut();
 
-    // 3. Semak mounted sebelum menggunakan context
+    // 4. Semak mounted sebelum menggunakan context
     if (!mounted) return;
 
-    // 4. Navigasi ke halaman Login dan kosongkan stack
+    // 5. Navigasi ke halaman Login dan kosongkan stack
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const LoginPage()),
           (Route<dynamic> route) => false,
@@ -186,8 +230,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // --- FUNGSI BARU: Change Account ---
   void _changeAccount() {
-    // Memanggil _logout() untuk menamatkan sesi secara selamat,
-    // yang akan membawa pengguna ke LoginPage untuk login semula.
     _confirmChangeAccount();
   }
 
@@ -306,8 +348,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Fungsi untuk memaparkan modal Change Password (Dikekalkan)
   void _showChangePasswordModal() async {
+    // ... (Logik Semakan ID kekal sama) ...
     if (currentUserId == null) {
       _showPopupMessage("Error", "User ID not loaded yet.");
+      return;
+    }
+
+    // [BARU] Semakan Rangkaian sebelum change password
+    if (!await _isNetworkAvailable()) {
+      _showPopupMessage("Offline Mode", "You must be online to change your password.");
       return;
     }
 
@@ -315,7 +364,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return Container(
+        return SizedBox(
           height: MediaQuery.of(context).size.height * 0.7,
           child: ChangePasswordProfilePage(
             username: widget.username,

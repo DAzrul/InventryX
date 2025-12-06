@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // [BARU] Untuk check session
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'login_page.dart';
-// Import halaman utama (halaman yang anda navigasi selepas login)
+// Gantikan import ini dengan laluan yang betul dalam projek anda
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -14,39 +15,40 @@ class LaunchPage extends StatefulWidget {
 }
 
 class _LaunchPageState extends State<LaunchPage> {
-  bool _showButton = false; // Hanya tunjukkan butang jika tiada sesi dikesan
+  bool _showButton = false;
 
-  // Helper untuk navigasi berdasarkan role (diambil dari LoginPage)
-  void _navigateToHomePage(String username, String role) {
+  // Helper untuk navigasi berdasarkan role
+  void _navigateToHomePage(String username, String role, String userId) {
+    if (!mounted) return;
     if (role == "admin") {
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => AdminScreen(loggedInUsername: username, userId: '',))
+          MaterialPageRoute(builder: (_) => AdminScreen(loggedInUsername: username, userId: userId,))
       );
     } else if (role == "manager") {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => ManagerPage()));
+          context, MaterialPageRoute(builder: (_) => const ManagerPage()));
     } else {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => StaffPage()));
+          context, MaterialPageRoute(builder: (_) => const StaffPage()));
     }
   }
 
-  // --- SEMAK STATUS LOG MASUK DALAM INITSTATE ---
+  // --- SEMAK STATUS LOG MASUK ---
   Future<void> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final savedUsername = prefs.getString('savedUsername');
     final savedRole = prefs.getString('savedRole');
+    final savedUserId = prefs.getString('savedUserId');
 
-    // Pastikan widget masih mounted sebelum menggunakan Navigator
     if (!mounted) return;
 
-    if (isLoggedIn && savedUsername != null && savedRole != null) {
-      // [TINDAKAN OTOMATIK] Jika sesi ditemui, navigasi terus
-      _navigateToHomePage(savedUsername, savedRole);
+    if (isLoggedIn && savedUsername != null && savedRole != null && savedUserId != null) {
+      // Sesi ditemui, navigasi terus
+      _navigateToHomePage(savedUsername, savedRole, savedUserId);
     } else {
-      // Jika tiada sesi, tunjukkan butang "LET'S GET STARTED!"
+      // Tiada sesi, tunjukkan UI
       setState(() {
         _showButton = true;
       });
@@ -79,16 +81,13 @@ class _LaunchPageState extends State<LaunchPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo
                   SizedBox(
                     height: isPortrait
                         ? constraints.maxHeight * 0.23
                         : constraints.maxHeight * 0.35,
                     child: Image.asset("assets/logo.png"),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.03),
-
                   Text(
                     "InventryX",
                     style: TextStyle(
@@ -98,20 +97,9 @@ class _LaunchPageState extends State<LaunchPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
-                  Text(
-                    "", // Kosongkan ini
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: isPortrait
-                          ? constraints.maxWidth * 0.04
-                          : constraints.maxHeight * 0.04,
-                    ),
-                  ),
-
                   SizedBox(height: constraints.maxHeight * 0.08),
 
-                  // Butang hanya dipaparkan jika tiada sesi ditemui
+                  // Butang "LET'S GET STARTED!"
                   SizedBox(
                     width: double.infinity,
                     height: constraints.maxHeight * 0.07,
@@ -123,7 +111,6 @@ class _LaunchPageState extends State<LaunchPage> {
                         ),
                       ),
                       onPressed: () {
-                        // Navigasi ke LoginPage jika tiada sesi disimpan
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(builder: (_) => const LoginPage()),

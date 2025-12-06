@@ -1,10 +1,11 @@
-// File: login_page.dart (KODE BARU)
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart'; // Untuk debugPrint
+import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // Import untuk semakan rangkaian
 
+// Gantikan import ini dengan laluan yang betul dalam projek anda
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -14,13 +15,13 @@ import 'register_page.dart';
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
-  // Fungsi utiliti statik untuk membersihkan status log masuk (Digunakan oleh Logout)
   static Future<void> clearLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
     await prefs.remove('savedUsername');
     await prefs.remove('savedRole');
-    // Pilihan: FirebaseAuth.instance.signOut();
+    await prefs.remove('savedUserId');
+    await FirebaseAuth.instance.signOut();
   }
 
   @override
@@ -38,8 +39,8 @@ class _LoginPageState extends State<LoginPage> {
   bool showPassword = false;
   bool loading = false;
 
-  // --- FUNGSI NAVIGASI UTAMA ---
   void _navigateToHomePage(String username, String role, String userId) {
+    if (!mounted) return;
     if (role == "admin") {
       Navigator.pushReplacement(
           context,
@@ -54,57 +55,25 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // --- FUNGSI SEMAK STATUS LOG MASUK DALAM INITSTATE (Autologin) ---
-  @override
-  void initState() {
-    super.initState();
-    _checkLoginState();
-  }
-
-  Future<void> _checkLoginState() async {
-    if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final savedUsername = prefs.getString('savedUsername');
-    final savedRole = prefs.getString('savedRole');
-
-    // userId harus disimpan jika diperlukan untuk navigasi
-    final savedUserId = prefs.getString('savedUserId') ?? '';
-
-    if (isLoggedIn && savedUsername != null && savedRole != null) {
-      _navigateToHomePage(savedUsername, savedRole, savedUserId);
-    }
-  }
-
-  // --- FUNGSI UNTUK KOSONGKAN MEDAN ---
+  // FUNGSI INI DITAMBAH UNTUK MEMBAIKI Ralat "is not defined"
   void _clearControllers() {
     usernameController.clear();
     passwordController.clear();
   }
 
-  // --- POPUP MESSAGE ---
   void showPopupMessage(String title, {String? details}) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF233E99),
-            ),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF233E99))),
           content: details != null ? Text(details) : null,
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _clearControllers();
+                _clearControllers(); // Panggilan yang betul
               },
               child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
             )
@@ -114,8 +83,15 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // --- Logik Log Masuk Email/Username DENGAN Firebase Authentication ---
+  // FUNGSI SEMAK RANGKAIAN
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+
   Future<void> loginUser() async {
+    // ... (Validation input) ...
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
     String emailToAuthenticate = '';
@@ -128,56 +104,45 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    // LANGKAH 0: SEMAK RANGKAIAN
+    if (!await _isNetworkAvailable()) {
+      showPopupMessage("Offline Mode", details: "You need an active internet connection to sign in.");
+      return;
+    }
+
     setState(() => loading = true);
 
     try {
       // LANGKAH 1: Cari Pengguna di Firestore berdasarkan Email ATAU Username
       QuerySnapshot userSnap;
-
       if (input.contains('@')) {
-        // Input adalah Email
-        userSnap = await FirebaseFirestore.instance
-            .collection("users")
-            .where('email', isEqualTo: input)
-            .limit(1)
-            .get();
+        userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: input).limit(1).get();
         emailToAuthenticate = input;
-        usernameForNavigation = input; // Guna email sebagai username sementara
       } else {
-        // Input adalah Username
-        userSnap = await FirebaseFirestore.instance
-            .collection("users")
-            .where('username', isEqualTo: input)
-            .limit(1)
-            .get();
+        userSnap = await FirebaseFirestore.instance.collection("users").where('username', isEqualTo: input).limit(1).get();
       }
 
-      if (userSnap.docs.isEmpty) {
-        // Jika tidak ditemukan, coba autentikasi sebagai email
-        if (!input.contains('@')) {
-          showPopupMessage("Login Failed", details: "Username or email not found.");
-          setState(() => loading = false);
-          return;
-        }
-        // Jika input adalah email dan Firestore kosong, kita biarkan Firebase Auth yang mencarinya.
-        emailToAuthenticate = input;
-      } else {
-        // Data pengguna ditemukan di Firestore
+      // ... (Logik Semak Status/Pengguna Ditemui/Tidak Ditemui kekal sama) ...
+      if (userSnap.docs.isNotEmpty) {
         userData = userSnap.docs.first.data() as Map<String, dynamic>;
         emailToAuthenticate = userData['email'];
         usernameForNavigation = userData['username'] ?? userData['email'];
         firestoreDocId = userSnap.docs.first.id;
 
-        // Semak Status Akaun (HANYA jika data ditemukan di Firestore)
         if (userData["status"] != "Active") {
           showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
           await _auth.signOut();
           setState(() => loading = false);
           return;
         }
+      } else if (!input.contains('@')) {
+        showPopupMessage("Login Failed", details: "Username or email not found.");
+        setState(() => loading = false);
+        return;
+      } else {
+        emailToAuthenticate = input;
       }
 
-      // Jika emailToAuthenticate masih kosong, ia adalah username yang tidak sah.
       if (emailToAuthenticate.isEmpty) {
         showPopupMessage("Login Failed", details: "Could not determine authentication email.");
         setState(() => loading = false);
@@ -190,22 +155,10 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      final User? firebaseUser = userCredential.user;
-
-      if (firebaseUser == null) {
-        showPopupMessage("Login Failed", details: "Authentication service error.");
-        setState(() => loading = false);
-        return;
-      }
-
-      // LANGKAH 3: Semak semula data dan kemas kini ID jika perlu (jika langkah 1 tidak menemukan ID)
+      // LANGKAH 3: Semak semula data jika ia tidak diambil di Langkah 1
       if (userData == null) {
-        // Jika input adalah EMAIL, dan Firestore KOSONG di Langkah 1, kita cari ID sekarang
-        userSnap = await FirebaseFirestore.instance
-            .collection("users")
-            .where('email', isEqualTo: emailToAuthenticate)
-            .limit(1)
-            .get();
+        // ... (Logik semakan semula data pengguna) ...
+        userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: emailToAuthenticate).limit(1).get();
 
         if (userSnap.docs.isEmpty) {
           showPopupMessage("Login Failed", details: "User data not found in Firestore after authentication.");
@@ -233,14 +186,10 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('savedUsername', usernameForNavigation);
         await prefs.setString('savedRole', role);
-        await prefs.setString('savedUserId', firestoreDocId); // Simpan ID
+        await prefs.setString('savedUserId', firestoreDocId);
       }
 
       _clearControllers();
-      // Debug log (gunakan debugPrint dalam produksi)
-      debugPrint("Login Successful for: $usernameForNavigation ($role)");
-
-      showPopupMessage("Login Successful!", details: "Welcome, $usernameForNavigation.");
       _navigateToHomePage(usernameForNavigation, role, firestoreDocId);
 
     } on FirebaseAuthException catch (e) {
@@ -249,19 +198,24 @@ class _LoginPageState extends State<LoginPage> {
         errorMessage = "Invalid username/email or password.";
       } else if (e.code == 'invalid-email') {
         errorMessage = "The email address format is invalid.";
+      } else if (e.code == 'network-request-failed') {
+        errorMessage = "Network connection failed. Please check your internet.";
       }
       showPopupMessage("Authentication Failed", details: errorMessage);
     } catch (e) {
       showPopupMessage("System Error", details: "Failed to process login: ${e.toString()}");
       debugPrint("Login General Error: $e");
     } finally {
-      setState(() => loading = false);
+      if(mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
 
   @override
   Widget build(BuildContext context) {
+    // ... (Kod UI) ...
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -276,52 +230,33 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   // Logo
                   SizedBox(
-                    height: isPortrait
-                        ? constraints.maxHeight * 0.2
-                        : constraints.maxHeight * 0.35,
+                    height: isPortrait ? constraints.maxHeight * 0.2 : constraints.maxHeight * 0.35,
                     child: Image.asset("assets/logo.png", fit: BoxFit.contain),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.02),
-
-                  Text(
-                    "Welcome",
-                    style: TextStyle(
-                        fontSize: isPortrait
-                            ? constraints.maxWidth * 0.08
-                            : constraints.maxHeight * 0.07,
-                        fontWeight: FontWeight.bold),
+                  Text("Welcome", style: TextStyle(
+                      fontSize: isPortrait ? constraints.maxWidth * 0.08 : constraints.maxHeight * 0.07,
+                      fontWeight: FontWeight.bold),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.005),
-
-                  Text(
-                    "Sign in to continue.",
-                    style: TextStyle(
-                        fontSize: isPortrait
-                            ? constraints.maxWidth * 0.045
-                            : constraints.maxHeight * 0.04,
-                        color: Colors.grey[600]),
+                  Text("Sign in to continue.", style: TextStyle(
+                      fontSize: isPortrait ? constraints.maxWidth * 0.045 : constraints.maxHeight * 0.04,
+                      color: Colors.grey[600]),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.03),
-
 
                   // Email/Username field
                   TextField(
                     controller: usernameController,
-                    keyboardType: TextInputType.emailAddress, // Dikekalkan
+                    keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
-                      labelText: "Email or Username", // Diubah
-                      prefixIcon: const Icon(Icons.person_outline), // Diubah
+                      labelText: "Email or Username",
+                      prefixIcon: const Icon(Icons.person_outline),
                       filled: true,
                       fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                     ),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.02),
 
                   // Password field
@@ -332,20 +267,14 @@ class _LoginPageState extends State<LoginPage> {
                       labelText: "Password",
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(showPassword
-                            ? Icons.visibility
-                            : Icons.visibility_off),
-                        onPressed: () =>
-                            setState(() => showPassword = !showPassword),
+                        icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setState(() => showPassword = !showPassword),
                       ),
                       filled: true,
                       fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                     ),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.01),
 
                   Row(
@@ -356,17 +285,15 @@ class _LoginPageState extends State<LoginPage> {
                           // Checkbox Remember Me
                           Checkbox(
                             value: rememberMe,
-                            onChanged: (v) =>
-                                setState(() => rememberMe = v!),
+                            onChanged: (v) => setState(() => rememberMe = v!),
                           ),
                           const Text("Remember me"),
                         ],
                       ),
                       TextButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
+                          // Pastikan laluan ForgotPasswordPage adalah betul
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
                           );
                         },
                         child: const Text("Forgot password?"),
@@ -374,7 +301,6 @@ class _LoginPageState extends State<LoginPage> {
 
                     ],
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.03),
 
                   // Sign In Button
@@ -384,8 +310,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF233E99),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: loading ? null : loginUser,
                       child: loading
@@ -393,9 +318,7 @@ class _LoginPageState extends State<LoginPage> {
                           : Text(
                         "SIGN IN",
                         style: TextStyle(
-                          fontSize: isPortrait
-                              ? constraints.maxWidth * 0.05
-                              : constraints.maxHeight * 0.04,
+                          fontSize: isPortrait ? constraints.maxWidth * 0.05 : constraints.maxHeight * 0.04,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.2,
                           color: Colors.white,
@@ -403,8 +326,14 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   SizedBox(height: constraints.maxHeight * 0.02),
+                  // Pilihan: Link ke Register
+                  TextButton(
+                      onPressed: () {
+                        // Pastikan laluan RegisterPage adalah betul
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
+                      },
+                      child: const Text("Don't have an account? Register Here"))
 
                 ],
               ),

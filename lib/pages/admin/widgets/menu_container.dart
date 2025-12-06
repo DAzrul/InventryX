@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
 
 class MenuContainer extends StatefulWidget {
   final Widget child;
@@ -29,7 +30,19 @@ class _MenuContainerState extends State<MenuContainer> {
     _fetchAdminProfilePicture();
   }
 
+  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+  // --- Fungsi Memuat Gambar Profil (DIPERBAIKI) ---
   Future<void> _fetchAdminProfilePicture() async {
+    if (!mounted) return;
+
+    // Kita biarkan Firestore cuba memuat. Jika online, ia akan memuat data terkini.
+    // Jika offline, ia akan memuat data cache (Persistence mesti diaktifkan di main.dart).
+
     try {
       QuerySnapshot adminSnap = await FirebaseFirestore.instance
           .collection("users")
@@ -37,6 +50,7 @@ class _MenuContainerState extends State<MenuContainer> {
           .limit(1)
           .get();
 
+      // Ambil data jika ditemui, sama ada dari cache atau server
       if (adminSnap.docs.isNotEmpty) {
         var userData = adminSnap.docs.first.data() as Map<String, dynamic>;
         if (mounted) {
@@ -47,6 +61,7 @@ class _MenuContainerState extends State<MenuContainer> {
           });
         }
       } else {
+        // Jika tiada data ditemui (walaupun dalam cache)
         if (mounted) {
           setState(() {
             _isDataLoading = false;
@@ -54,10 +69,17 @@ class _MenuContainerState extends State<MenuContainer> {
         }
       }
     } catch (e) {
+      // Tangani ralat pemuatan (cth., ralat rangkaian yang tidak dikendalikan oleh Firestore)
       if (mounted) {
         setState(() {
           _isDataLoading = false;
+          _displayName = 'Error Loading';
         });
+
+        // [BARU] Beri amaran jika offline dan ralat berlaku
+        if (!await _isNetworkAvailable()) {
+          print("Displaying cached header data (or default) due to offline mode.");
+        }
       }
     }
   }
@@ -78,6 +100,7 @@ class _MenuContainerState extends State<MenuContainer> {
     final bool isUrlValid = _adminProfilePictureUrl != null && _adminProfilePictureUrl!.isNotEmpty;
 
     if (isUrlValid) {
+      // Menggunakan CachedNetworkImage untuk memuatkan dari cache tempatan jika ada
       return CachedNetworkImage(
         imageUrl: _adminProfilePictureUrl!,
         imageBuilder: (context, imageProvider) => CircleAvatar(
@@ -100,7 +123,6 @@ class _MenuContainerState extends State<MenuContainer> {
       return CircleAvatar(
         radius: _avatarRadius,
         backgroundColor: Colors.grey.shade300,
-
         child: const Icon(Icons.person, size: _avatarRadius, color: Colors.grey),
       );
     }

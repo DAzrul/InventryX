@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
 
 // Import untuk navigasi Features
 import '../admin_page.dart';
-// --- PENGUBAHSUAIAN BERMULA DI SINI ---
-// Sila ganti './user_list_page.dart' dengan laluan fail yang betul untuk UserListPage anda
-import '../user_list_page.dart';
-// --- PENGUBAHSUAIAN BERAKHIR DI SINI ---
+import '../user_list_page.dart'; // Pastikan laluan import ini betul
 
 
 class UserManagementPage extends StatefulWidget {
@@ -45,6 +43,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   // --- FUNGSI BARU: Muatkan Gambar Profil Admin ---
   Future<void> _loadAdminProfilePicture() async {
+    // Fungsi ini tidak diubah dan berfungsi walaupun offline (cache)
     try {
       QuerySnapshot adminSnap = await FirebaseFirestore.instance
           .collection("users")
@@ -64,7 +63,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
 
-  // --- FUNGSI POPUP MESSAGE YANG DIBETULKAN ---
+  // --- FUNGSI POPUP MESSAGE ---
   void showPopupMessage(String title, {String? message}) {
     showDialog(
       context: context,
@@ -78,8 +77,14 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
+  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
 
-  // --- Fungsi Logik Pendaftaran Pengguna DENGAN FIREBASE AUTH ---
+
+  // --- Fungsi Logik Pendaftaran Pengguna DENGAN FIREBASE AUTH (DIPERBAIKI) ---
   Future<void> registerUser() async {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
@@ -103,6 +108,12 @@ class _UserManagementPageState extends State<UserManagementPage> {
       username = email.substring(0, email.indexOf('@'));
     } else {
       showPopupMessage("Error", message: "Invalid email format.");
+      return;
+    }
+
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    if (!await _isNetworkAvailable()) {
+      showPopupMessage("Offline Mode", message: "User registration requires an active internet connection.");
       return;
     }
 
@@ -164,16 +175,12 @@ class _UserManagementPageState extends State<UserManagementPage> {
               onPressed: () {
                 Navigator.pop(context); // Tutup dialog
 
-                // --- PENGUBAHSUAIAN BERMULA DI SINI ---
                 // Navigasi ke UserListPage
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
-                    // *GANTIKAN DENGAN WIDGET USERLISTPAGE ANDA YANG BETUL*
                     builder: (context) => UserListPage(loggedInUsername: widget.username),
-                    // Jika UserListPage anda memerlukan parameter tambahan, sila tambah di sini
                   ),
                 );
-                // --- PENGUBAHSUAIAN BERAKHIR DI SINI ---
               },
               child: const Text("OK"),
             )
@@ -195,6 +202,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
       String errorMessage;
       if (e.code == 'email-already-in-use') {
         errorMessage = "Email is already in use by another account.";
+      } else if (e.code == 'network-request-failed') {
+        errorMessage = "Network connection failed. Please check your internet.";
       } else {
         errorMessage = "Auth Error: ${e.message}";
       }
@@ -235,7 +244,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
               padding: const EdgeInsets.only(bottom: 20),
               child: Row(
                 children: [
-                  // [DIUBAH] Menggunakan URL gambar Admin
+                  // Menggunakan URL gambar Admin
                   CircleAvatar(radius: 18, backgroundImage: adminAvatarImage),
                   const SizedBox(width: 10),
                   Text(widget.username, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

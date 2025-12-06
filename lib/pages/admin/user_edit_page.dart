@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
 
 // Import komponen UI yang dipisah (Pastikan path ke widgets betul)
 import 'widgets/user_header_status.dart';
@@ -66,7 +67,7 @@ class _UserEditPageState extends State<UserEditPage> {
     super.dispose();
   }
 
-  // --- FUNGSI POPUP ALERDIALOG (DIUBAH: Mengembalikan Future<void>) ---
+  // --- FUNGSI POPUP ALERDIALOG ---
   Future<void> _showAlertDialog(String title, String message, bool success) async {
     return showDialog(
       context: context,
@@ -80,11 +81,16 @@ class _UserEditPageState extends State<UserEditPage> {
         ),
         content: Text(message),
         actions: [
-          // Tombol OK akan menutup dialog, dan kita menunggu hasil pop ini
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK", style: TextStyle(color: Color(0xFF233E99)))),
         ],
       ),
     );
+  }
+
+  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
   }
 
 
@@ -93,6 +99,7 @@ class _UserEditPageState extends State<UserEditPage> {
     if (!mounted) return;
 
     try {
+      // Nota: Panggilan ini mungkin memuat dari cache jika offline (ciri Firestore)
       DocumentSnapshot doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
@@ -101,7 +108,7 @@ class _UserEditPageState extends State<UserEditPage> {
       if (doc.exists && mounted) {
         var data = doc.data() as Map<String, dynamic>;
 
-        // Isi Controllers 
+        // Isi Controllers
         _emailController.text = data['email'] ?? '';
         _nameController.text = data['name'] ?? '';
         _phoneController.text = data['phoneNo'] ?? '';
@@ -139,9 +146,20 @@ class _UserEditPageState extends State<UserEditPage> {
     }
   }
 
-  // --- Fungsi untuk Menyimpan Perubahan (Status dan Field) ---
+  // --- Fungsi untuk Menyimpan Perubahan (Status dan Field) (DIPERBAIKI) ---
   void _saveChanges() async {
     if (_isLoading) return;
+
+    // [LANGKAH 0: SEMAK RANGKAIAN]
+    if (!await _isNetworkAvailable()) {
+      await _showAlertDialog(
+          "Offline Mode",
+          'Changes cannot be saved while offline. Please connect to the internet.',
+          false
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     Map<String, dynamic> updateData = {};
@@ -151,7 +169,7 @@ class _UserEditPageState extends State<UserEditPage> {
       updateData['status'] = _currentStatus;
     }
 
-    // 2. Kemaskini Field Editable Lain 
+    // 2. Kemaskini Field Editable Lain
     if (_nameController.text != _initialName) {
       updateData['name'] = _nameController.text;
     }
@@ -179,13 +197,13 @@ class _UserEditPageState extends State<UserEditPage> {
     }
 
     try {
+      // Operasi Update Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .update(updateData);
 
       if (mounted) {
-        // PERBAIKAN: AWAIT DIHADAPAN _showAlertDialog untuk menyelesaikan konflik navigasi
         await _showAlertDialog(
             "Update Success",
             'User ${widget.username} successfully updated.',
@@ -196,10 +214,11 @@ class _UserEditPageState extends State<UserEditPage> {
         Navigator.pop(context);
       }
     } catch (e) {
+      // Tangani ralat Firestore/Server
       if (mounted) {
         _showAlertDialog(
             "Update Failed",
-            'Failed to update user data. Details: ${e.toString()}',
+            'Failed to update user data. Please check connection. Details: ${e.toString()}',
             false
         );
         setState(() => _isLoading = false);
