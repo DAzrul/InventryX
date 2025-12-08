@@ -9,6 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart'; // [BARU] Import Hive
 import '../main.dart'; // [BARU] Import themeNotifier dari main.dart
 import 'login_page.dart'; // [BARU] Import clearLoginState dari login_page.dart
 import 'admin/admin_features/dummy_pages.dart';
+import 'admin/admin_features/profile_page.dart';
 import 'admin/features_grid.dart'; // Perlu ganti dengan import sebenar untuk Page-page ini
 
 // --- [BARU] Nama Box Hive yang Digunakan ---
@@ -119,7 +120,7 @@ Widget _buildSettingsContent(
         padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         child: Text("Account Management", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF233E99))),
       ),
-      const _SettingsMenuItem(title: "My Account", icon: Icons.person_outline, destinationPage: MyAccountPage()),
+      _SettingsMenuItem(title: "My Account", icon: Icons.person_outline, destinationPage: ProfilePage(username: username)),
       const _SettingsMenuItem(title: "Privacy & Security", icon: Icons.lock_outline, destinationPage: PrivacySecurityPage()),
       const Divider(height: 20),
 

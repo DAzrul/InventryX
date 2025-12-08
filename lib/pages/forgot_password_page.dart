@@ -86,13 +86,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
       if (!mounted) return;
       // PANGGILAN BETUL
-      showPopupMessage("Pautan penetapan semula kata laluan telah dihantar ke $email. Sila semak emel anda.", success: true);
+      showPopupMessage("A password reset link has been sent to $email. Please check your email.", success: true);
 
     } on FirebaseAuthException catch (e) {
-      String errorMessage = "Gagal menghantar pautan. Sila semak emel atau hubungi bantuan.";
+      String errorMessage = "Failed to send link. Please check email or contact support..";
 
       if (e.code == 'user-not-found') {
-        errorMessage = "Emel tidak berdaftar. Sila semak semula alamat yang dimasukkan.";
+        errorMessage = "Email is not registered. Please double check the address entered..";
       } else if (e.code == 'network-request-failed') {
         errorMessage = "Network connection failed. Please check your internet.";
       }

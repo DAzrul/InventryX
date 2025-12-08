@@ -1,14 +1,207 @@
-// profile_page.dart
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
+import 'package:connectivity_plus/connectivity_plus.dart';
 
+// Import dependencies (Path disesuaikan)
 import '../../../pages/login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
+
+// ==========================================================
+// KELAS WIDGET PEMBANTU (DIPISAHKAN DARI STATE UTAMA)
+// ==========================================================
+
+// --- 1. USER PROFILE HEADER WIDGET ---
+class UserProfileHeader extends StatelessWidget {
+  final String name;
+  final String role;
+  final String? profilePictureUrl;
+
+  const UserProfileHeader({
+    super.key,
+    required this.name,
+    required this.role,
+    this.profilePictureUrl
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Logik untuk memaparkan gambar
+    final ImageProvider imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
+        ? CachedNetworkImageProvider(profilePictureUrl!) as ImageProvider
+        : const AssetImage('assets/profile.png');
+
+    final bool isPlaceholder = profilePictureUrl == null || profilePictureUrl!.isEmpty;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor, // Menggunakan tema untuk warna
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 40,
+            backgroundImage: imageProvider,
+            child: isPlaceholder ? const Icon(Icons.person, size: 40, color: Colors.grey) : null,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            name,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            role,
+            style: const TextStyle(color: Colors.grey, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 2. CONTACT INFORMATION WIDGET ---
+class ContactInformationSection extends StatelessWidget {
+  final String email;
+  final String phoneNo;
+  final String company;
+  final String position;
+
+  const ContactInformationSection({
+    super.key,
+    required this.email,
+    required this.phoneNo,
+    required this.company,
+    required this.position
+  });
+
+  Widget _buildContactItem({required IconData icon, required String text}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[600], size: 20),
+          const SizedBox(width: 15),
+          Flexible(child: Text(text, style: const TextStyle(fontSize: 15))),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Contact Information", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Divider(height: 20),
+          _buildContactItem(icon: Icons.email_outlined, text: email),
+          _buildContactItem(icon: Icons.phone_outlined, text: phoneNo),
+          _buildContactItem(icon: Icons.business_outlined, text: company),
+          _buildContactItem(icon: Icons.work_outline, text: position),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 3. QUICK ACTIONS WIDGET ---
+class QuickActionsSection extends StatelessWidget {
+  final VoidCallback onChangePassword;
+  final VoidCallback onChangeAccount;
+  final VoidCallback onLogout;
+
+  const QuickActionsSection({
+    super.key,
+    required this.onChangePassword,
+    required this.onChangeAccount,
+    required this.onLogout
+  });
+
+  Widget _buildQuickActionButton({required IconData icon, required String label, required VoidCallback onPressed, Color? color}) {
+    return Container(
+      width: double.infinity,
+      height: 55,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, color: color ?? const Color(0xFF233E99)),
+        label: Text(label, style: TextStyle(color: color ?? Colors.black87, fontSize: 16)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: color != Colors.red[700] ? Colors.white : Colors.red[700],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          side: BorderSide(color: color == Colors.red[700] ? Colors.red[700]! : Colors.grey[300]!),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Quick Action", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Divider(height: 20),
+          const SizedBox(height: 10),
+
+          // Change Password Button
+          _buildQuickActionButton(
+            icon: Icons.key_outlined,
+            label: "Change Password",
+            onPressed: onChangePassword,
+          ),
+
+          // Change Account Button
+          _buildQuickActionButton(
+            icon: Icons.group_outlined,
+            label: "Change Account",
+            onPressed: onChangeAccount,
+          ),
+
+          // Logout Button (Merah)
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton.icon(
+              onPressed: onLogout,
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text("Log Out", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[700],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================================
+// KELAS UTAMA PROFILE PAGE
+// ==========================================================
 
 class ProfilePage extends StatefulWidget {
   final String username;
@@ -24,7 +217,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneNoController = TextEditingController();
-  final TextEditingController companyController = TextEditingController(); // Digunakan untuk Name Company
+  final TextEditingController companyController = TextEditingController();
 
   String? currentUserId;
   String userRole = '';
@@ -40,7 +233,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadUserProfile();
   }
 
-  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
+  // --- FUNGSI SEMAK RANGKAIAN ---
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
     return connectivityResult != ConnectivityResult.none;
@@ -60,15 +253,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
 
-  // --- Fungsi Mengambil Data Pengguna dan Aktiviti dari Firestore (DIPERBAIKI) ---
+  // --- Fungsi Mengambil Data Pengguna dan Aktiviti dari Firestore ---
   Future<void> _loadUserProfile() async {
-    // [LANGKAH 0: SEMAK RANGKAIAN]
     final isOnline = await _isNetworkAvailable();
 
     try {
-      // Pilihan: Tambah 'source: Source.cache' jika offline di sini untuk memuatkan cache dahulu.
-      // Walau bagaimanapun, kita bergantung pada caching automatik Firestore.
-
       QuerySnapshot userSnap = await FirebaseFirestore.instance
           .collection("users")
           .where("username", isEqualTo: widget.username)
@@ -82,7 +271,6 @@ class _ProfilePageState extends State<ProfilePage> {
         // FUNGSI 1: AMBIL DATA AKTIVITI SEBENAR
         QuerySnapshot activitySnap;
         if (isOnline) {
-          // Hanya muatkan log aktiviti jika online
           activitySnap = await FirebaseFirestore.instance
               .collection("users").doc(userId)
               .collection("activities")
@@ -90,9 +278,7 @@ class _ProfilePageState extends State<ProfilePage> {
               .limit(4)
               .get();
         } else {
-          // Jika offline, guna senarai kosong untuk mengelakkan ralat load
           activitySnap = await FirebaseFirestore.instance.collection("users").doc(userId).collection("activities").get(const GetOptions(source: Source.cache));
-          // Jika cache aktiviti tidak wujud, biarkan kosong.
         }
 
         // Memproses aktiviti
@@ -107,7 +293,6 @@ class _ProfilePageState extends State<ProfilePage> {
           });
         }
 
-        // ... (Logik set state untuk data profil) ...
         if(mounted) {
           setState(() {
             currentUserId = userId;
@@ -123,7 +308,6 @@ class _ProfilePageState extends State<ProfilePage> {
           });
         }
 
-        // BERI AMARAN JIKA OFFLINE
         if (!isOnline && mounted) {
           _showPopupMessage("Offline Mode", "Displaying cached data. Latest activity logs may be unavailable.");
         }
@@ -153,13 +337,11 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // --- Fungsi Navigasi Edit Profile ---
   void _editProfile() async {
-    // ... (Semakan ID dan Panggilan Navigasi kekal sama) ...
     if (currentUserId == null || isLoading) {
       _showPopupMessage("Error", "User data is still loading or ID not available.");
       return;
     }
 
-    // [BARU] Semakan Rangkaian sebelum edit
     if (!await _isNetworkAvailable()) {
       _showPopupMessage("Offline Mode", "You must be online to edit your profile.");
       return;
@@ -192,20 +374,22 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- Fungsi Logout (Memadam Sesi) (DIPERBAIKI) ---
+  // --- Fungsi Logout (Memadam Sesi) ---
   void _logout() async {
     final isOnline = await _isNetworkAvailable();
 
     // 1. Log Aktiviti (Hanya jika online)
     if (isOnline) {
       try {
-        await FirebaseFirestore.instance
-            .collection('users').doc(currentUserId!)
-            .collection('activities').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'description': 'Signed out of account.',
-          'iconCode': Icons.logout.codePoint,
-        });
+        if (currentUserId != null) {
+          await FirebaseFirestore.instance
+              .collection('users').doc(currentUserId!)
+              .collection('activities').add({
+            'timestamp': FieldValue.serverTimestamp(),
+            'description': 'Signed out of account.',
+            'iconCode': Icons.logout.codePoint,
+          });
+        }
       } catch (e) {
         print('Failed to log logout activity: $e');
       }
@@ -215,7 +399,6 @@ class _ProfilePageState extends State<ProfilePage> {
     await LoginPage.clearLoginState();
 
     // 3. Log keluar dari Firebase Authentication
-    // Log keluar Auth adalah asynchronous, tetapi Auth SDK biasanya berfungsi dengan baik offline untuk clear credentials.
     await FirebaseAuth.instance.signOut();
 
     // 4. Semak mounted sebelum menggunakan context
@@ -223,14 +406,111 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // 5. Navigasi ke halaman Login dan kosongkan stack
     Navigator.of(context).pushAndRemoveUntil(
+      // Navigasi ke Login Page biasa
       MaterialPageRoute(builder: (context) => const LoginPage()),
           (Route<dynamic> route) => false,
     );
   }
 
-  // --- FUNGSI BARU: Change Account ---
-  void _changeAccount() {
-    _confirmChangeAccount();
+  // --- FUNGSI BARU: Change Account (Mencari dan Beralih Akaun) ---
+  void _changeAccount() async {
+    if (phoneNoController.text == 'N/A' || phoneNoController.text.isEmpty || isLoading) {
+      _showPopupMessage("Error", "Phone number is not available or data is loading.");
+      return;
+    }
+
+    if (!await _isNetworkAvailable()) {
+      _showPopupMessage("Offline Mode", "You must be online to change accounts.");
+      return;
+    }
+
+    try {
+      // 1. Cari semua dokumen pengguna yang mempunyai phoneNo yang sama
+      QuerySnapshot userSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .where("phoneNo", isEqualTo: phoneNoController.text)
+          .get();
+
+      // 2. Tapis akaun semasa dan kumpul akaun lain
+      List<Map<String, dynamic>> otherAccounts = [];
+      for (var doc in userSnap.docs) {
+        var userData = doc.data() as Map<String, dynamic>;
+        // Hanya ambil akaun yang BUKAN akaun semasa
+        if (userData['username'] != widget.username) {
+          otherAccounts.add({
+            'username': userData['username'],
+            'role': userData['role'] ?? 'N/A',
+            'email': userData['email'] ?? 'N/A',
+          });
+        }
+      }
+
+      // 3. Tentukan tindakan berdasarkan hasil carian
+      if (otherAccounts.isEmpty) {
+        _showPopupMessage("No Other Accounts Found", "No other accounts were found linked to this phone number (${phoneNoController.text}).");
+      } else {
+        _showAccountSwitcherDialog(otherAccounts);
+      }
+    } catch (e) {
+      _showPopupMessage("Error", "Failed to search for linked accounts: $e");
+    }
+  }
+
+  // --- FUNGSI BARU: Dialog Pemilih Akaun ---
+  void _showAccountSwitcherDialog(List<Map<String, dynamic>> accounts) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Switch Account (Same Phone)"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Text("Select the account you wish to switch to:"),
+              const Divider(),
+              ...accounts.map((account) => ListTile(
+                leading: const Icon(Icons.account_circle),
+                title: Text(account['username']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text("Role: ${account['role']}"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.pop(context); // Tutup dialog
+                  _clearSessionAndSwitch(account['username']!); // PANGGIL FUNGSI AUTO-LOGIN
+                },
+              )).toList(),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- FUNGSI BARU: Melakukan Proses Pertukaran Akaun (Simulasi Fast-Login) ---
+  void _clearSessionAndSwitch(String targetUsername) async {
+    // 1. Mesej amaran kepada pengguna (Optional)
+    _showPopupMessage("Switching Session", "Switching to '$targetUsername'. Session will be restarted. Please enter your password.");
+
+    // 2. Membersihkan status 'Remember Me' (shared_preferences)
+    await LoginPage.clearLoginState();
+
+    // 3. Keluar dari sesi Auth Firebase semasa
+    await FirebaseAuth.instance.signOut();
+
+    // 4. Navigasi ke LoginPage dengan username baharu sebagai parameter.
+    if (!mounted) return;
+
+    // Navigasi ke Login Page, hantar username sasaran untuk 'fast-login'
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => LoginPage(autoLoginUsername: targetUsername)),
+          (Route<dynamic> route) => false,
+    );
   }
 
   // Fungsi Popup Mesej
@@ -243,64 +523,6 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
         ],
-      ),
-    );
-  }
-
-  // --- FUNGSI BARU: Pengesahan Sebelum Log Keluar ---
-  void _confirmChangeAccount() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Session End ⚠️"),
-        content: const Text("Are you sure you want to end the current session to change accounts? You will be taken back to the login screen."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), // Tutup dialog
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Tutup dialog pengesahan
-              _logout(); // Teruskan log keluar yang selamat
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
-            child: const Text("Continue", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget untuk Item Maklumat Kenalan
-  Widget _buildContactItem({required IconData icon, required String text}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey[600], size: 20),
-          const SizedBox(width: 15),
-          Flexible(child: Text(text, style: const TextStyle(fontSize: 15))),
-        ],
-      ),
-    );
-  }
-
-  // Widget untuk Butang Aksi Pantas
-  Widget _buildQuickActionButton({required IconData icon, required String label, required VoidCallback onPressed, Color? color}) {
-    return Container(
-      width: double.infinity,
-      height: 55,
-      margin: const EdgeInsets.only(bottom: 10),
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, color: color ?? const Color(0xFF233E99)),
-        label: Text(label, style: TextStyle(color: color ?? Colors.black87, fontSize: 16)),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: color != Colors.red[700] ? Colors.white : Colors.red[700],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          side: BorderSide(color: color == Colors.red[700] ? Colors.red[700]! : Colors.grey[300]!),
-        ),
       ),
     );
   }
@@ -348,13 +570,11 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Fungsi untuk memaparkan modal Change Password (Dikekalkan)
   void _showChangePasswordModal() async {
-    // ... (Logik Semakan ID kekal sama) ...
     if (currentUserId == null) {
       _showPopupMessage("Error", "User ID not loaded yet.");
       return;
     }
 
-    // [BARU] Semakan Rangkaian sebelum change password
     if (!await _isNetworkAvailable()) {
       _showPopupMessage("Offline Mode", "You must be online to change your password.");
       return;
@@ -383,8 +603,6 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     }
   }
-
-  // --- END WIDGET PEMBANTU ---
 
 
   @override
@@ -416,116 +634,33 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // --- HEADER PROFIL (Gambar & Nama) ---
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 40,
-                    // Logik untuk memaparkan gambar
-                    backgroundImage: profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider(profilePictureUrl!) as ImageProvider
-                        : const AssetImage('assets/profile.png'),
-                    child: (profilePictureUrl == null || profilePictureUrl!.isEmpty) && !isLoading
-                        ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                        : null,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    nameController.text,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    userRole,
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ],
-              ),
+            // --- 1. HEADER PROFIL (Menggunakan Widget yang Dipecahkan) ---
+            UserProfileHeader(
+              name: nameController.text,
+              role: userRole,
+              profilePictureUrl: profilePictureUrl,
+            ),
+            const SizedBox(height: 20),
+
+            // --- 2. CONTACT INFORMATION (Menggunakan Widget yang Dipecahkan) ---
+            ContactInformationSection(
+              email: emailController.text,
+              phoneNo: phoneNoController.text,
+              company: companyController.text,
+              position: userPosition,
+            ),
+            const SizedBox(height: 20),
+
+            // --- 3. QUICK ACTIONS (Menggunakan Widget yang Dipecahkan) ---
+            QuickActionsSection(
+              onChangePassword: _showChangePasswordModal,
+              onChangeAccount: _changeAccount,
+              onLogout: _logout,
             ),
 
             const SizedBox(height: 20),
 
-            // --- 1. CONTACT INFORMATION ---
-            Container(
-              padding: const EdgeInsets.all(20),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                // [PEMBETULAN KRITIKAL] Menggunakan parameter 'boxShadow' yang betul
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Contact Information", style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Divider(height: 20),
-                  _buildContactItem(icon: Icons.email_outlined, text: emailController.text),
-                  _buildContactItem(icon: Icons.phone_outlined, text: phoneNoController.text),
-                  _buildContactItem(icon: Icons.business_outlined, text: companyController.text),
-                  _buildContactItem(icon: Icons.work_outline, text: userPosition),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // --- 2. QUICK ACTIONS ---
-            Container(
-              padding: const EdgeInsets.all(20),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Quick Action", style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Divider(height: 20),
-                  const SizedBox(height: 10),
-
-                  // Change Password Button
-                  _buildQuickActionButton(
-                    icon: Icons.key_outlined,
-                    label: "Change Password",
-                    onPressed: _showChangePasswordModal,
-                  ),
-
-                  // Change Account Button -> Placeholder
-                  _buildQuickActionButton(
-                    icon: Icons.group_outlined,
-                    label: "Change Account",
-                    onPressed: _changeAccount, // Panggil fungsi _changeAccount yang kini memaparkan dialog
-                  ),
-
-                  // Logout Button (Merah)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton.icon(
-                      onPressed: _logout, // Panggil fungsi _logout yang telah diperbaiki
-                      icon: const Icon(Icons.logout, color: Colors.white),
-                      label: const Text("Log Out", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red[700],
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // --- 3. ACTIVITY & SETTINGS (Accordion/Expandable) ---
+            // --- 4. ACTIVITY & SETTINGS (Accordion/Expandable) ---
             _buildExpansionTile(
               title: "Profile",
               icon: Icons.person_outline,

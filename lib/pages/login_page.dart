@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
-import 'package:connectivity_plus/connectivity_plus.dart'; // Import untuk semakan rangkaian
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Gantikan import ini dengan laluan yang betul dalam projek anda
 import 'admin/admin_page.dart';
@@ -13,15 +13,20 @@ import 'forgot_password_page.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  // [UBAH] Tambah parameter untuk auto-login dari ProfilePage (Switch Account)
+  final String? autoLoginUsername;
+
+  const LoginPage({super.key, this.autoLoginUsername});
 
   static Future<void> clearLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
-    await prefs.remove('savedUsername');
     await prefs.remove('savedRole');
     await prefs.remove('savedUserId');
     await FirebaseAuth.instance.signOut();
+    // Nota: 'savedUsername' dikekalkan untuk paparan pada skrin Login, tetapi ia dibersihkan
+    // jika kita hanya mahu satu pilihan. Kita kekalkan remove untuk kesederhanaan.
+    await prefs.remove('savedUsername');
   }
 
   @override
@@ -39,6 +44,54 @@ class _LoginPageState extends State<LoginPage> {
   bool showPassword = false;
   bool loading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus(); // Panggil fungsi untuk semak status sesi
+  }
+
+  // FUNGSI BARU: Semak Status Log Masuk dan Cuba Auto-Login
+  Future<void> _checkLoginStatus() async {
+    // Senario 1: Auto-Login dari Change Account (autoLoginUsername disediakan)
+    if (widget.autoLoginUsername != null) {
+      usernameController.text = widget.autoLoginUsername!;
+      // Mesej kepada pengguna jika ini adalah switch account
+      showPopupMessage("Account Switch",
+          details: "Please re-enter the password for ${widget.autoLoginUsername} to continue the session.");
+
+      setState(() {
+        loading = false; // Pastikan Loading dimatikan
+      });
+      return;
+    }
+
+    // Senario 2: Auto-Login dari Remember Me (Log Masuk Biasa)
+    final prefs = await SharedPreferences.getInstance();
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final String? savedUsername = prefs.getString('savedUsername');
+    final String? savedRole = prefs.getString('savedRole');
+    final String? savedUserId = prefs.getString('savedUserId');
+
+    if (isLoggedIn && savedUsername != null && savedRole != null && savedUserId != null) {
+      if (!await _isNetworkAvailable()) {
+        showPopupMessage("Offline Mode", details: "Could not restore session. Please connect to the internet and sign in manually.");
+        return;
+      }
+
+      // Jika token Firebase Auth masih sah, navigasi terus
+      if (_auth.currentUser != null && _auth.currentUser!.uid == savedUserId) {
+        _navigateToHomePage(savedUsername, savedRole, savedUserId);
+        // Tetapkan loading true semasa proses navigasi berlaku
+        setState(() => loading = true);
+      } else {
+        // Token Auth Firebase tamat tempoh atau tidak sepadan. Log masuk manual.
+        await LoginPage.clearLoginState();
+        showPopupMessage("Session Expired", details: "Your previous session has expired. Please sign in again.");
+        setState(() => loading = false);
+      }
+    }
+  }
+
   void _navigateToHomePage(String username, String role, String userId) {
     if (!mounted) return;
     if (role == "admin") {
@@ -55,7 +108,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // FUNGSI INI DITAMBAH UNTUK MEMBAIKI Ralat "is not defined"
   void _clearControllers() {
     usernameController.clear();
     passwordController.clear();
@@ -73,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _clearControllers(); // Panggilan yang betul
+                _clearControllers();
               },
               child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
             )
@@ -91,7 +143,6 @@ class _LoginPageState extends State<LoginPage> {
 
 
   Future<void> loginUser() async {
-    // ... (Validation input) ...
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
     String emailToAuthenticate = '';
@@ -122,7 +173,6 @@ class _LoginPageState extends State<LoginPage> {
         userSnap = await FirebaseFirestore.instance.collection("users").where('username', isEqualTo: input).limit(1).get();
       }
 
-      // ... (Logik Semak Status/Pengguna Ditemui/Tidak Ditemui kekal sama) ...
       if (userSnap.docs.isNotEmpty) {
         userData = userSnap.docs.first.data() as Map<String, dynamic>;
         emailToAuthenticate = userData['email'];
@@ -157,7 +207,6 @@ class _LoginPageState extends State<LoginPage> {
 
       // LANGKAH 3: Semak semula data jika ia tidak diambil di Langkah 1
       if (userData == null) {
-        // ... (Logik semakan semula data pengguna) ...
         userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: emailToAuthenticate).limit(1).get();
 
         if (userSnap.docs.isEmpty) {
@@ -327,14 +376,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   SizedBox(height: constraints.maxHeight * 0.02),
-                  // Pilihan: Link ke Register
-                  TextButton(
-                      onPressed: () {
-                        // Pastikan laluan RegisterPage adalah betul
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
-                      },
-                      child: const Text("Don't have an account? Register Here"))
-
                 ],
               ),
             ),
