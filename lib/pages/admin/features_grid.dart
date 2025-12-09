@@ -49,9 +49,9 @@ class FeaturesGrid extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _FeatureIcon(icon: Icons.person_outline, label: "Profile", page: ProfilePage(username: loggedInUsername)),
             const _FeatureIcon(icon: Icons.inventory_2_outlined, label: "Product", page: ProductPage()),
             const _FeatureIcon(icon: Icons.local_shipping_outlined, label: "Supplier", page: SupplierPage()),
+            _FeatureIcon(icon: Icons.bar_chart, label: "Report", page: ReportPage()),
           ],
         ),
       ],
