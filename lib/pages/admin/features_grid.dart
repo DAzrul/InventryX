@@ -54,16 +54,6 @@ class FeaturesGrid extends StatelessWidget {
             const _FeatureIcon(icon: Icons.local_shipping_outlined, label: "Supplier", page: SupplierPage()),
           ],
         ),
-        const SizedBox(height: 15),
-        // Baris 2
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _FeatureIcon(icon: Icons.trending_up, label: "Sales", page: SalesPage()),
-            const _FeatureIcon(icon: Icons.star_outline, label: "Recommendation", page: RecommendationPage()),
-            _FeatureIcon(icon: Icons.bar_chart, label: "Report", page: ReportPage()),
-          ],
-        ),
       ],
     );
   }

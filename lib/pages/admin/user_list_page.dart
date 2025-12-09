@@ -464,7 +464,7 @@ class _UserListPageState extends State<UserListPage> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'), // Icon Profile
         ],
       ),
     );

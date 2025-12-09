@@ -1,4 +1,3 @@
-// File: EditProfilePage.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -27,19 +26,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController nameController;
   late TextEditingController emailController;
   late TextEditingController phoneNoController;
-  late TextEditingController nameCompanyController;
-  late TextEditingController positionController;
-  late TextEditingController roleController; // Tambah controller untuk Role
-
-  // [DIHAPUS] Logik Role Dropdown tidak diperlukan lagi
-  // String? _selectedRole;
-  // final List<String> availableRoles = ['Staff', 'Manager', 'Admin'];
+  late TextEditingController roleController;
 
   File? _imageFile;
   String? _currentImageUrl;
   bool _isUploading = false;
   bool _isLoading = false;
-  final _formKey = GlobalKey<FormState>(); // Kunci untuk validasi borang
+  final _formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
@@ -47,14 +40,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     nameController = TextEditingController(text: widget.initialData['name']);
     emailController = TextEditingController(text: widget.initialData['email']);
     phoneNoController = TextEditingController(text: widget.initialData['phoneNo']);
-    nameCompanyController = TextEditingController(text: widget.initialData['nameCompany']);
-    positionController = TextEditingController(text: widget.initialData['position']);
-    // [BARU] Inisialisasi Role Controller
     roleController = TextEditingController(text: widget.initialData['role']);
 
     _currentImageUrl = widget.initialData['profilePictureUrl'];
-
-    // Logik role dropdown DIHAPUS
   }
 
   @override
@@ -62,9 +50,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     nameController.dispose();
     emailController.dispose();
     phoneNoController.dispose();
-    nameCompanyController.dispose();
-    positionController.dispose();
-    roleController.dispose(); // Dispose roleController
+    roleController.dispose();
     super.dispose();
   }
 
@@ -93,7 +79,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // --- FUNGSI BARU: Padam Imej Lama di Storage ---
+  // --- FUNGSI: Padam Imej Lama di Storage ---
   Future<void> _deleteOldImage(String? oldUrl) async {
     if (oldUrl == null || oldUrl.isEmpty || !oldUrl.contains('firebasestorage')) return;
     try {
@@ -105,7 +91,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // --- 2. MUAT NAIK GAMBAR KE FIREBASE STORAGE & KEMASKINI URL DI FIRESTORE ---
+  // --- 2. MUAT NAIK GAMBAR KE FIREBASE STORAGE ---
   Future<String?> _uploadImageAndGetUrl() async {
     if (_imageFile == null) return _currentImageUrl;
 
@@ -133,12 +119,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     } catch (e) {
       setState(() => _isUploading = false);
-      _showPopupMessage("Error Upload", "Gagal memuat naik gambar. Sila pastikan Peraturan Storage anda membenarkan akses: ${e.toString()}");
+      _showPopupMessage("Error Upload", "Failed to upload image: ${e.toString()}");
       return null;
     }
   }
 
-  // --- 3. FUNGSI KEMAS KINI DATA PROFIL (Dipanggil oleh Save Button) ---
+  // --- 3. FUNGSI KEMAS KINI DATA PROFIL ---
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -159,15 +145,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         iconCode = Icons.camera_alt_outlined.codePoint;
       }
 
-      // LANGKAH 2: Kemas kini data teks profil yang lain di Firestore
+      // LANGKAH 2: Kemas kini SEMUA data (Termasuk Email dan Role) di Firestore
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'name': nameController.text.trim(),
-        'email': emailController.text.trim(),
+        'email': emailController.text.trim(), // KINI BOLEH DISIMPAN
         'phoneNo': phoneNoController.text.trim(),
-        'nameCompany': nameCompanyController.text.trim(),
-        'position': positionController.text.trim(),
-        // Role dikecualikan dari update kerana ia read-only/dikendalikan admin lain
-        // 'role': _selectedRole,
+        'role': roleController.text.trim(),   // KINI BOLEH DISIMPAN
       });
 
       // 3. REKOD AKTIVITI KE FIRESTORE
@@ -179,7 +162,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'iconCode': iconCode,
       });
 
-      // 4. Berjaya: Tutup halaman dan hantar 'true'
+      // 4. Berjaya
       Navigator.pop(context, true);
 
     } catch (e) {
@@ -257,76 +240,46 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your full name.';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'Please enter your full name.';
                   return null;
                 },
               ),
               const SizedBox(height: 20),
 
-              // Name Company
-              const Text("Company Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: nameCompanyController,
-                decoration: InputDecoration(
-                  hintText: "Enter Company Name",
-                  prefixIcon: const Icon(Icons.business_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Position
-              const Text("Position", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: positionController,
-                decoration: InputDecoration(
-                  hintText: "Enter Position/Title",
-                  prefixIcon: const Icon(Icons.work_outline, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // --- [KOREKSI] User Role (Read-Only Field) ---
-              const Text("User Role", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              // --- User Role (KINI BOLEH DIEDIT) ---
+              const Text("User Role (Position)", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: roleController,
-                readOnly: true, // Field kini hanya untuk display
+                readOnly: false, // Ditukar kepada FALSE (Boleh edit)
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.shield_outlined, color: Colors.grey),
+                  prefixIcon: const Icon(Icons.work_outline, color: Colors.grey),
                   filled: true,
-                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk menunjukkan read-only
-                  hintText: "Role",
+                  fillColor: Colors.grey[100], // Warna cerah (boleh edit)
+                  hintText: "Enter Role (e.g. Manager)",
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 20),
-              // --- END [KOREKSI] User Role ---
 
-
-              // Email Address (Read-Only)
+              // --- Email Address (KINI BOLEH DIEDIT) ---
               const Text("Email Address", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                readOnly: true, // Biasanya email tidak boleh diubah tanpa Auth logic
+                readOnly: false, // Ditukar kepada FALSE (Boleh edit)
                 decoration: InputDecoration(
                   hintText: "Enter Email Address",
                   prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
                   filled: true,
-                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk read-only
+                  fillColor: Colors.grey[100], // Warna cerah (boleh edit)
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
+                validator: (value) {
+                  if (value == null || !value.contains('@')) return 'Please enter a valid email.';
+                  return null;
+                },
               ),
               const SizedBox(height: 20),
 

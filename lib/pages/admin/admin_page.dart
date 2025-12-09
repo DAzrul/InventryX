@@ -1,8 +1,10 @@
 // File: lib/pages/admin/admin_page.dart (AdminScreen)
 import 'package:flutter/material.dart';
-// Import halaman dan utilitas yang relevan (Path disesuaikan)
-import '../user_settings_page.dart';
-import 'user_list_page.dart'; // Asumsi UserListPage di admin_features
+
+// --- UBAH SUAI: Import ProfilePage dan buang UserSettingsPage ---
+// Pastikan path ini betul mengikut struktur folder anda (contoh: naik satu level ke folder pages)
+import 'admin_features/profile_page.dart';
+import 'user_list_page.dart';
 import 'admin_dashboard_page.dart';
 import 'utils/features_modal.dart';
 
@@ -26,10 +28,11 @@ class _AdminScreenState extends State<AdminScreen> {
   int _currentIndex = 0; // State untuk Bottom Navigation
   late List<Widget> _pages;
 
+  // --- UBAH SUAI: Tukar Icon Settings ke Profile ---
   final List<BottomNavigationBarItem> _navItems = const [
     BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
     BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
-    BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+    BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'), // Icon Profile
   ];
 
   @override
@@ -45,8 +48,9 @@ class _AdminScreenState extends State<AdminScreen> {
         showFeatureGrid: false,
         onNavigateToUserList: _navigateToUserListPage,
       ),
-      // Index 1: Settings (Index 2 di Bottom Nav)
-      UserSettingsPage(username: widget.loggedInUsername, displayFullNavBar: false, userId: widget.userId),
+      // Index 1: Profile (Sebenarnya Index 2 di Bottom Nav)
+      // --- UBAH SUAI: Ganti UserSettingsPage dengan ProfilePage ---
+      ProfilePage(username: widget.loggedInUsername),
     ];
   }
 
@@ -66,7 +70,7 @@ class _AdminScreenState extends State<AdminScreen> {
     if (newIndex != null && newIndex is int) {
       if (mounted) {
         setState(() {
-          // Index 0=Home, 2=Settings. Kita set _currentIndex ke nilai yang sama.
+          // Index 0=Home, 2=Profile. Kita set _currentIndex ke nilai yang sama.
           _currentIndex = (newIndex == 2) ? 2 : 0;
         });
       }
@@ -79,7 +83,7 @@ class _AdminScreenState extends State<AdminScreen> {
       // Index 1 (Features) : Tampilkan Modal
       FeaturesModal.show(context, widget.loggedInUsername);
     } else {
-      // Index 0 (Home) atau 2 (Settings) : Ubah tab
+      // Index 0 (Home) atau 2 (Profile) : Ubah tab
       setState(() {
         _currentIndex = index;
       });
@@ -89,11 +93,11 @@ class _AdminScreenState extends State<AdminScreen> {
   // Fungsi untuk mendapatkan halaman yang benar dari array _pages (0, 1)
   Widget _getPageWidget() {
     // Jika index = 0 (Home), ambil _pages[0]
-    // Jika index = 2 (Settings), ambil _pages[1]
+    // Jika index = 2 (Profile), ambil _pages[1]
     if (_currentIndex == 0) {
       return _pages[0]; // Dashboard
     } else if (_currentIndex == 2) {
-      return _pages[1]; // Settings
+      return _pages[1]; // ProfilePage
     }
     // Jika _currentIndex adalah 1 (Features), biarkan tetap di halaman saat ini (0)
     return _pages[0];
@@ -103,7 +107,7 @@ class _AdminScreenState extends State<AdminScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.white, // Warna background ProfilePage selalunya putih/kelabu cair
       body: _getPageWidget(),
 
       // Bottom Navigation Bar
