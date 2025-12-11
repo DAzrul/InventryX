@@ -3,36 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Import komponen yang diperlukan dari folder admin/
+// Import komponen yang diperlukan
 import 'utils/features_modal.dart';
-// Import UserEdit/Delete pages 
 import 'user_edit_page.dart';
 import 'user_delete_page.dart';
-// Import User Add Page
 import 'admin_features/user_management_page.dart';
 
-
-// FUNGSI BANTUAN UNTUK MEMUAT DATA PENGGUNA YANG SEDANG LOGIN (Diperlukan untuk Header)
-Future<Map<String, dynamic>?> fetchLoggedInUserData(String username) async {
-  try {
-    QuerySnapshot snapshot = await FirebaseFirestore.instance
-        .collection("users")
-        .where('username', isEqualTo: username)
-        .limit(1)
-        .get();
-
-    if (snapshot.docs.isNotEmpty) {
-      return snapshot.docs.first.data() as Map<String, dynamic>;
-    }
-    return null;
-  } catch (e) {
-    print("Error fetching logged in user data: $e");
-    return null;
-  }
-}
-
-
-// --- Widget Kustom untuk UserListPage ---
+// --- Widget Kustom untuk UserListItem (Kekal Sama) ---
 class UserListItem extends StatelessWidget {
   final String username;
   final String role;
@@ -96,7 +73,7 @@ class UserListItem extends StatelessWidget {
           title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text(role),
           trailing: SizedBox(
-            width: 130, // KOREKSI: Kurangkan lebar untuk menghindari overflow
+            width: 130,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -111,19 +88,15 @@ class UserListItem extends StatelessWidget {
                     style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
-
-                // KONDISI IKON AKSI
                 if (isActive)
-                // Ikon Pensel untuk Active user (Edit data/status)
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
                     onPressed: onEdit,
                   )
                 else
-                // Ikon Sampah untuk Inactive user (Delete)
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: onDelete, // Navigasi ke Delete Page
+                    onPressed: onDelete,
                   ),
               ],
             ),
@@ -134,7 +107,7 @@ class UserListItem extends StatelessWidget {
   }
 }
 
-// Widget untuk Tab Filter (Dikekalkan)
+// Widget untuk Tab Filter (Kekal Sama)
 class RoleFilterTab extends StatelessWidget {
   final String label;
   final bool isSelected;
@@ -176,7 +149,6 @@ class RoleFilterTab extends StatelessWidget {
 
 
 // --- UserListPage Utama ---
-
 class UserListPage extends StatefulWidget {
   final String loggedInUsername;
 
@@ -192,7 +164,7 @@ class _UserListPageState extends State<UserListPage> {
 
   final List<String> _roles = ['All', 'Admin', 'Staff', 'Manager'];
 
-  // FUNGSI KUNCI: Menangani Case-Sensitivity dan menghindari Indeks Komposit
+  // Stream untuk senarai pengguna lain
   Stream<QuerySnapshot> get _userStream {
     Query collection = FirebaseFirestore.instance.collection("users");
     final String filterKey = _selectedRole.toLowerCase();
@@ -206,7 +178,6 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-  // FUNGSI untuk mendapatkan total user count (untuk Dashboard Card)
   Future<int> _fetchTotalUserCount() async {
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance.collection("users").get();
@@ -217,27 +188,20 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-
-  // FUNGSI UNTUK MEMAPARKAN MODAL FEATURES
   void _showFeaturesModal() {
     FeaturesModal.show(context, widget.loggedInUsername);
   }
 
-  // Navigasi BottomNavBar
   void _onItemTapped(int index) {
     if (index == 1) {
-      // Index 1 (Features) sentiasa memaparkan modal
       _showFeaturesModal();
       return;
     }
-    // Untuk navigasi Home dan Settings (0 dan 2), kita navigasi kembali ke AdminPage 
-    // dan hantar index baru untuk memberitahu AdminPage untuk menukar tab.
     if (index == 0 || index == 2) {
       Navigator.pop(context, index);
     }
   }
 
-  // Widget Bantuan untuk Avatar di AppBar
   Widget _buildAppBarAvatar(String? profilePictureUrl) {
     const double radius = 18;
     final bool isUrlValid = profilePictureUrl != null && profilePictureUrl.isNotEmpty;
@@ -264,7 +228,6 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final String currentLoggedInUsername = widget.loggedInUsername;
@@ -272,17 +235,24 @@ class _UserListPageState extends State<UserListPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        // KOREKSI UTAMA: Header Dinamik
-        title: FutureBuilder<Map<String, dynamic>?>(
-          future: fetchLoggedInUserData(widget.loggedInUsername),
+        // [PEMBETULAN UTAMA]: Guna StreamBuilder untuk header User Login
+        // Supaya gambar & nama sentiasa update real-time
+        title: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("users")
+              .where('username', isEqualTo: widget.loggedInUsername)
+              .limit(1)
+              .snapshots(), // Guna snapshots() untuk real-time updates
           builder: (context, snapshot) {
-            String displayUsername = widget.loggedInUsername;
+            String displayName = widget.loggedInUsername;
             String? profileUrl;
-            String displayName = displayUsername;
 
-            if (snapshot.connectionState == ConnectionState.done && snapshot.hasData && snapshot.data != null) {
-              profileUrl = snapshot.data!['profilePictureUrl'];
-              displayName = snapshot.data!['displayName'] ?? displayUsername;
+            // Jika data berjaya diambil
+            if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+              var userData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+              // Ambil nama penuh jika ada, atau username
+              displayName = userData['username'] ?? userData['username'] ?? displayName;
+              profileUrl = userData['profilePictureUrl'];
             }
 
             return Row(
@@ -298,7 +268,7 @@ class _UserListPageState extends State<UserListPage> {
             );
           },
         ),
-        centerTitle: false, // Penting agar Row diletakkan di sebelah kiri
+        centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -310,7 +280,7 @@ class _UserListPageState extends State<UserListPage> {
 
       body: Column(
         children: [
-          // 1. Dashboard Card (Total Users - KINI DINAMIK)
+          // 1. Dashboard Card (Total Users - Guna StreamBuilder supaya auto update jika user ditambah/delete)
           Padding(
             padding: const EdgeInsets.all(10.0),
             child: Container(
@@ -319,15 +289,13 @@ class _UserListPageState extends State<UserListPage> {
                 color: const Color(0xFF233E99),
                 borderRadius: BorderRadius.circular(15),
               ),
-              child: FutureBuilder<int>(
-                future: _fetchTotalUserCount(),
+              // Guna StreamBuilder untuk total count juga supaya real-time
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection("users").snapshots(),
                 builder: (context, snapshot) {
-                  String displayCount = snapshot.data?.toString() ?? '...';
-
-                  if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
-                    displayCount = snapshot.data!.toString();
-                  } else if (snapshot.hasError) {
-                    displayCount = '0';
+                  String displayCount = '...';
+                  if (snapshot.hasData) {
+                    displayCount = snapshot.data!.docs.length.toString();
                   }
 
                   return Row(
@@ -344,14 +312,13 @@ class _UserListPageState extends State<UserListPage> {
             ),
           ),
 
-          // 2. Filter Tabs (Kekal sama)
+          // 2. Filter Tabs
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  // Role Filters
                   ..._roles.map((role) => RoleFilterTab(
                     label: role,
                     isSelected: _selectedRole == role,
@@ -361,10 +328,9 @@ class _UserListPageState extends State<UserListPage> {
                       });
                     },
                   )).toList(),
-                  // Icon tambah pengguna
                   Padding(
                     padding: const EdgeInsets.only(left: 8.0),
-                    child: GestureDetector( // <<< ACTION NAVIGASI TAMBAH PENGGUNA
+                    child: GestureDetector(
                       onTap: () {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => UserManagementPage(
                             username: widget.loggedInUsername
@@ -386,7 +352,7 @@ class _UserListPageState extends State<UserListPage> {
             ),
           ),
 
-          // 3. User List (Firebase Stream)
+          // 3. User List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _userStream,
@@ -401,7 +367,6 @@ class _UserListPageState extends State<UserListPage> {
                   return Center(child: Text("No users found for role: $_selectedRole"));
                 }
 
-                // CLIENT-SIDE FILTERING (MENGEKECUALIKAN PENGGUNA LOGIN)
                 final filteredUsers = snapshot.data!.docs.where((doc) {
                   final userData = doc.data() as Map<String, dynamic>;
                   final username = userData['username'];
@@ -413,7 +378,6 @@ class _UserListPageState extends State<UserListPage> {
                 }
 
                 return ListView.builder(
-                  // KOREKSI 2: Kurangkan padding horizontal untuk mengelakkan overflow
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   itemCount: filteredUsers.length,
                   itemBuilder: (context, index) {
@@ -428,8 +392,6 @@ class _UserListPageState extends State<UserListPage> {
                       role: itemRole,
                       isActive: userData['status'] == 'Active',
                       profilePictureUrl: userData['profilePictureUrl'],
-
-                      // ON DELETE (ICON SAMPAH) -> Navigasi ke Delete Page
                       onDelete: () {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => UserDeletePage(
                           userId: docId,
@@ -437,8 +399,6 @@ class _UserListPageState extends State<UserListPage> {
                           username: itemUsername, userData: {},
                         )));
                       },
-
-                      // ON EDIT (ICON PENSEL) -> Navigasi ke Edit Page
                       onEdit: () {
                         Navigator.push(context, MaterialPageRoute(builder: (_) => UserEditPage(
                           userId: docId,
@@ -454,7 +414,6 @@ class _UserListPageState extends State<UserListPage> {
         ],
       ),
 
-      // BOTTOM NAVIGATION BAR (Logika pop kembali ke AdminPage Index 2)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentTabIndex,
         onTap: _onItemTapped,
@@ -464,7 +423,7 @@ class _UserListPageState extends State<UserListPage> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'), // Icon Profile
+          BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'),
         ],
       ),
     );

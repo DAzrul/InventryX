@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Import dependencies (Pastikan path betul)
+// Import dependencies
 import '../../../pages/login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
@@ -15,22 +15,22 @@ import 'edit_profile_page.dart';
 
 // --- 1. USER PROFILE HEADER WIDGET ---
 class UserProfileHeader extends StatelessWidget {
-  final String name;
-  final String role; // Ini akan memaparkan Role yang diedit user
+  final String username;
+  final String role;
   final String? profilePictureUrl;
 
   const UserProfileHeader({
     super.key,
-    required this.name,
+    required this.username,
     required this.role,
     this.profilePictureUrl
   });
 
   @override
   Widget build(BuildContext context) {
-    final ImageProvider imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-        ? CachedNetworkImageProvider(profilePictureUrl!) as ImageProvider
-        : const AssetImage('assets/profile.png');
+    final ImageProvider? imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
+        ? CachedNetworkImageProvider(profilePictureUrl!)
+        : null;
 
     final bool isPlaceholder = profilePictureUrl == null || profilePictureUrl!.isEmpty;
 
@@ -42,19 +42,30 @@ class UserProfileHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
             radius: 40,
+            backgroundColor: Colors.grey[300],
             backgroundImage: imageProvider,
-            child: isPlaceholder ? const Icon(Icons.person, size: 40, color: Colors.grey) : null,
+            child: isPlaceholder
+                ? Icon(Icons.person, size: 40, color: Colors.grey[600])
+                : null,
           ),
           const SizedBox(height: 10),
-          // Nama Pengguna
-          Text(
-            name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15.0),
+            child: Text(
+              username.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                height: 1.2,
+              ),
+            ),
           ),
-          // Role Pengguna (Posisi) - Dipaparkan di sini
+          const SizedBox(height: 5),
           Text(
             role,
             style: const TextStyle(color: Colors.grey, fontSize: 14),
@@ -67,11 +78,13 @@ class UserProfileHeader extends StatelessWidget {
 
 // --- 2. CONTACT INFORMATION WIDGET ---
 class ContactInformationSection extends StatelessWidget {
+  final String name;
   final String email;
   final String phoneNo;
 
   const ContactInformationSection({
     super.key,
+    required this.name,
     required this.email,
     required this.phoneNo,
   });
@@ -104,6 +117,7 @@ class ContactInformationSection extends StatelessWidget {
         children: [
           const Text("Contact Information", style: TextStyle(fontWeight: FontWeight.bold)),
           const Divider(height: 20),
+          _buildContactItem(icon: Icons.account_circle_outlined, text: name),
           _buildContactItem(icon: Icons.email_outlined, text: email),
           _buildContactItem(icon: Icons.phone_outlined, text: phoneNo),
         ],
@@ -112,16 +126,14 @@ class ContactInformationSection extends StatelessWidget {
   }
 }
 
-// --- 3. QUICK ACTIONS WIDGET ---
+// --- 3. QUICK ACTIONS WIDGET (Dikemaskini: Buang Switch Account) ---
 class QuickActionsSection extends StatelessWidget {
   final VoidCallback onChangePassword;
-  final VoidCallback onChangeAccount;
-  final VoidCallback onLogout;
+  final VoidCallback onLogout; // Kekalkan Logout sahaja
 
   const QuickActionsSection({
     super.key,
     required this.onChangePassword,
-    required this.onChangeAccount,
     required this.onLogout
   });
 
@@ -159,11 +171,15 @@ class QuickActionsSection extends StatelessWidget {
           const Text("Quick Action", style: TextStyle(fontWeight: FontWeight.bold)),
           const Divider(height: 20),
           const SizedBox(height: 10),
+
+          // Butang Change Password
           _buildQuickActionButton(
             icon: Icons.key_outlined,
             label: "Change Password",
             onPressed: onChangePassword,
           ),
+
+          // Butang Log Out
           SizedBox(
             width: double.infinity,
             height: 55,
@@ -198,6 +214,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   // Controllers
+  final TextEditingController usernameController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneNoController = TextEditingController();
@@ -270,6 +287,7 @@ class _ProfilePageState extends State<ProfilePage> {
         if(mounted) {
           setState(() {
             currentUserId = userId;
+            usernameController.text = userData['username'] ?? 'N/A';
             nameController.text = userData['name'] ?? 'N/A';
             emailController.text = userData['email'] ?? 'N/A';
             phoneNoController.text = userData['phoneNo'] ?? 'N/A';
@@ -298,6 +316,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final Map<String, String> dataToEdit = {
+      'username': usernameController.text,
       'name': nameController.text,
       'email': emailController.text,
       'phoneNo': phoneNoController.text,
@@ -305,15 +324,29 @@ class _ProfilePageState extends State<ProfilePage> {
       'profilePictureUrl': profilePictureUrl ?? '',
     };
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EditProfilePage(
-          userId: currentUserId!,
-          username: widget.username,
-          initialData: dataToEdit,
-        ),
-      ),
+    // [PENTING] Guna showModalBottomSheet untuk effect Popup & Swipe Down
+    final result = await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.90,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: EditProfilePage(
+              userId: currentUserId!,
+              username: widget.username,
+              initialData: dataToEdit,
+            ),
+          ),
+        );
+      },
     );
 
     // Refresh data jika edit berjaya
@@ -346,77 +379,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  void _changeAccount() async {
-    if (phoneNoController.text == 'N/A' || phoneNoController.text.isEmpty || isLoading) return;
-    if (!await _isNetworkAvailable()) {
-      _showPopupMessage("Offline Mode", "You must be online to change accounts.");
-      return;
-    }
-    try {
-      QuerySnapshot userSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .where("phoneNo", isEqualTo: phoneNoController.text)
-          .get();
-
-      List<Map<String, dynamic>> otherAccounts = [];
-      for (var doc in userSnap.docs) {
-        var userData = doc.data() as Map<String, dynamic>;
-        if (userData['username'] != widget.username) {
-          otherAccounts.add({
-            'username': userData['username'],
-            'role': userData['role'] ?? 'N/A',
-            'email': userData['email'] ?? 'N/A',
-          });
-        }
-      }
-
-      if (otherAccounts.isEmpty) {
-        _showPopupMessage("No Other Accounts Found", "No other accounts linked to this phone number.");
-      } else {
-        _showAccountSwitcherDialog(otherAccounts);
-      }
-    } catch (e) {
-      _showPopupMessage("Error", "Failed to search accounts: $e");
-    }
-  }
-
-  void _showAccountSwitcherDialog(List<Map<String, dynamic>> accounts) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Switch Account (Same Phone)"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ...accounts.map((account) => ListTile(
-                leading: const Icon(Icons.account_circle),
-                title: Text(account['username']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("Role: ${account['role']}"),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.pop(context);
-                  _clearSessionAndSwitch(account['username']!);
-                },
-              )).toList(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _clearSessionAndSwitch(String targetUsername) async {
-    _showPopupMessage("Switching Session", "Switching to '$targetUsername'. Please log in again.");
-    await LoginPage.clearLoginState();
-    await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => LoginPage(autoLoginUsername: targetUsername)),
-          (Route<dynamic> route) => false,
-    );
-  }
+  // [DIHAPUS] Fungsi _changeAccount dan _showAccountSwitcherDialog telah dibuang kerana tidak digunakan
 
   void _showPopupMessage(String title, String message) {
     showDialog(
@@ -510,10 +473,7 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text("User Profile", style: TextStyle(fontWeight: FontWeight.w600)),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
@@ -527,19 +487,20 @@ class _ProfilePageState extends State<ProfilePage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             UserProfileHeader(
-              name: nameController.text,
+              username: usernameController.text,
               role: userRole,
               profilePictureUrl: profilePictureUrl,
             ),
             const SizedBox(height: 20),
             ContactInformationSection(
+              name: nameController.text,
               email: emailController.text,
               phoneNo: phoneNoController.text,
             ),
             const SizedBox(height: 20),
             QuickActionsSection(
               onChangePassword: _showChangePasswordModal,
-              onChangeAccount: _changeAccount,
+              // onChangeAccount telah dibuang
               onLogout: _logout,
             ),
             const SizedBox(height: 20),

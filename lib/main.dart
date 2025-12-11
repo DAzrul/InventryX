@@ -1,17 +1,11 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-// [TAMBAH INI] Import Firebase Auth
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+// Import Login Page sahaja
 import 'pages/login_page.dart';
-import 'pages/staff/staff_page.dart';
-
 import 'firebase_options.dart';
 
-// Notifier untuk memberitahu MyApp apabila tema berubah
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
@@ -22,12 +16,11 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 2. INISIALISASI HIVE 🚀
+  // 2. INISIALISASI HIVE
   await Hive.initFlutter();
-  // [TAMBAH] Daftar TypeAdapters di sini
   await Hive.openBox('settingsBox');
 
-  // 3. MUATKAN PREFERENSI TEMA DARI HIVE
+  // 3. MUATKAN PREFERENSI TEMA
   final settingsBox = Hive.box('settingsBox');
   final isDarkMode = settingsBox.get('darkMode', defaultValue: false);
   themeNotifier.value = isDarkMode ? ThemeMode.dark : ThemeMode.light;
@@ -45,71 +38,34 @@ class MyApp extends StatelessWidget {
       builder: (_, currentThemeMode, __) {
         return MaterialApp(
           title: 'InventoryX',
+          debugShowCheckedModeBanner: false, // Hilangkan banner debug
           theme: ThemeData(
             primarySwatch: Colors.blue,
             brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSwatch(
-              primarySwatch: Colors.blue,
-              brightness: Brightness.light,
-            ).copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF233E99),
               primary: const Color(0xFF233E99),
-              secondary: Colors.amber,
-              surface: Colors.white,
+              brightness: Brightness.light,
             ),
-            scaffoldBackgroundColor: Colors.grey[50],
+            useMaterial3: true,
+            scaffoldBackgroundColor: const Color(0xFFF9FAFC),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
+              surfaceTintColor: Colors.white, // Elak warna tukar bila scroll
+              centerTitle: true,
             ),
           ),
           darkTheme: ThemeData(
-            primarySwatch: Colors.indigo,
             brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSwatch(
-              primarySwatch: Colors.indigo,
-              brightness: Brightness.dark,
-            ).copyWith(
-              primary: const Color(0xFF6783D1),
-              secondary: Colors.orangeAccent,
-              surface: Colors.grey[900], // Menukar kepada nilai yang lebih gelap
-            ),
-            scaffoldBackgroundColor: Colors.grey[900],
-            appBarTheme: AppBarTheme(
-              backgroundColor: Colors.grey[800],
-              foregroundColor: Colors.white,
-            ),
+            // Setup tema gelap anda di sini jika perlu
           ),
           themeMode: currentThemeMode,
-          // [PERUBAHAN UTAMA DI SINI] Guna AuthWrapper
-          home: const AuthWrapper(),
+
+          // [PENTING] Tetapkan home kepada LoginPage.
+          // LoginPage akan automatik check jika user dah login (Auto-Login)
+          // dan redirect ke Manager/Staff/Admin yang betul.
+          home: const LoginPage(),
         );
-      },
-    );
-  }
-}
-
-// [TAMBAH KELAS INI] Auth Wrapper untuk menguruskan status log masuk
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    // StreamBuilder untuk mendengar perubahan status Firebase Auth
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // Paparkan loading screen/splash screen (boleh guna LaunchPage di sini jika LaunchPage anda adalah splash screen)
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        } else if (snapshot.hasData && snapshot.data != null) {
-          // Jika pengguna sudah log masuk
-          return const StaffPage();
-        } else {
-          // Jika pengguna belum log masuk
-          return const LoginPage();
-        }
       },
     );
   }

@@ -1,65 +1,111 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
-import '../../pages/login_page.dart'; // Import LoginPage
+import 'package:cloud_firestore/cloud_firestore.dart'; // [PENTING] Import Firestore
+import 'manager_dashboard_page.dart';
+import 'utils/manager_features_modal.dart';
+import '../Profile/User_profile_page.dart';
 
 class ManagerPage extends StatefulWidget {
-  // Nota: Walaupun tiada parameter, kita menggunakan StatefulWidget untuk fungsi logout
-  const ManagerPage({super.key});
+  final String loggedInUsername;
+  final String userId;
+
+  const ManagerPage({
+    super.key,
+    required this.loggedInUsername,
+    required this.userId
+  });
 
   @override
   State<ManagerPage> createState() => _ManagerPageState();
 }
 
 class _ManagerPageState extends State<ManagerPage> {
+  int _selectedIndex = 0;
 
-  // --- Fungsi Logout (Memadam Sesi) ---
-  Future<void> _logout() async {
-
-    // 1. Padamkan status 'Remember Me' (shared_preferences)
-    await LoginPage.clearLoginState();
-
-    // 2. Log keluar dari Firebase Authentication
-    await FirebaseAuth.instance.signOut();
-
-    // 3. Semak mounted sebelum menggunakan context
-    if (!mounted) return;
-
-    // 4. Navigasi ke halaman Login dan kosongkan stack
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-          (Route<dynamic> route) => false,
-    );
+  void _onItemTapped(int index) {
+    if (index == 1) {
+      ManagerFeaturesModal.show(context);
+    } else {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Manager Dashboard", style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          // Butang Logout di AppBar
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            onPressed: _logout, // Panggil fungsi logout
-          ),
-        ],
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-                "Manager Page",
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w500)
+    // [PENYELESAIAN] Guna StreamBuilder untuk dengar perubahan data user (Real-time update)
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId) // Dengar berdasarkan ID unik
+            .snapshots(),
+        builder: (context, snapshot) {
+
+          // Dapatkan username terkini dari database
+          String currentUsername = widget.loggedInUsername; // Nilai asal sebagai backup
+
+          if (snapshot.hasData && snapshot.data!.exists) {
+            var data = snapshot.data!.data() as Map<String, dynamic>;
+            currentUsername = data['username'] ?? widget.loggedInUsername;
+          }
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF9FAFC),
+
+            body: SafeArea(
+              // Hantar username TERKINI ke content
+              child: _buildMainContent(currentUsername),
             ),
-            SizedBox(height: 10),
-            Text(
-                "Access features for Manager role.",
-                style: TextStyle(fontSize: 16, color: Colors.grey)
+
+            bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: BottomNavigationBar(
+                currentIndex: _selectedIndex,
+                onTap: _onItemTapped,
+                backgroundColor: Colors.white,
+                selectedItemColor: const Color(0xFF1E3A8A),
+                unselectedItemColor: Colors.grey,
+                showUnselectedLabels: true,
+                type: BottomNavigationBarType.fixed,
+                elevation: 0,
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.home_outlined, size: 28),
+                    activeIcon: Icon(Icons.home, size: 28),
+                    label: "Home",
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.grid_view_rounded, size: 28),
+                    label: "Features",
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.person_outline, size: 28),
+                    activeIcon: Icon(Icons.person, size: 28),
+                    label: "Profile",
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
+          );
+        }
     );
+  }
+
+  Widget _buildMainContent(String currentUsername) {
+    if (_selectedIndex == 2) {
+      // ProfilePage akan terima username BARU jika ia ditukar
+      return ProfilePage(username: currentUsername);
+    }
+    // Dashboard juga terima data terkini (jika perlu)
+    return const ManagerDashboardPage();
   }
 }
