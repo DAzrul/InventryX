@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 
 // Import halaman-halaman destinasi
 import '../Profile/User_profile_page.dart';
-import 'admin_features/sales_page.dart';
-import 'admin_features/report_page.dart';
+import '../Features_app/report_page.dart';
 import 'admin_features/dummy_pages.dart';
 
 
