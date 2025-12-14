@@ -21,11 +21,6 @@ class SupplierPage extends StatelessWidget {
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Supplier List")), body: const Center(child: Text("Supplier List Page")));
 }
 
-class ProductPage extends StatelessWidget {
-  const ProductPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Supplier List")), body: const Center(child: Text("Supplier List Page")));
-}
-
 class RecommendationPage extends StatelessWidget {
   const RecommendationPage({super.key});
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Recommendation")), body: const Center(child: Text("Recommendation Page")));

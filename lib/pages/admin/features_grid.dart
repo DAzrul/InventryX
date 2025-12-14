@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../Profile/User_profile_page.dart';
 import '../Features_app/report_page.dart';
 import 'admin_features/dummy_pages.dart';
+import 'admin_features/product_list_page.dart';
 
 
 // Widget Reusable untuk setiap ikon Features
@@ -50,7 +51,7 @@ class FeaturesGrid extends StatelessWidget {
           children: [
             const _FeatureIcon(icon: Icons.inventory_2_outlined,
                 label: "Product",
-                page: ProductPage()),
+                page: ProductListPage()),
             const _FeatureIcon(icon: Icons.local_shipping_outlined,
                 label: "Supplier",
                 page: SupplierPage()),
