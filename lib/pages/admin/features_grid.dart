@@ -6,6 +6,7 @@ import 'admin_features/profile_page.dart';
 import 'admin_features/sales_page.dart';
 import 'admin_features/report_page.dart';
 import 'admin_features/dummy_pages.dart';
+import 'admin_features/product_list_page.dart';
 
 
 // Widget Reusable untuk setiap ikon Features
@@ -50,7 +51,7 @@ class FeaturesGrid extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _FeatureIcon(icon: Icons.person_outline, label: "Profile", page: ProfilePage(username: loggedInUsername)),
-            const _FeatureIcon(icon: Icons.inventory_2_outlined, label: "Product", page: ProductPage()),
+            const _FeatureIcon(icon: Icons.inventory_2_outlined, label: "Product", page: ProductListPage()),
             const _FeatureIcon(icon: Icons.local_shipping_outlined, label: "Supplier", page: SupplierPage()),
           ],
         ),

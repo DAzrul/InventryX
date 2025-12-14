@@ -15,10 +15,6 @@ class DummyPage extends StatelessWidget {
 }
 
 // --- Dummy Pages untuk Dashboard & Features Grid ---
-class ProductPage extends StatelessWidget {
-  const ProductPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("Product Management")), body: const Center(child: Text("Product Management Page")));
-}
 
 class SupplierPage extends StatelessWidget {
   const SupplierPage({super.key});
