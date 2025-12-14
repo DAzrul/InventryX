@@ -4,34 +4,33 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Import dependencies (Path disesuaikan)
+// Import dependencies
 import '../../../pages/login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
 
 // ==========================================================
-// KELAS WIDGET PEMBANTU (DIPISAHKAN DARI STATE UTAMA)
+// KELAS WIDGET PEMBANTU
 // ==========================================================
 
 // --- 1. USER PROFILE HEADER WIDGET ---
 class UserProfileHeader extends StatelessWidget {
-  final String name;
+  final String username;
   final String role;
   final String? profilePictureUrl;
 
   const UserProfileHeader({
     super.key,
-    required this.name,
+    required this.username,
     required this.role,
     this.profilePictureUrl
   });
 
   @override
   Widget build(BuildContext context) {
-    // Logik untuk memaparkan gambar
-    final ImageProvider imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-        ? CachedNetworkImageProvider(profilePictureUrl!) as ImageProvider
-        : const AssetImage('assets/profile.png');
+    final ImageProvider? imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
+        ? CachedNetworkImageProvider(profilePictureUrl!)
+        : null;
 
     final bool isPlaceholder = profilePictureUrl == null || profilePictureUrl!.isEmpty;
 
@@ -39,21 +38,34 @@ class UserProfileHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 20),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor, // Menggunakan tema untuk warna
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
             radius: 40,
+            backgroundColor: Colors.grey[300],
             backgroundImage: imageProvider,
-            child: isPlaceholder ? const Icon(Icons.person, size: 40, color: Colors.grey) : null,
+            child: isPlaceholder
+                ? Icon(Icons.person, size: 40, color: Colors.grey[600])
+                : null,
           ),
           const SizedBox(height: 10),
-          Text(
-            name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15.0),
+            child: Text(
+              username.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                height: 1.2,
+              ),
+            ),
           ),
+          const SizedBox(height: 5),
           Text(
             role,
             style: const TextStyle(color: Colors.grey, fontSize: 14),
@@ -66,17 +78,15 @@ class UserProfileHeader extends StatelessWidget {
 
 // --- 2. CONTACT INFORMATION WIDGET ---
 class ContactInformationSection extends StatelessWidget {
+  final String name;
   final String email;
   final String phoneNo;
-  final String company;
-  final String position;
 
   const ContactInformationSection({
     super.key,
+    required this.name,
     required this.email,
     required this.phoneNo,
-    required this.company,
-    required this.position
   });
 
   Widget _buildContactItem({required IconData icon, required String text}) {
@@ -107,26 +117,23 @@ class ContactInformationSection extends StatelessWidget {
         children: [
           const Text("Contact Information", style: TextStyle(fontWeight: FontWeight.bold)),
           const Divider(height: 20),
+          _buildContactItem(icon: Icons.account_circle_outlined, text: name),
           _buildContactItem(icon: Icons.email_outlined, text: email),
           _buildContactItem(icon: Icons.phone_outlined, text: phoneNo),
-          _buildContactItem(icon: Icons.business_outlined, text: company),
-          _buildContactItem(icon: Icons.work_outline, text: position),
         ],
       ),
     );
   }
 }
 
-// --- 3. QUICK ACTIONS WIDGET ---
+// --- 3. QUICK ACTIONS WIDGET (Dikemaskini: Buang Switch Account) ---
 class QuickActionsSection extends StatelessWidget {
   final VoidCallback onChangePassword;
-  final VoidCallback onChangeAccount;
-  final VoidCallback onLogout;
+  final VoidCallback onLogout; // Kekalkan Logout sahaja
 
   const QuickActionsSection({
     super.key,
     required this.onChangePassword,
-    required this.onChangeAccount,
     required this.onLogout
   });
 
@@ -165,21 +172,14 @@ class QuickActionsSection extends StatelessWidget {
           const Divider(height: 20),
           const SizedBox(height: 10),
 
-          // Change Password Button
+          // Butang Change Password
           _buildQuickActionButton(
             icon: Icons.key_outlined,
             label: "Change Password",
             onPressed: onChangePassword,
           ),
 
-          // Change Account Button
-          _buildQuickActionButton(
-            icon: Icons.group_outlined,
-            label: "Change Account",
-            onPressed: onChangeAccount,
-          ),
-
-          // Logout Button (Merah)
+          // Butang Log Out
           SizedBox(
             width: double.infinity,
             height: 55,
@@ -214,14 +214,13 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   // Controllers
+  final TextEditingController usernameController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneNoController = TextEditingController();
-  final TextEditingController companyController = TextEditingController();
 
   String? currentUserId;
   String userRole = '';
-  String userPosition = '';
   bool isLoading = true;
   String? profilePictureUrl;
 
@@ -233,27 +232,21 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadUserProfile();
   }
 
-  // --- FUNGSI SEMAK RANGKAIAN ---
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
     return connectivityResult != ConnectivityResult.none;
   }
 
-  // FUNGSI PEMBANTU: Untuk format Firestore Timestamp ke "X time ago"
   String _formatTimestamp(Timestamp? timestamp) {
     if (timestamp == null) return 'N/A';
-
     final duration = DateTime.now().difference(timestamp.toDate());
     if (duration.inMinutes < 1) return 'Just now';
     if (duration.inMinutes < 60) return '${duration.inMinutes} mins ago';
     if (duration.inHours < 24) return '${duration.inHours} hours ago';
     if (duration.inDays < 7) return '${duration.inDays} days ago';
-
     return '${timestamp.toDate().month}/${timestamp.toDate().day}/${timestamp.toDate().year}';
   }
 
-
-  // --- Fungsi Mengambil Data Pengguna dan Aktiviti dari Firestore ---
   Future<void> _loadUserProfile() async {
     final isOnline = await _isNetworkAvailable();
 
@@ -268,7 +261,6 @@ class _ProfilePageState extends State<ProfilePage> {
         var userData = userSnap.docs.first.data() as Map<String, dynamic>;
         String userId = userSnap.docs.first.id;
 
-        // FUNGSI 1: AMBIL DATA AKTIVITI SEBENAR
         QuerySnapshot activitySnap;
         if (isOnline) {
           activitySnap = await FirebaseFirestore.instance
@@ -281,7 +273,6 @@ class _ProfilePageState extends State<ProfilePage> {
           activitySnap = await FirebaseFirestore.instance.collection("users").doc(userId).collection("activities").get(const GetOptions(source: Source.cache));
         }
 
-        // Memproses aktiviti
         List<Map<String, dynamic>> tempActivities = [];
         for (var doc in activitySnap.docs) {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
@@ -296,51 +287,28 @@ class _ProfilePageState extends State<ProfilePage> {
         if(mounted) {
           setState(() {
             currentUserId = userId;
+            usernameController.text = userData['username'] ?? 'N/A';
             nameController.text = userData['name'] ?? 'N/A';
             emailController.text = userData['email'] ?? 'N/A';
             phoneNoController.text = userData['phoneNo'] ?? 'N/A';
             userRole = userData['role'] ?? 'N/A';
-            userPosition = userData['position'] ?? 'N/A';
-            companyController.text = userData['nameCompany'] ?? 'N/A';
             profilePictureUrl = userData['profilePictureUrl'];
             realActivityData = tempActivities;
             isLoading = false;
           });
         }
 
-        if (!isOnline && mounted) {
-          _showPopupMessage("Offline Mode", "Displaying cached data. Latest activity logs may be unavailable.");
-        }
-
       } else {
-        if(mounted) {
-          setState(() {
-            isLoading = false;
-          });
-        }
-        if (isOnline) {
-          _showPopupMessage("Warning", "User data not found. Displaying dummy data.");
-        }
+        if(mounted) setState(() => isLoading = false);
       }
     } catch (e) {
-      if(mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
+      if(mounted) setState(() => isLoading = false);
       print("Error loading user data: $e");
-      if (isOnline) {
-        _showPopupMessage("Error Loading Data", e.toString());
-      }
     }
   }
 
-  // --- Fungsi Navigasi Edit Profile ---
   void _editProfile() async {
-    if (currentUserId == null || isLoading) {
-      _showPopupMessage("Error", "User data is still loading or ID not available.");
-      return;
-    }
+    if (currentUserId == null || isLoading) return;
 
     if (!await _isNetworkAvailable()) {
       _showPopupMessage("Offline Mode", "You must be online to edit your profile.");
@@ -348,172 +316,71 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final Map<String, String> dataToEdit = {
+      'username': usernameController.text,
       'name': nameController.text,
       'email': emailController.text,
       'phoneNo': phoneNoController.text,
       'role': userRole,
       'profilePictureUrl': profilePictureUrl ?? '',
-      'nameCompany': companyController.text,
-      'position': userPosition,
     };
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EditProfilePage(
-          userId: currentUserId!,
-          username: widget.username,
-          initialData: dataToEdit,
-        ),
-      ),
+    // [PENTING] Guna showModalBottomSheet untuk effect Popup & Swipe Down
+    final result = await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.90,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: EditProfilePage(
+              userId: currentUserId!,
+              username: widget.username,
+              initialData: dataToEdit,
+            ),
+          ),
+        );
+      },
     );
 
+    // Refresh data jika edit berjaya
     if (result == true) {
       await _loadUserProfile();
       _showPopupMessage("Success! 🎉", "Profile updated successfully.");
     }
   }
 
-  // --- Fungsi Logout (Memadam Sesi) ---
   void _logout() async {
     final isOnline = await _isNetworkAvailable();
-
-    // 1. Log Aktiviti (Hanya jika online)
-    if (isOnline) {
+    if (isOnline && currentUserId != null) {
       try {
-        if (currentUserId != null) {
-          await FirebaseFirestore.instance
-              .collection('users').doc(currentUserId!)
-              .collection('activities').add({
-            'timestamp': FieldValue.serverTimestamp(),
-            'description': 'Signed out of account.',
-            'iconCode': Icons.logout.codePoint,
-          });
-        }
-      } catch (e) {
-        print('Failed to log logout activity: $e');
-      }
+        await FirebaseFirestore.instance
+            .collection('users').doc(currentUserId!)
+            .collection('activities').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'description': 'Signed out of account.',
+          'iconCode': Icons.logout.codePoint,
+        });
+      } catch (e) {}
     }
 
-    // 2. Padamkan status 'Remember Me' (shared_preferences)
     await LoginPage.clearLoginState();
-
-    // 3. Log keluar dari Firebase Authentication
     await FirebaseAuth.instance.signOut();
-
-    // 4. Semak mounted sebelum menggunakan context
     if (!mounted) return;
-
-    // 5. Navigasi ke halaman Login dan kosongkan stack
     Navigator.of(context).pushAndRemoveUntil(
-      // Navigasi ke Login Page biasa
       MaterialPageRoute(builder: (context) => const LoginPage()),
           (Route<dynamic> route) => false,
     );
   }
 
-  // --- FUNGSI BARU: Change Account (Mencari dan Beralih Akaun) ---
-  void _changeAccount() async {
-    if (phoneNoController.text == 'N/A' || phoneNoController.text.isEmpty || isLoading) {
-      _showPopupMessage("Error", "Phone number is not available or data is loading.");
-      return;
-    }
+  // [DIHAPUS] Fungsi _changeAccount dan _showAccountSwitcherDialog telah dibuang kerana tidak digunakan
 
-    if (!await _isNetworkAvailable()) {
-      _showPopupMessage("Offline Mode", "You must be online to change accounts.");
-      return;
-    }
-
-    try {
-      // 1. Cari semua dokumen pengguna yang mempunyai phoneNo yang sama
-      QuerySnapshot userSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .where("phoneNo", isEqualTo: phoneNoController.text)
-          .get();
-
-      // 2. Tapis akaun semasa dan kumpul akaun lain
-      List<Map<String, dynamic>> otherAccounts = [];
-      for (var doc in userSnap.docs) {
-        var userData = doc.data() as Map<String, dynamic>;
-        // Hanya ambil akaun yang BUKAN akaun semasa
-        if (userData['username'] != widget.username) {
-          otherAccounts.add({
-            'username': userData['username'],
-            'role': userData['role'] ?? 'N/A',
-            'email': userData['email'] ?? 'N/A',
-          });
-        }
-      }
-
-      // 3. Tentukan tindakan berdasarkan hasil carian
-      if (otherAccounts.isEmpty) {
-        _showPopupMessage("No Other Accounts Found", "No other accounts were found linked to this phone number (${phoneNoController.text}).");
-      } else {
-        _showAccountSwitcherDialog(otherAccounts);
-      }
-    } catch (e) {
-      _showPopupMessage("Error", "Failed to search for linked accounts: $e");
-    }
-  }
-
-  // --- FUNGSI BARU: Dialog Pemilih Akaun ---
-  void _showAccountSwitcherDialog(List<Map<String, dynamic>> accounts) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Switch Account (Same Phone)"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const Text("Select the account you wish to switch to:"),
-              const Divider(),
-              ...accounts.map((account) => ListTile(
-                leading: const Icon(Icons.account_circle),
-                title: Text(account['username']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("Role: ${account['role']}"),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.pop(context); // Tutup dialog
-                  _clearSessionAndSwitch(account['username']!); // PANGGIL FUNGSI AUTO-LOGIN
-                },
-              )).toList(),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- FUNGSI BARU: Melakukan Proses Pertukaran Akaun (Simulasi Fast-Login) ---
-  void _clearSessionAndSwitch(String targetUsername) async {
-    // 1. Mesej amaran kepada pengguna (Optional)
-    _showPopupMessage("Switching Session", "Switching to '$targetUsername'. Session will be restarted. Please enter your password.");
-
-    // 2. Membersihkan status 'Remember Me' (shared_preferences)
-    await LoginPage.clearLoginState();
-
-    // 3. Keluar dari sesi Auth Firebase semasa
-    await FirebaseAuth.instance.signOut();
-
-    // 4. Navigasi ke LoginPage dengan username baharu sebagai parameter.
-    if (!mounted) return;
-
-    // Navigasi ke Login Page, hantar username sasaran untuk 'fast-login'
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => LoginPage(autoLoginUsername: targetUsername)),
-          (Route<dynamic> route) => false,
-    );
-  }
-
-  // Fungsi Popup Mesej
   void _showPopupMessage(String title, String message) {
     showDialog(
       context: context,
@@ -527,7 +394,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Widget Pembinaan ExpansionTile (Accordion)
   Widget _buildExpansionTile({required String title, required IconData icon, required List<Widget> children}) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -542,7 +408,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Widget Pembinaan Aktiviti (Di dalam accordion)
   Widget _buildActivityAccordion({required String title, required List<Map<String, dynamic>> activities, required bool showDropdownIcon}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,12 +417,9 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 16),
             child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
-
-        // List of activities
         ...activities.map((activity) =>
             ListTile(
               contentPadding: EdgeInsets.zero,
-              // Menggunakan IconData dari Firestore
               leading: Icon(activity['icon'], color: Colors.grey[700]),
               title: Text(activity['text'], style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
               trailing: Text(activity['time'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -568,13 +430,8 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Fungsi untuk memaparkan modal Change Password (Dikekalkan)
   void _showChangePasswordModal() async {
-    if (currentUserId == null) {
-      _showPopupMessage("Error", "User ID not loaded yet.");
-      return;
-    }
-
+    if (currentUserId == null) return;
     if (!await _isNetworkAvailable()) {
       _showPopupMessage("Offline Mode", "You must be online to change your password.");
       return;
@@ -594,16 +451,14 @@ class _ProfilePageState extends State<ProfilePage> {
       },
     );
 
-    // MENGENDALIKAN HASIL dari ChangePasswordProfilePage
     if (result != null) {
       if (result == 'success') {
         _showPopupMessage("Success! 🎉", "Password updated successfully.");
       } else if (result == 'fail') {
-        _showPopupMessage("Update Failed ❌", "The old password was incorrect or a system error occurred. Please try again.");
+        _showPopupMessage("Update Failed ❌", "Incorrect password or system error.");
       }
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -618,10 +473,7 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text("User Profile", style: TextStyle(fontWeight: FontWeight.w600)),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
@@ -634,40 +486,31 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // --- 1. HEADER PROFIL (Menggunakan Widget yang Dipecahkan) ---
             UserProfileHeader(
-              name: nameController.text,
+              username: usernameController.text,
               role: userRole,
               profilePictureUrl: profilePictureUrl,
             ),
             const SizedBox(height: 20),
-
-            // --- 2. CONTACT INFORMATION (Menggunakan Widget yang Dipecahkan) ---
             ContactInformationSection(
+              name: nameController.text,
               email: emailController.text,
               phoneNo: phoneNoController.text,
-              company: companyController.text,
-              position: userPosition,
             ),
             const SizedBox(height: 20),
-
-            // --- 3. QUICK ACTIONS (Menggunakan Widget yang Dipecahkan) ---
             QuickActionsSection(
               onChangePassword: _showChangePasswordModal,
-              onChangeAccount: _changeAccount,
+              // onChangeAccount telah dibuang
               onLogout: _logout,
             ),
-
             const SizedBox(height: 20),
-
-            // --- 4. ACTIVITY & SETTINGS (Accordion/Expandable) ---
             _buildExpansionTile(
               title: "Profile",
               icon: Icons.person_outline,
               children: [
                 _buildActivityAccordion(
                   title: "Latest Activity",
-                  activities: realActivityData, // Guna data aktiviti sebenar dari Firestore
+                  activities: realActivityData,
                   showDropdownIcon: false,
                 ),
               ],
@@ -694,8 +537,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 )
               ],
             ),
-
-            const SizedBox(height: 100), // Padding bawah
+            const SizedBox(height: 100),
           ],
         ),
       ),

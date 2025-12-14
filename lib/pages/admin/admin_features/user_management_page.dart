@@ -22,7 +22,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneNoController = TextEditingController();
-  final TextEditingController positionController = TextEditingController();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -89,12 +88,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
     String phoneNo = phoneNoController.text.trim();
-    String position = positionController.text.trim();
     String role = selectedRole ?? '';
     String password = selectedDefaultPassword ?? '';
 
     // 1. Validation
-    if (role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty || position.isEmpty || password.isEmpty) {
+    if (role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty ||  password.isEmpty) {
       showPopupMessage("Error", message: "Please fill all required fields.");
       return;
     }
@@ -154,7 +152,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
         "email": email,
         "name": name,
         "phoneNo": phoneNo,
-        "position": position,
         "role": role,
         "status": "Active",
         "registeredBy": widget.username,
@@ -192,7 +189,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
       emailController.clear();
       nameController.clear();
       phoneNoController.clear();
-      positionController.clear();
       setState(() {
         selectedRole = null;
         selectedDefaultPassword = null;
@@ -284,11 +280,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
             TextField(controller: phoneNoController, keyboardType: TextInputType.phone, decoration: _inputDecoration("Phone number", Icons.phone_outlined)),
             const SizedBox(height: 15),
 
-            // --- 5. Position ---
-            TextField(controller: positionController, decoration: _inputDecoration("Position", Icons.work_outline)), // Icon diubah
-            const SizedBox(height: 15),
-
-            // --- 6. Choose Password Default (Dropdown) ---
+            // --- 5. Choose Password Default (Dropdown) ---
             DropdownButtonFormField<String>(
               decoration: _dropdownDecoration("Choose Password Default (Min 6 chars)"),
               value: selectedDefaultPassword,

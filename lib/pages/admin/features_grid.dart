@@ -2,11 +2,9 @@
 import 'package:flutter/material.dart';
 
 // Import halaman-halaman destinasi
-import 'admin_features/profile_page.dart';
-import 'admin_features/sales_page.dart';
-import 'admin_features/report_page.dart';
+import '../Profile/User_profile_page.dart';
+import '../Features_app/report_page.dart';
 import 'admin_features/dummy_pages.dart';
-import 'admin_features/product_list_page.dart';
 
 
 // Widget Reusable untuk setiap ikon Features
@@ -50,19 +48,14 @@ class FeaturesGrid extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _FeatureIcon(icon: Icons.person_outline, label: "Profile", page: ProfilePage(username: loggedInUsername)),
-            const _FeatureIcon(icon: Icons.inventory_2_outlined, label: "Product", page: ProductListPage()),
-            const _FeatureIcon(icon: Icons.local_shipping_outlined, label: "Supplier", page: SupplierPage()),
-          ],
-        ),
-        const SizedBox(height: 15),
-        // Baris 2
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _FeatureIcon(icon: Icons.trending_up, label: "Sales", page: SalesPage()),
-            const _FeatureIcon(icon: Icons.star_outline, label: "Recommendation", page: RecommendationPage()),
-            _FeatureIcon(icon: Icons.bar_chart, label: "Report", page: ReportPage()),
+            const _FeatureIcon(icon: Icons.inventory_2_outlined,
+                label: "Product",
+                page: ProductPage()),
+            const _FeatureIcon(icon: Icons.local_shipping_outlined,
+                label: "Supplier",
+                page: SupplierPage()),
+            _FeatureIcon(
+                icon: Icons.bar_chart, label: "Report", page: ReportPage()),
           ],
         ),
       ],

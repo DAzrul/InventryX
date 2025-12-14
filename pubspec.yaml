@@ -45,6 +45,8 @@ dependencies:
   hive_flutter: ^1.1.0 # Pakej tambahan untuk inisialisasi
   path_provider: ^2.0.0
   connectivity_plus: ^5.0.2
+  fl_chart: ^0.69.0
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:

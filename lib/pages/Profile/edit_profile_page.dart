@@ -1,10 +1,10 @@
-// File: EditProfilePage.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EditProfilePage extends StatefulWidget {
   final String userId;
@@ -23,48 +23,37 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  // --- Controllers dan Variables ---
+  // --- Controllers ---
   late TextEditingController nameController;
+  late TextEditingController usernameController;
   late TextEditingController emailController;
   late TextEditingController phoneNoController;
-  late TextEditingController nameCompanyController;
-  late TextEditingController positionController;
-  late TextEditingController roleController; // Tambah controller untuk Role
-
-  // [DIHAPUS] Logik Role Dropdown tidak diperlukan lagi
-  // String? _selectedRole;
-  // final List<String> availableRoles = ['Staff', 'Manager', 'Admin'];
+  late TextEditingController roleController;
 
   File? _imageFile;
   String? _currentImageUrl;
   bool _isUploading = false;
   bool _isLoading = false;
-  final _formKey = GlobalKey<FormState>(); // Kunci untuk validasi borang
+  final _formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
     super.initState();
     nameController = TextEditingController(text: widget.initialData['name']);
+    usernameController = TextEditingController(text: widget.username);
     emailController = TextEditingController(text: widget.initialData['email']);
     phoneNoController = TextEditingController(text: widget.initialData['phoneNo']);
-    nameCompanyController = TextEditingController(text: widget.initialData['nameCompany']);
-    positionController = TextEditingController(text: widget.initialData['position']);
-    // [BARU] Inisialisasi Role Controller
     roleController = TextEditingController(text: widget.initialData['role']);
-
     _currentImageUrl = widget.initialData['profilePictureUrl'];
-
-    // Logik role dropdown DIHAPUS
   }
 
   @override
   void dispose() {
     nameController.dispose();
+    usernameController.dispose();
     emailController.dispose();
     phoneNoController.dispose();
-    nameCompanyController.dispose();
-    positionController.dispose();
-    roleController.dispose(); // Dispose roleController
+    roleController.dispose();
     super.dispose();
   }
 
@@ -81,96 +70,85 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  // --- 1. MEMILIH GAMBAR ---
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
     if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+      setState(() => _imageFile = File(pickedFile.path));
     }
   }
 
-  // --- FUNGSI BARU: Padam Imej Lama di Storage ---
   Future<void> _deleteOldImage(String? oldUrl) async {
     if (oldUrl == null || oldUrl.isEmpty || !oldUrl.contains('firebasestorage')) return;
     try {
-      Reference oldRef = FirebaseStorage.instance.refFromURL(oldUrl);
-      await oldRef.delete();
-      print("Old profile image deleted successfully.");
+      await FirebaseStorage.instance.refFromURL(oldUrl).delete();
     } catch (e) {
-      print("Failed to delete old image: $e");
+      // Ignore errors
     }
   }
 
-  // --- 2. MUAT NAIK GAMBAR KE FIREBASE STORAGE & KEMASKINI URL DI FIRESTORE ---
   Future<String?> _uploadImageAndGetUrl() async {
     if (_imageFile == null) return _currentImageUrl;
-
     setState(() => _isUploading = true);
-
     try {
       await _deleteOldImage(_currentImageUrl);
-
       String fileName = 'profile_pictures/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       Reference ref = FirebaseStorage.instance.ref().child(fileName);
-
       UploadTask uploadTask = ref.putFile(_imageFile!);
       TaskSnapshot snapshot = await uploadTask;
       String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-        'profilePictureUrl': downloadUrl,
-      });
-
       setState(() {
         _isUploading = false;
         _currentImageUrl = downloadUrl;
       });
       return downloadUrl;
-
     } catch (e) {
       setState(() => _isUploading = false);
-      _showPopupMessage("Error Upload", "Gagal memuat naik gambar. Sila pastikan Peraturan Storage anda membenarkan akses: ${e.toString()}");
+      _showPopupMessage("Error Upload", "Failed: ${e.toString()}");
       return null;
     }
   }
 
-  // --- 3. FUNGSI KEMAS KINI DATA PROFIL (Dipanggil oleh Save Button) ---
   Future<void> _updateProfile() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
       String activityDescription = "Profile data updated.";
       int iconCode = Icons.person_outline.codePoint;
       bool imageUpdated = (_imageFile != null);
+      String newUsername = usernameController.text.trim();
 
-      // Muat naik imej jika ada
-      await _uploadImageAndGetUrl();
+      String? finalImageUrl = await _uploadImageAndGetUrl();
 
       if (imageUpdated) {
         activityDescription = "Profile picture updated.";
         iconCode = Icons.camera_alt_outlined.codePoint;
       }
 
-      // LANGKAH 2: Kemas kini data teks profil yang lain di Firestore
+      if (newUsername != widget.username) {
+        final checkUser = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: newUsername)
+            .get();
+        if (checkUser.docs.isNotEmpty) {
+          setState(() => _isLoading = false);
+          _showPopupMessage("Error", "Username '$newUsername' is already taken.");
+          return;
+        }
+      }
+
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'name': nameController.text.trim(),
+        'username': newUsername,
         'email': emailController.text.trim(),
         'phoneNo': phoneNoController.text.trim(),
-        'nameCompany': nameCompanyController.text.trim(),
-        'position': positionController.text.trim(),
-        // Role dikecualikan dari update kerana ia read-only/dikendalikan admin lain
-        // 'role': _selectedRole,
+        'profilePictureUrl': finalImageUrl,
       });
 
-      // 3. REKOD AKTIVITI KE FIRESTORE
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('savedUsername', newUsername);
+
       await FirebaseFirestore.instance
           .collection('users').doc(widget.userId)
           .collection('activities').add({
@@ -179,49 +157,68 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'iconCode': iconCode,
       });
 
-      // 4. Berjaya: Tutup halaman dan hantar 'true'
-      Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, true);
 
     } catch (e) {
       setState(() => _isLoading = false);
-      _showPopupMessage("System Error", "Failed to update profile: ${e.toString()}");
+      _showPopupMessage("System Error", "Failed: ${e.toString()}");
     } finally {
-      if(mounted) {
-        setState(() => _isLoading = false);
-      }
+      if(mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Scaffold di dalam Modal untuk struktur UI yang kemas
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.w600)),
         centerTitle: true,
         backgroundColor: Colors.white,
-        elevation: 1,
+        elevation: 0,
+        // Butang ini membolehkan tutup manual, selain swipe
+        leading: IconButton(
+          icon: const Icon(Icons.keyboard_arrow_down, size: 30, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Pemilih Gambar Profil ---
+              // --- DRAG HANDLE (Garis Kelabu di Tengah) ---
+              // Ini memberi hint visual bahawa user boleh swipe ke bawah
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+
+              // --- GAMBAR PROFIL ---
               Center(
                 child: Stack(
                   children: [
                     CircleAvatar(
                       radius: 60,
+                      backgroundColor: Colors.grey[200],
                       backgroundImage: _imageFile != null
                           ? FileImage(_imageFile!) as ImageProvider
                           : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
                           ? CachedNetworkImageProvider(_currentImageUrl!)
-                          : const AssetImage('assets/profile.png')) as ImageProvider,
-                      child: _isUploading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : null,
+                          : const AssetImage('assets/profile_placeholder.png')) as ImageProvider,
+                      child: (_currentImageUrl == null && _imageFile == null)
+                          ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                          : (_isUploading ? const CircularProgressIndicator(color: Colors.white) : null),
                     ),
                     Positioned(
                       bottom: 0,
@@ -244,7 +241,43 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               const SizedBox(height: 30),
 
-              // Full Name
+              // --- ROLE (LOCKED) ---
+              const Text("User Role (Locked)", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: roleController,
+                readOnly: true,
+                style: const TextStyle(color: Colors.grey),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // --- USERNAME ---
+              const Text("Username", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: usernameController,
+                decoration: InputDecoration(
+                  hintText: "Enter Username",
+                  prefixIcon: const Icon(Icons.account_circle_outlined, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) return 'Username required';
+                  if (val.contains(' ')) return 'No spaces allowed';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // --- FULL NAME ---
               const Text("Full Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
               const SizedBox(height: 8),
               TextFormField(
@@ -256,81 +289,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   fillColor: Colors.grey[100],
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your full name.';
-                  }
-                  return null;
-                },
+                validator: (val) => (val == null || val.trim().isEmpty) ? 'Name required' : null,
               ),
               const SizedBox(height: 20),
 
-              // Name Company
-              const Text("Company Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: nameCompanyController,
-                decoration: InputDecoration(
-                  hintText: "Enter Company Name",
-                  prefixIcon: const Icon(Icons.business_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Position
-              const Text("Position", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: positionController,
-                decoration: InputDecoration(
-                  hintText: "Enter Position/Title",
-                  prefixIcon: const Icon(Icons.work_outline, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // --- [KOREKSI] User Role (Read-Only Field) ---
-              const Text("User Role", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: roleController,
-                readOnly: true, // Field kini hanya untuk display
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.shield_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk menunjukkan read-only
-                  hintText: "Role",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // --- END [KOREKSI] User Role ---
-
-
-              // Email Address (Read-Only)
+              // --- EMAIL ---
               const Text("Email Address", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                readOnly: true, // Biasanya email tidak boleh diubah tanpa Auth logic
                 decoration: InputDecoration(
                   hintText: "Enter Email Address",
                   prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
                   filled: true,
-                  fillColor: Colors.grey[200], // Warna latar belakang yang berbeda untuk read-only
+                  fillColor: Colors.grey[100],
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                 ),
+                validator: (val) => (val == null || !val.contains('@')) ? 'Invalid email' : null,
               ),
               const SizedBox(height: 20),
 
-              // Phone Number
+              // --- PHONE ---
               const Text("Phone Number", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
               const SizedBox(height: 8),
               TextFormField(
@@ -346,7 +326,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               const SizedBox(height: 40),
 
-              // Save Button
+              // --- SAVE BUTTON ---
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -362,7 +342,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       : const Text("Save Changes", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
             ],
           ),
         ),

@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Gantikan import ini dengan laluan yang betul dalam projek anda
+// Import halaman-halaman destinasi
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -13,7 +12,6 @@ import 'forgot_password_page.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
-  // [UBAH] Tambah parameter untuk auto-login dari ProfilePage (Switch Account)
   final String? autoLoginUsername;
 
   const LoginPage({super.key, this.autoLoginUsername});
@@ -24,8 +22,6 @@ class LoginPage extends StatefulWidget {
     await prefs.remove('savedRole');
     await prefs.remove('savedUserId');
     await FirebaseAuth.instance.signOut();
-    // Nota: 'savedUsername' dikekalkan untuk paparan pada skrin Login, tetapi ia dibersihkan
-    // jika kita hanya mahu satu pilihan. Kita kekalkan remove untuk kesederhanaan.
     await prefs.remove('savedUsername');
   }
 
@@ -47,47 +43,78 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _checkLoginStatus(); // Panggil fungsi untuk semak status sesi
+    _checkLoginStatus();
   }
 
-  // FUNGSI BARU: Semak Status Log Masuk dan Cuba Auto-Login
+  // --- [BAHAGIAN YANG DIBETULKAN] ---
   Future<void> _checkLoginStatus() async {
-    // Senario 1: Auto-Login dari Change Account (autoLoginUsername disediakan)
+    // Senario 1: Auto-Login dari Change Account (Switch Account)
     if (widget.autoLoginUsername != null) {
       usernameController.text = widget.autoLoginUsername!;
-      // Mesej kepada pengguna jika ini adalah switch account
       showPopupMessage("Account Switch",
           details: "Please re-enter the password for ${widget.autoLoginUsername} to continue the session.");
-
-      setState(() {
-        loading = false; // Pastikan Loading dimatikan
-      });
+      setState(() => loading = false);
       return;
     }
 
-    // Senario 2: Auto-Login dari Remember Me (Log Masuk Biasa)
+    // Senario 2: Auto-Login Biasa (App Restart)
     final prefs = await SharedPreferences.getInstance();
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final String? savedUsername = prefs.getString('savedUsername');
-    final String? savedRole = prefs.getString('savedRole');
-    final String? savedUserId = prefs.getString('savedUserId');
+    final String? savedUserId = prefs.getString('savedUserId'); // Kita bergantung pada ID, bukan Username
 
-    if (isLoggedIn && savedUsername != null && savedRole != null && savedUserId != null) {
+    if (isLoggedIn && savedUserId != null) {
       if (!await _isNetworkAvailable()) {
-        showPopupMessage("Offline Mode", details: "Could not restore session. Please connect to the internet and sign in manually.");
+        // Jika tiada internet, terpaksa guna cached username lama (jika ada)
+        final savedUsername = prefs.getString('savedUsername');
+        final savedRole = prefs.getString('savedRole');
+        if (savedUsername != null && savedRole != null) {
+          _navigateToHomePage(savedUsername, savedRole, savedUserId);
+        } else {
+          showPopupMessage("Offline Mode", details: "Please connect to internet to sign in.");
+        }
         return;
       }
 
-      // Jika token Firebase Auth masih sah, navigasi terus
-      if (_auth.currentUser != null && _auth.currentUser!.uid == savedUserId) {
-        _navigateToHomePage(savedUsername, savedRole, savedUserId);
-        // Tetapkan loading true semasa proses navigasi berlaku
-        setState(() => loading = true);
-      } else {
-        // Token Auth Firebase tamat tempoh atau tidak sepadan. Log masuk manual.
-        await LoginPage.clearLoginState();
-        showPopupMessage("Session Expired", details: "Your previous session has expired. Please sign in again.");
+      setState(() => loading = true);
+
+      try {
+        // [PENYELESAIAN] Tarik data terkini dari Firestore menggunakan User ID
+        // Ini memastikan kita dapat username BARU jika ia telah ditukar
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(savedUserId)
+            .get();
+
+        if (userDoc.exists && _auth.currentUser != null && _auth.currentUser!.uid == savedUserId) {
+          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+          String freshUsername = userData['username']; // Username terkini dari DB
+          String freshRole = userData['role'];         // Role terkini dari DB
+          String status = userData['status'] ?? 'Active';
+
+          if (status != 'Active') {
+            await LoginPage.clearLoginState();
+            showPopupMessage("Account Disabled", details: "Your account has been disabled.");
+            setState(() => loading = false);
+            return;
+          }
+
+          // Update SharedPreferences dengan data terkini supaya sync
+          await prefs.setString('savedUsername', freshUsername);
+          await prefs.setString('savedRole', freshRole);
+
+          // Masuk ke Home Page dengan Username yang betul
+          _navigateToHomePage(freshUsername, freshRole, savedUserId);
+
+        } else {
+          // Jika user dah kena delete kat database atau token expired
+          await LoginPage.clearLoginState();
+          setState(() => loading = false);
+        }
+      } catch (e) {
+        // Jika ada error (contoh: network error masa fetch)
         setState(() => loading = false);
+        print("Auto login error: $e");
       }
     }
   }
@@ -101,10 +128,11 @@ class _LoginPageState extends State<LoginPage> {
       );
     } else if (role == "manager") {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const ManagerPage()));
+          context, MaterialPageRoute(builder: (_) => ManagerPage(loggedInUsername: username, userId: userId,))
+      );
     } else {
       Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const StaffPage()));
+          context, MaterialPageRoute(builder: (_) => StaffPage(loggedInUsername: username, userId: userId)));
     }
   }
 
@@ -135,13 +163,12 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // FUNGSI SEMAK RANGKAIAN
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
     return connectivityResult != ConnectivityResult.none;
   }
 
-
+  // --- LOG MASUK MANUAL ---
   Future<void> loginUser() async {
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
@@ -155,7 +182,6 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // LANGKAH 0: SEMAK RANGKAIAN
     if (!await _isNetworkAvailable()) {
       showPopupMessage("Offline Mode", details: "You need an active internet connection to sign in.");
       return;
@@ -164,11 +190,10 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => loading = true);
 
     try {
-      // LANGKAH 1: Cari Pengguna di Firestore berdasarkan Email ATAU Username
+      // 1. Cari User
       QuerySnapshot userSnap;
       if (input.contains('@')) {
         userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: input).limit(1).get();
-        emailToAuthenticate = input;
       } else {
         userSnap = await FirebaseFirestore.instance.collection("users").where('username', isEqualTo: input).limit(1).get();
       }
@@ -176,12 +201,12 @@ class _LoginPageState extends State<LoginPage> {
       if (userSnap.docs.isNotEmpty) {
         userData = userSnap.docs.first.data() as Map<String, dynamic>;
         emailToAuthenticate = userData['email'];
+        // Pastikan kita ambil username dari database, bukan dari input user semata-mata
         usernameForNavigation = userData['username'] ?? userData['email'];
         firestoreDocId = userSnap.docs.first.id;
 
         if (userData["status"] != "Active") {
-          showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
-          await _auth.signOut();
+          showPopupMessage("Account Disabled", details: "Contact Administrator.");
           setState(() => loading = false);
           return;
         }
@@ -193,46 +218,26 @@ class _LoginPageState extends State<LoginPage> {
         emailToAuthenticate = input;
       }
 
-      if (emailToAuthenticate.isEmpty) {
-        showPopupMessage("Login Failed", details: "Could not determine authentication email.");
-        setState(() => loading = false);
-        return;
-      }
+      // 2. Authenticate Firebase Auth
+      await _auth.signInWithEmailAndPassword(email: emailToAuthenticate, password: password);
 
-      // LANGKAH 2: Log masuk menggunakan Firebase Authentication
-      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: emailToAuthenticate,
-        password: password,
-      );
-
-      // LANGKAH 3: Semak semula data jika ia tidak diambil di Langkah 1
+      // 3. Double Check (Jika step 1 skip sebab input adalah email terus)
       if (userData == null) {
         userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: emailToAuthenticate).limit(1).get();
-
-        if (userSnap.docs.isEmpty) {
-          showPopupMessage("Login Failed", details: "User data not found in Firestore after authentication.");
-          await _auth.signOut();
-          setState(() => loading = false);
-          return;
-        }
-        userData = userSnap.docs.first.data() as Map<String, dynamic>;
-        usernameForNavigation = userData['username'] ?? userData['email'];
-        firestoreDocId = userSnap.docs.first.id;
-
-        if (userData["status"] != "Active") {
-          showPopupMessage("Account Disabled", details: "Your account has been disabled. Please contact the Administrator.");
-          await _auth.signOut();
-          setState(() => loading = false);
-          return;
+        if (userSnap.docs.isNotEmpty) {
+          userData = userSnap.docs.first.data() as Map<String, dynamic>;
+          usernameForNavigation = userData['username'];
+          firestoreDocId = userSnap.docs.first.id;
         }
       }
 
-      String role = userData!["role"] ?? 'staff';
+      String role = userData?["role"] ?? 'staff';
 
-      // --- FUNGSI 'REMEMBER ME' ---
+      // 4. Simpan Session
       if (rememberMe) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
+        // Penting: Simpan username yang betul dari Database
         await prefs.setString('savedUsername', usernameForNavigation);
         await prefs.setString('savedRole', role);
         await prefs.setString('savedUserId', firestoreDocId);
@@ -246,25 +251,18 @@ class _LoginPageState extends State<LoginPage> {
       if (e.code == 'user-not-found' || e.code == 'wrong-password') {
         errorMessage = "Invalid username/email or password.";
       } else if (e.code == 'invalid-email') {
-        errorMessage = "The email address format is invalid.";
-      } else if (e.code == 'network-request-failed') {
-        errorMessage = "Network connection failed. Please check your internet.";
+        errorMessage = "Invalid email format.";
       }
       showPopupMessage("Authentication Failed", details: errorMessage);
     } catch (e) {
-      showPopupMessage("System Error", details: "Failed to process login: ${e.toString()}");
-      debugPrint("Login General Error: $e");
+      showPopupMessage("System Error", details: e.toString());
     } finally {
-      if(mounted) {
-        setState(() => loading = false);
-      }
+      if(mounted) setState(() => loading = false);
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // ... (Kod UI) ...
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -277,7 +275,6 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo
                   SizedBox(
                     height: isPortrait ? constraints.maxHeight * 0.2 : constraints.maxHeight * 0.35,
                     child: Image.asset("assets/logo.png", fit: BoxFit.contain),
@@ -294,7 +291,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   SizedBox(height: constraints.maxHeight * 0.03),
 
-                  // Email/Username field
                   TextField(
                     controller: usernameController,
                     keyboardType: TextInputType.emailAddress,
@@ -308,7 +304,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   SizedBox(height: constraints.maxHeight * 0.02),
 
-                  // Password field
                   TextField(
                     controller: passwordController,
                     obscureText: !showPassword,
@@ -331,7 +326,6 @@ class _LoginPageState extends State<LoginPage> {
                     children: [
                       Row(
                         children: [
-                          // Checkbox Remember Me
                           Checkbox(
                             value: rememberMe,
                             onChanged: (v) => setState(() => rememberMe = v!),
@@ -341,18 +335,14 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       TextButton(
                         onPressed: () {
-                          // Pastikan laluan ForgotPasswordPage adalah betul
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
-                          );
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage()));
                         },
                         child: const Text("Forgot password?"),
                       )
-
                     ],
                   ),
                   SizedBox(height: constraints.maxHeight * 0.03),
 
-                  // Sign In Button
                   SizedBox(
                     width: double.infinity,
                     height: constraints.maxHeight * 0.07,
