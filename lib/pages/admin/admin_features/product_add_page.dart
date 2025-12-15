@@ -41,14 +41,14 @@ class _ProductAddPageState extends State<ProductAddPage> {
   Future<void> _loadSuppliers() async {
     try {
       QuerySnapshot snapshot =
-      await FirebaseFirestore.instance.collection("suppliers").get();
+      await FirebaseFirestore.instance.collection("supplier").get();
 
-      final supplierNames = snapshot.docs
-          .map((doc) => (doc.data() as Map<String, dynamic>)['name'] as String)
+      final supplierName = snapshot.docs
+          .map((doc) => (doc.data() as Map<String, dynamic>)['supplierName'] as String)
           .toList();
 
       setState(() {
-        suppliers = supplierNames;
+        suppliers = supplierName;
       });
     } catch (e) {
       print("Error loading suppliers: $e");

@@ -1,5 +1,6 @@
 // File: admin/features_grid.dart
 import 'package:flutter/material.dart';
+import 'package:inventryx/pages/admin/admin_features/supplier_list_page.dart';
 
 // Import halaman-halaman destinasi
 import '../Profile/User_profile_page.dart';
@@ -54,7 +55,7 @@ class FeaturesGrid extends StatelessWidget {
                 page: ProductListPage()),
             const _FeatureIcon(icon: Icons.local_shipping_outlined,
                 label: "Supplier",
-                page: SupplierPage()),
+                page: SupplierListPage()),
             _FeatureIcon(
                 icon: Icons.bar_chart, label: "Report", page: ReportPage()),
           ],
