@@ -4,10 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // Import komponen yang diperlukan
-import 'utils/features_modal.dart';
-import 'user_edit_page.dart';
-import 'user_delete_page.dart';
-import 'admin_features/user_management_page.dart';
+import 'utils/features_modal.dart'; // Pastikan path ni betul
+import 'user_edit_page.dart';       // Pastikan path ni betul
+import 'user_delete_page.dart';     // Pastikan path ni betul
+import 'admin_features/user_management_page.dart'; // Pastikan path ni betul
 
 // --- Widget Kustom untuk UserListItem (Kekal Sama) ---
 class UserListItem extends StatelessWidget {
@@ -73,7 +73,7 @@ class UserListItem extends StatelessWidget {
           title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text(role),
           trailing: SizedBox(
-            width: 130,
+            width: 130, // Saiz fix untuk button
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -164,7 +164,7 @@ class _UserListPageState extends State<UserListPage> {
 
   final List<String> _roles = ['All', 'Admin', 'Staff', 'Manager'];
 
-  // Stream untuk senarai pengguna lain
+  // Stream untuk senarai pengguna
   Stream<QuerySnapshot> get _userStream {
     Query collection = FirebaseFirestore.instance.collection("users");
     final String filterKey = _selectedRole.toLowerCase();
@@ -178,16 +178,6 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
-  Future<int> _fetchTotalUserCount() async {
-    try {
-      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection("users").get();
-      return snapshot.docs.length;
-    } catch (e) {
-      print("Error fetching total user count: $e");
-      return 0;
-    }
-  }
-
   void _showFeaturesModal() {
     FeaturesModal.show(context, widget.loggedInUsername);
   }
@@ -197,8 +187,10 @@ class _UserListPageState extends State<UserListPage> {
       _showFeaturesModal();
       return;
     }
+    // Logic Home & Profile
     if (index == 0 || index == 2) {
-      Navigator.pop(context, index);
+      // Sama macam back button, kita kill stack sampai jumpa dashboard
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
@@ -235,23 +227,19 @@ class _UserListPageState extends State<UserListPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        // [PEMBETULAN UTAMA]: Guna StreamBuilder untuk header User Login
-        // Supaya gambar & nama sentiasa update real-time
         title: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("users")
               .where('username', isEqualTo: widget.loggedInUsername)
               .limit(1)
-              .snapshots(), // Guna snapshots() untuk real-time updates
+              .snapshots(),
           builder: (context, snapshot) {
             String displayName = widget.loggedInUsername;
             String? profileUrl;
 
-            // Jika data berjaya diambil
             if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
               var userData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-              // Ambil nama penuh jika ada, atau username
-              displayName = userData['username'] ?? userData['username'] ?? displayName;
+              displayName = userData['username'] ?? displayName;
               profileUrl = userData['profilePictureUrl'];
             }
 
@@ -273,14 +261,17 @@ class _UserListPageState extends State<UserListPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          // --- [INI FIX DIA] ---
+          // popUntil((route) => route.isFirst) akan buang semua page stack yang bertindih
+          // dan terus balik ke page pertama (Admin Dashboard)
+          onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
         ),
         actions: const [],
       ),
 
       body: Column(
         children: [
-          // 1. Dashboard Card (Total Users - Guna StreamBuilder supaya auto update jika user ditambah/delete)
+          // 1. Dashboard Card
           Padding(
             padding: const EdgeInsets.all(10.0),
             child: Container(
@@ -289,7 +280,6 @@ class _UserListPageState extends State<UserListPage> {
                 color: const Color(0xFF233E99),
                 borderRadius: BorderRadius.circular(15),
               ),
-              // Guna StreamBuilder untuk total count juga supaya real-time
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection("users").snapshots(),
                 builder: (context, snapshot) {
@@ -422,7 +412,7 @@ class _UserListPageState extends State<UserListPage> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
+          BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Features'),
           BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'),
         ],
       ),
