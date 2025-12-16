@@ -1,0 +1,318 @@
+// File: product_add_page.dart
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'product_list_page.dart';
+
+class ProductAddPage extends StatefulWidget {
+  const ProductAddPage({super.key});
+
+  @override
+  State<ProductAddPage> createState() => _ProductAddPageState();
+}
+
+class _ProductAddPageState extends State<ProductAddPage> {
+  final TextEditingController productNameController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
+  final TextEditingController barcodeController = TextEditingController();
+
+  bool loading = false;
+
+  // Categories and subcategories
+  final Map<String, List<String>> categoryMap = {
+    'FOOD': ['Bakery', 'Dairy & Milk', 'Snacks & Chips'],
+    'BEVERAGES': ['Soft Drink', 'Coffee & Tea', 'Water'],
+    'PERSONAL CARE': ['Oral Care', 'Healthcare'],
+  };
+
+  String? selectedCategory;
+  String? selectedSubCategory;
+  String? selectedSupplier;
+  List<String> subCategories = [];
+  List<String> suppliers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuppliers();
+  }
+
+  /// ----------------------------
+  /// Load suppliers from Firestore
+  /// ----------------------------
+  Future<void> _loadSuppliers() async {
+    try {
+      final snapshot =
+      await FirebaseFirestore.instance.collection("supplier").get();
+
+      final supplierName = snapshot.docs
+          .map((doc) =>
+      (doc.data() as Map<String, dynamic>)['supplierName'] as String)
+          .toList();
+
+      setState(() => suppliers = supplierName);
+    } catch (e) {
+      debugPrint("Error loading suppliers: $e");
+    }
+  }
+
+  /// ----------------------------
+  /// Check duplicate barcode
+  /// ----------------------------
+  Future<bool> _barcodeExists(int barcode) async {
+    final query = await FirebaseFirestore.instance
+        .collection("products")
+        .where('barcodeNo', isEqualTo: barcode)
+        .limit(1)
+        .get();
+
+    return query.docs.isNotEmpty;
+  }
+
+  /// ----------------------------
+  /// Popup Message Helper
+  /// ----------------------------
+  void showPopupMessage(String title, {String? message}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: message != null ? Text(message) : null,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
+  /// ----------------------------
+  /// Add Product
+  /// ----------------------------
+  Future<void> addProduct() async {
+    String productName = productNameController.text.trim();
+    String category = selectedCategory ?? '';
+    String subCategory = selectedSubCategory ?? '';
+    String supplier = selectedSupplier ?? '';
+    int? barcode = int.tryParse(barcodeController.text.trim());
+    double price = double.tryParse(priceController.text.trim()) ?? 0;
+
+    if (productName.isEmpty ||
+        category.isEmpty ||
+        subCategory.isEmpty ||
+        supplier.isEmpty ||
+        barcode == null ||
+        price <= 0) {
+      showPopupMessage(
+        "Error",
+        message: "Please fill all required fields correctly.",
+      );
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      /// 🔥 DUPLICATE BARCODE CHECK
+      final exists = await _barcodeExists(barcode);
+      if (exists) {
+        setState(() => loading = false);
+        showPopupMessage(
+          "This Product already exists!",
+          message: "Already have Product with this Barcode.",
+        );
+        return;
+      }
+
+      await FirebaseFirestore.instance.collection("products").add({
+        "productName": productName,
+        "category": category,
+        "subCategory": subCategory,
+        "supplier": supplier,
+        "barcodeNo": barcode,
+        "price": price,
+      });
+
+      if (!mounted) return;
+
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Success"),
+          content: Text("Product '$productName' added successfully."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProductListPage(),
+                  ),
+                );
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+
+      // Clear form
+      productNameController.clear();
+      barcodeController.clear();
+      priceController.clear();
+      setState(() {
+        selectedCategory = null;
+        selectedSubCategory = null;
+        selectedSupplier = null;
+        subCategories = [];
+      });
+    } catch (e) {
+      showPopupMessage("Error", message: "Failed to add product: $e");
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  /// ----------------------------
+  /// UI
+  /// ----------------------------
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Add Product")),
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Add New Product",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+
+            // Product Name
+            TextField(
+              controller: productNameController,
+              decoration:
+              _inputDecoration("Product Name", Icons.inventory_2_outlined),
+            ),
+            const SizedBox(height: 15),
+
+            // Category
+            DropdownButtonFormField<String>(
+              decoration: _dropdownDecoration("Choose Category"),
+              value: selectedCategory,
+              items: categoryMap.keys
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedCategory = value;
+                  selectedSubCategory = null;
+                  subCategories =
+                  value != null ? categoryMap[value]! : [];
+                });
+              },
+            ),
+            const SizedBox(height: 15),
+
+            // Subcategory
+            DropdownButtonFormField<String>(
+              decoration: _dropdownDecoration("Choose Subcategory"),
+              value: selectedSubCategory,
+              items: subCategories
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (value) => setState(() => selectedSubCategory = value),
+            ),
+            const SizedBox(height: 15),
+
+            // Supplier
+            DropdownButtonFormField<String>(
+              decoration: _dropdownDecoration("Choose Supplier"),
+              value: selectedSupplier,
+              items: suppliers
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (value) => setState(() => selectedSupplier = value),
+            ),
+            const SizedBox(height: 15),
+
+            // Price
+            TextField(
+              controller: priceController,
+              keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+              _inputDecoration("Price (RM)", Icons.attach_money_outlined),
+            ),
+            const SizedBox(height: 15),
+
+            // Barcode
+            TextField(
+              controller: barcodeController,
+              keyboardType: TextInputType.number,
+              decoration: _inputDecoration("Barcode", Icons.qr_code),
+            ),
+            const SizedBox(height: 30),
+
+            // Submit
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF233E99),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: loading ? null : addProduct,
+                child: loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                  "Add Product",
+                  style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 20, color: Colors.grey[600]),
+      filled: true,
+      fillColor: Colors.grey[100],
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
+
+  InputDecoration _dropdownDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey[100],
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
+      contentPadding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    );
+  }
+}

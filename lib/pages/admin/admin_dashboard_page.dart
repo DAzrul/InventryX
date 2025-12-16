@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'admin_features/supplier_list_page.dart';
 import 'widgets/menu_container.dart';
 import 'widgets/dashboard_card.dart';
 import 'user_list_page.dart';
+import 'admin_features/product_list_page.dart';
+
 
 class AdminDashboardPage extends StatefulWidget {
   final String loggedInUsername;
@@ -105,23 +108,48 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  DashboardCard(
-                    title: "Product Types",
-                    value: productTypes.toString(),
-                    growth: "+${productGrowth.toStringAsFixed(1)}% vs last month",
-                    icon: Icons.inventory_2,
-                    onViewPressed: () { /* Tindakan ke Product Page */ },
-                  ),
-                  const SizedBox(height: 20),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection("products").snapshots(),
+                  builder: (context, snapshot) {
+                    final total = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                    return DashboardCard(
+                      title: "Total Products",
+                      value: total.toString(),
+                      growth: "+${productGrowth.toStringAsFixed(1)}% vs last month",
+                      icon: Icons.inventory_2,
+                      onViewPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ProductListPage()),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
 
-                  DashboardCard(
-                    title: "Supplier",
+
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection("supplier").snapshots(),
+                builder: (context, snapshot) {
+                  final totalSuppliers =
+                  snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+                  return DashboardCard(
+                    title: "Total Suppliers",
                     value: totalSuppliers.toString(),
-                    growth: "+${supplierGrowth.toStringAsFixed(1)}% vs last month",
-                    icon: Icons.local_shipping_outlined,
-                    onViewPressed: () { /* Tindakan ke Supplier Page */ },
-                  ),
-                ],
+                    growth: "+0% vs last month",
+                    icon: Icons.store,
+                    onViewPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SupplierListPage()),
+                      );
+                    },
+                  );
+                },
+              ),
+              ],
               ),
             ),
           );
