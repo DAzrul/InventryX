@@ -18,7 +18,7 @@ class _ProductDeletePageState extends State<ProductDeletePage> {
   Future<void> _deleteProduct() async {
     setState(() => _loading = true);
     try {
-      await FirebaseFirestore.instance.collection('product').doc(widget.productId).delete();
+      await FirebaseFirestore.instance.collection('products').doc(widget.productId).delete();
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {

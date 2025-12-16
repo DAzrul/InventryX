@@ -92,6 +92,8 @@ class ProductListPage extends StatefulWidget {
 class _ProductListPageState extends State<ProductListPage> {
   String _selectedCategory = 'ALL';
   int _currentIndex = 0;
+  String _searchText = '';
+  final TextEditingController _searchController = TextEditingController();
 
   final List<String> _categories = [
     'ALL',
@@ -138,6 +140,29 @@ class _ProductListPageState extends State<ProductListPage> {
 
       body: Column(
         children: [
+          /// 🔍 Search Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchText = value.trim().toLowerCase();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: "Search product name or barcode...",
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+
           /// Dashboard Card (REAL-TIME)
           Padding(
             padding: const EdgeInsets.all(10),
@@ -240,7 +265,19 @@ class _ProductListPageState extends State<ProductListPage> {
                   return const Center(child: Text("No products found"));
                 }
 
-                final docs = snapshot.data!.docs;
+                final docs = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['productName'] ?? '').toString().toLowerCase();
+                  final barcode = (data['barcodeNo'] ?? '').toString();
+                  final searchText = _searchText.toLowerCase();
+
+                  // Search by name OR barcode
+                  return name.contains(searchText) || barcode.contains(searchText);
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return const Center(child: Text("No matching products"));
+                }
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 8),

@@ -18,7 +18,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
 
   bool loading = false;
 
-  // Categories and dynamic subcategories
+  // Categories and subcategories
   final Map<String, List<String>> categoryMap = {
     'FOOD': ['Bakery', 'Dairy & Milk', 'Snacks & Chips'],
     'BEVERAGES': ['Soft Drink', 'Coffee & Tea', 'Water'],
@@ -37,25 +37,41 @@ class _ProductAddPageState extends State<ProductAddPage> {
     _loadSuppliers();
   }
 
-  // Load suppliers from Firestore
+  /// ----------------------------
+  /// Load suppliers from Firestore
+  /// ----------------------------
   Future<void> _loadSuppliers() async {
     try {
-      QuerySnapshot snapshot =
+      final snapshot =
       await FirebaseFirestore.instance.collection("supplier").get();
 
       final supplierName = snapshot.docs
-          .map((doc) => (doc.data() as Map<String, dynamic>)['supplierName'] as String)
+          .map((doc) =>
+      (doc.data() as Map<String, dynamic>)['supplierName'] as String)
           .toList();
 
-      setState(() {
-        suppliers = supplierName;
-      });
+      setState(() => suppliers = supplierName);
     } catch (e) {
-      print("Error loading suppliers: $e");
+      debugPrint("Error loading suppliers: $e");
     }
   }
 
-  // --- Popup Message Helper ---
+  /// ----------------------------
+  /// Check duplicate barcode
+  /// ----------------------------
+  Future<bool> _barcodeExists(int barcode) async {
+    final query = await FirebaseFirestore.instance
+        .collection("products")
+        .where('barcodeNo', isEqualTo: barcode)
+        .limit(1)
+        .get();
+
+    return query.docs.isNotEmpty;
+  }
+
+  /// ----------------------------
+  /// Popup Message Helper
+  /// ----------------------------
   void showPopupMessage(String title, {String? message}) {
     showDialog(
       context: context,
@@ -63,36 +79,60 @@ class _ProductAddPageState extends State<ProductAddPage> {
         title: Text(title),
         content: message != null ? Text(message) : null,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          )
         ],
       ),
     );
   }
 
+  /// ----------------------------
+  /// Add Product
+  /// ----------------------------
   Future<void> addProduct() async {
     String productName = productNameController.text.trim();
     String category = selectedCategory ?? '';
     String subCategory = selectedSubCategory ?? '';
     String supplier = selectedSupplier ?? '';
-    String barcode = barcodeController.text.trim();
+    int? barcode = int.tryParse(barcodeController.text.trim());
     double price = double.tryParse(priceController.text.trim()) ?? 0;
 
-    if (productName.isEmpty || category.isEmpty || subCategory.isEmpty || supplier.isEmpty || barcode.isEmpty || price <= 0) {
-      showPopupMessage("Error", message: "Please fill all required fields correctly.");
+    if (productName.isEmpty ||
+        category.isEmpty ||
+        subCategory.isEmpty ||
+        supplier.isEmpty ||
+        barcode == null ||
+        price <= 0) {
+      showPopupMessage(
+        "Error",
+        message: "Please fill all required fields correctly.",
+      );
       return;
     }
 
     setState(() => loading = true);
 
     try {
+      /// 🔥 DUPLICATE BARCODE CHECK
+      final exists = await _barcodeExists(barcode);
+      if (exists) {
+        setState(() => loading = false);
+        showPopupMessage(
+          "This Product already exists!",
+          message: "Already have Product with this Barcode.",
+        );
+        return;
+      }
+
       await FirebaseFirestore.instance.collection("products").add({
         "productName": productName,
         "category": category,
         "subCategory": subCategory,
         "supplier": supplier,
-        "barcode": barcode,
+        "barcodeNo": barcode,
         "price": price,
-        "createdAt": FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -105,18 +145,21 @@ class _ProductAddPageState extends State<ProductAddPage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // close dialog
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const ProductListPage()),
+                Navigator.pop(context);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProductListPage(),
+                  ),
                 );
               },
               child: const Text("OK"),
-            )
+            ),
           ],
         ),
       );
 
-      // Clear fields
+      // Clear form
       productNameController.clear();
       barcodeController.clear();
       priceController.clear();
@@ -133,6 +176,9 @@ class _ProductAddPageState extends State<ProductAddPage> {
     }
   }
 
+  /// ----------------------------
+  /// UI
+  /// ----------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -143,103 +189,100 @@ class _ProductAddPageState extends State<ProductAddPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Add New Product", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text(
+              "Add New Product",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 20),
 
             // Product Name
             TextField(
               controller: productNameController,
-              decoration: _inputDecoration("Product Name", Icons.inventory_2_outlined),
+              decoration:
+              _inputDecoration("Product Name", Icons.inventory_2_outlined),
             ),
             const SizedBox(height: 15),
 
-            // Category Dropdown
+            // Category
             DropdownButtonFormField<String>(
               decoration: _dropdownDecoration("Choose Category"),
               value: selectedCategory,
-              items: categoryMap.keys.map((value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
+              items: categoryMap.keys
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
               onChanged: (value) {
                 setState(() {
                   selectedCategory = value;
                   selectedSubCategory = null;
-                  subCategories = value != null ? categoryMap[value]! : [];
+                  subCategories =
+                  value != null ? categoryMap[value]! : [];
                 });
               },
             ),
             const SizedBox(height: 15),
 
-            // Subcategory Dropdown
+            // Subcategory
             DropdownButtonFormField<String>(
               decoration: _dropdownDecoration("Choose Subcategory"),
               value: selectedSubCategory,
-              items: subCategories.map((value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedSubCategory = value;
-                });
-              },
+              items: subCategories
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (value) => setState(() => selectedSubCategory = value),
             ),
             const SizedBox(height: 15),
 
-            // Supplier Dropdown
+            // Supplier
             DropdownButtonFormField<String>(
               decoration: _dropdownDecoration("Choose Supplier"),
               value: selectedSupplier,
-              items: suppliers.map((value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedSupplier = value;
-                });
-              },
+              items: suppliers
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (value) => setState(() => selectedSupplier = value),
             ),
             const SizedBox(height: 15),
 
             // Price
             TextField(
               controller: priceController,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: _inputDecoration("Price (RM)", Icons.attach_money_outlined),
+              keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+              _inputDecoration("Price (RM)", Icons.attach_money_outlined),
             ),
             const SizedBox(height: 15),
 
             // Barcode
             TextField(
               controller: barcodeController,
+              keyboardType: TextInputType.number,
               decoration: _inputDecoration("Barcode", Icons.qr_code),
             ),
             const SizedBox(height: 30),
 
-            // Submit Button
+            // Submit
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF233E99),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: loading ? null : addProduct,
                 child: loading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Add Product", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                    : const Text(
+                  "Add Product",
+                  style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
+                ),
               ),
             ),
-            const SizedBox(height: 50),
           ],
         ),
       ),
@@ -268,7 +311,8 @@ class _ProductAddPageState extends State<ProductAddPage> {
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide.none,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      contentPadding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     );
   }
 }
