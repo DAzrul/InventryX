@@ -40,7 +40,7 @@ class FeaturesGrid extends StatelessWidget {
 
   const FeaturesGrid({super.key, required this.loggedInUsername});
 
-  @override
+  @override 
   Widget build(BuildContext context) {
     return Column(
       children: [
