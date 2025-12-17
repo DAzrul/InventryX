@@ -328,7 +328,7 @@ class _ProductListPageState extends State<ProductListPage> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
+          BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Features'),
           BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'),
         ],
       ),
