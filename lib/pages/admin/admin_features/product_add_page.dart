@@ -257,17 +257,23 @@ class _ProductAddPageState extends State<ProductAddPage> {
             ),
             const SizedBox(height: 30),
 
-            // Submit
+            // Submit Button
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF233E99),
+                  foregroundColor: Colors.white, // <--- ADD THIS FUCKER so text is white
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: loading ? null : addProduct,
-                child: loading ? const CircularProgressIndicator(color: Colors.white) : const Text("Add Product", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                  "Submit Product",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
