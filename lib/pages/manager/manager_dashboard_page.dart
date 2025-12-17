@@ -18,8 +18,17 @@ class ManagerDashboardPage extends StatelessWidget {
         children: const [
           _HeaderSection(),
           SizedBox(height: 25),
+<<<<<<< HEAD
           _TotalProductsCard(),
           SizedBox(height: 20),
+=======
+
+          // 2. Pie Chart Card (REAL DATA NOW)
+          _TotalProductsCard(),
+          SizedBox(height: 20),
+
+          // 3. Bar Chart Card (Masih Dummy - Nanti kita fix kalau kau nak)
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
           _TotalSalesCard(),
           SizedBox(height: 80),
         ],
@@ -57,6 +66,11 @@ class _HeaderSection extends StatelessWidget {
 
         if (snapshot.hasData && snapshot.data!.exists) {
           var data = snapshot.data!.data() as Map<String, dynamic>;
+<<<<<<< HEAD
+=======
+
+          // DATA DARI GAMBAR DATABASE ANDA:
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
           displayUsername = data['username'] ?? user.email ?? "User";
           photoUrl = data['profilePictureUrl'];
         }
@@ -84,6 +98,7 @@ class _HeaderSection extends StatelessWidget {
               ),
             ),
             const Spacer(),
+<<<<<<< HEAD
 
             /// 🔔 NOTIFICATION BUTTON
             IconButton(
@@ -102,6 +117,10 @@ class _HeaderSection extends StatelessWidget {
                 );
               },
             ),
+=======
+            // Ikon Hiasan
+            const Icon(Icons.notifications_none, size: 24, color: Colors.black87),
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
           ],
         );
       },
@@ -109,7 +128,11 @@ class _HeaderSection extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
 // ───────────────────────────── PIE CHART ─────────────────────────────
+=======
+// --- WIDGET PIE CHART (FIXED COLORS) ---
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
 class _TotalProductsCard extends StatelessWidget {
   const _TotalProductsCard();
 
@@ -122,15 +145,22 @@ class _TotalProductsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
+<<<<<<< HEAD
             color: Colors.grey.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
+=======
+              color: Colors.grey.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 5))
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+<<<<<<< HEAD
           const Text(
             "Total Products",
             style: TextStyle(
@@ -200,19 +230,121 @@ class _TotalProductsCard extends StatelessWidget {
                           titleStyle: _pieText,
                         ),
                       ],
+=======
+          const Text("Total Products",
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black54)),
+          const SizedBox(height: 20),
+
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('products').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(child: Text("No products found."));
+              }
+
+              // 1. KIRA DATA
+              Map<String, int> categoryCount = {};
+              int totalProducts = snapshot.data!.docs.length;
+
+              for (var doc in snapshot.data!.docs) {
+                var data = doc.data() as Map<String, dynamic>;
+                String subCat = data['subCategory'] ?? 'Others';
+
+                if (categoryCount.containsKey(subCat)) {
+                  categoryCount[subCat] = categoryCount[subCat]! + 1;
+                } else {
+                  categoryCount[subCat] = 1;
+                }
+              }
+
+              // 2. DEFINISI PALETTE WARNA (Fixed & Distinct)
+              // Ni senarai warna yang confirm tak sama. Dia akan pusing balik ke atas kalau category terlalu banyak.
+              final List<Color> distinctColors = [
+                const Color(0xFF1E3A8A), // Biru Gelap
+                const Color(0xFFEF5350), // Merah
+                const Color(0xFF66BB6A), // Hijau Terang
+                const Color(0xFFFFD54F), // Kuning
+                const Color(0xFFAB47BC), // Purple
+                const Color(0xFF26C6DA), // Cyan
+                const Color(0xFFFF7043), // Oren
+                const Color(0xFF8D6E63), // Coklat
+                const Color(0xFF78909C), // Kelabu Biru
+                const Color(0xFFEC407A), // Pink
+              ];
+
+              List<PieChartSectionData> chartSections = [];
+              List<Widget> legendItems = [];
+
+              int colorIndex = 0; // Kita pakai index ni untuk assign warna
+
+              categoryCount.forEach((key, value) {
+                final double percentage = (value / totalProducts) * 100;
+
+                // Logic pick color ikut giliran, bukan random
+                final Color sectionColor = distinctColors[colorIndex % distinctColors.length];
+
+                chartSections.add(
+                  PieChartSectionData(
+                    color: sectionColor,
+                    value: value.toDouble(),
+                    title: "${percentage.toStringAsFixed(0)}%",
+                    radius: 65,
+                    titleStyle: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                  ),
+                );
+
+                legendItems.add(_LegendItem(color: sectionColor, text: key));
+
+                colorIndex++; // Next category pakai next color
+              });
+
+              return Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: legendItems,
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
                     ),
                   ),
-                ),
-              ),
-            ],
+                  Expanded(
+                    flex: 5,
+                    child: SizedBox(
+                      height: 140,
+                      child: PieChart(
+                        PieChartData(
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 0,
+                          sections: chartSections,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
   }
+<<<<<<< HEAD
 
   static const TextStyle _pieText =
   TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white);
+=======
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
 }
 
 class _LegendItem extends StatelessWidget {
@@ -237,7 +369,11 @@ class _LegendItem extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
 // ───────────────────────────── BAR CHART ─────────────────────────────
+=======
+// --- WIDGET BAR CHART (STATIC / DUMMY) ---
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
 class _TotalSalesCard extends StatelessWidget {
   const _TotalSalesCard();
 
@@ -250,15 +386,22 @@ class _TotalSalesCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
+<<<<<<< HEAD
             color: Colors.grey.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
+=======
+              color: Colors.grey.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 5))
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+<<<<<<< HEAD
           const Text(
             "Total Sales",
             style: TextStyle(
@@ -267,6 +410,13 @@ class _TotalSalesCard extends StatelessWidget {
               color: Colors.black54,
             ),
           ),
+=======
+          const Text("Total Sales",
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black54)),
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
           const SizedBox(height: 30),
           AspectRatio(
             aspectRatio: 1.4,
@@ -276,6 +426,7 @@ class _TotalSalesCard extends StatelessWidget {
                 maxY: 3000,
                 barTouchData: BarTouchData(enabled: false),
                 gridData: FlGridData(
+<<<<<<< HEAD
                   show: true,
                   drawVerticalLine: false,
                 ),
@@ -314,6 +465,73 @@ class _TotalSalesCard extends StatelessWidget {
                       )
                     ],
                   ),
+=======
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                        color: Colors.grey[200],
+                        strokeWidth: 1,
+                        dashArray: [5, 5])),
+                titlesData: FlTitlesData(
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 35,
+                          interval: 1000,
+                          getTitlesWidget: (value, meta) => Text(
+                              value.toInt().toString(),
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 10)))),
+                  bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (value, meta) {
+                            switch (value.toInt()) {
+                              case 0:
+                                return const Padding(
+                                    padding: EdgeInsets.only(top: 8),
+                                    child: Text("21 Nov",
+                                        style: TextStyle(fontSize: 10)));
+                              case 1:
+                                return const Padding(
+                                    padding: EdgeInsets.only(top: 8),
+                                    child: Text("22 Nov",
+                                        style: TextStyle(fontSize: 10)));
+                              case 2:
+                                return const Padding(
+                                    padding: EdgeInsets.only(top: 8),
+                                    child: Text("23 Nov",
+                                        style: TextStyle(fontSize: 10)));
+                            }
+                            return const Text("");
+                          })),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: [
+                  BarChartGroupData(x: 0, barRods: [
+                    BarChartRodData(
+                        toY: 1875,
+                        color: const Color(0xFF1E3A8A),
+                        width: 40,
+                        borderRadius: BorderRadius.circular(4))
+                  ]),
+                  BarChartGroupData(x: 1, barRods: [
+                    BarChartRodData(
+                        toY: 2500,
+                        color: const Color(0xFF1E3A8A),
+                        width: 40,
+                        borderRadius: BorderRadius.circular(4))
+                  ]),
+                  BarChartGroupData(x: 2, barRods: [
+                    BarChartRodData(
+                        toY: 1250,
+                        color: const Color(0xFF1E3A8A),
+                        width: 40,
+                        borderRadius: BorderRadius.circular(4))
+                  ]),
+>>>>>>> 0016de6576aaee886269ef4056cfdfee76d3c978
                 ],
               ),
             ),

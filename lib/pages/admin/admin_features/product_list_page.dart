@@ -1,9 +1,11 @@
+// File: product_list_page.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'product_add_page.dart';
 import 'product_edit_page.dart';
-import 'product_delete_page.dart';
+import 'product_delete_dialog.dart';
+import '../../Features_app/barcode_scanner_page.dart'; // Ensure this file exists!
 
 /// --------------------
 /// Product List Item
@@ -32,8 +34,6 @@ class ProductListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool outOfStock = quantity <= 0;
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -92,6 +92,8 @@ class ProductListPage extends StatefulWidget {
 class _ProductListPageState extends State<ProductListPage> {
   String _selectedCategory = 'ALL';
   int _currentIndex = 0;
+  String _searchText = '';
+  final TextEditingController _searchController = TextEditingController();
 
   final List<String> _categories = [
     'ALL',
@@ -100,23 +102,35 @@ class _ProductListPageState extends State<ProductListPage> {
     'PERSONAL CARE',
   ];
 
-  /// 🔥 FIXED QUERY (NO orderBy)
+  /// 🔥 Product stream based on category
   Stream<QuerySnapshot> get _productStream {
     final collection = FirebaseFirestore.instance.collection("products");
-
     if (_selectedCategory == 'ALL') {
       return collection.snapshots();
     } else {
-      return collection
-          .where('category', isEqualTo: _selectedCategory)
-          .snapshots();
+      return collection.where('category', isEqualTo: _selectedCategory).snapshots();
     }
   }
 
+  /// Bottom nav
   void _onBottomNavTap(int index) {
     if (index == 1) return;
     if (index == 0 || index == 2) {
       Navigator.pop(context, index);
+    }
+  }
+
+  /// Barcode scan search
+  Future<void> scanBarcode() async {
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => BarcodeScannerPage()),
+    );
+    if (scanned != null) {
+      setState(() {
+        _searchText = scanned;
+        _searchController.text = scanned;
+      });
     }
   }
 
@@ -125,20 +139,70 @@ class _ProductListPageState extends State<ProductListPage> {
     return Scaffold(
       backgroundColor: Colors.white,
 
-      /// AppBar
+      /// APP BAR
       appBar: AppBar(
-        title: const Text("Products", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        titleSpacing: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(left: 10),
+          child: const Text(
+            "Products",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 26,
+              color: Colors.black,
+            ),
+          ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_box_outlined, color: Color(0xFF233E99), size: 30),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProductAddPage()),
+            ),
+          ),
+        ],
       ),
 
       body: Column(
         children: [
-          /// Dashboard Card (REAL-TIME)
+          /// 🔍 Search Bar with barcode button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchText = value.trim().toLowerCase();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Search product name or barcode...",
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF233E99)),
+                  onPressed: scanBarcode,
+                ),
+              ],
+            ),
+          ),
+
+          /// Dashboard Card (Total Products)
           Padding(
             padding: const EdgeInsets.all(10),
             child: Container(
@@ -150,10 +214,7 @@ class _ProductListPageState extends State<ProductListPage> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection("products").snapshots(),
                 builder: (context, snapshot) {
-                  final count = snapshot.hasData
-                      ? snapshot.data!.docs.length.toString()
-                      : '...';
-
+                  final count = snapshot.hasData ? snapshot.data!.docs.length.toString() : '...';
                   return Row(
                     children: [
                       const Icon(Icons.inventory, color: Colors.white, size: 30),
@@ -178,7 +239,7 @@ class _ProductListPageState extends State<ProductListPage> {
             ),
           ),
 
-          /// Category Filters + Add Button
+          /// Category filters
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             child: SingleChildScrollView(
@@ -193,9 +254,7 @@ class _ProductListPageState extends State<ProductListPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         margin: const EdgeInsets.only(right: 6),
                         decoration: BoxDecoration(
-                          color: selected
-                              ? const Color(0xFF233E99)
-                              : Colors.grey.shade400,
+                          color: selected ? const Color(0xFF233E99) : Colors.grey.shade400,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -208,21 +267,6 @@ class _ProductListPageState extends State<ProductListPage> {
                       ),
                     );
                   }),
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ProductAddPage()),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.add_box_outlined,
-                          color: Color(0xFF233E99)),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -240,7 +284,15 @@ class _ProductListPageState extends State<ProductListPage> {
                   return const Center(child: Text("No products found"));
                 }
 
-                final docs = snapshot.data!.docs;
+                final docs = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['productName'] ?? '').toString().toLowerCase();
+                  final barcode = (data['barcodeNo'] ?? '').toString();
+                  final searchText = _searchText.toLowerCase();
+                  return name.contains(searchText) || barcode.contains(searchText);
+                }).toList();
+
+                if (docs.isEmpty) return const Center(child: Text("No matching products"));
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -248,7 +300,6 @@ class _ProductListPageState extends State<ProductListPage> {
                   itemBuilder: (context, index) {
                     final doc = docs[index];
                     final product = doc.data() as Map<String, dynamic>;
-
                     return ProductListItem(
                       productName: product['productName'] ?? '',
                       category: product['category'] ?? '',
@@ -265,15 +316,22 @@ class _ProductListPageState extends State<ProductListPage> {
                           ),
                         ),
                       ),
-                      onDelete: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ProductDeletePage(
+                      onDelete: () async {
+                        final deleted = await showDialog<bool>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => ProductDeleteDialog(
                             productId: doc.id,
                             productData: product,
                           ),
-                        ),
-                      ),
+                        );
+
+                        if (deleted == true && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Product deleted')),
+                          );
+                        }
+                      },
                     );
                   },
                 );
@@ -291,7 +349,7 @@ class _ProductListPageState extends State<ProductListPage> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
+          BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Features'),
           BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'),
         ],
       ),

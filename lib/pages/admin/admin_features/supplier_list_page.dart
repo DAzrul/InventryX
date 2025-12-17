@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'supplier_add_page.dart';
+import 'supplier_edit_page.dart';
+import 'supplier_delete_dialog.dart';
 
+/// ---------------- SUPPLIER LIST ITEM ----------------
 class SupplierListItem extends StatelessWidget {
   final String supplierName;
   final String phone;
   final String email;
-  final String status;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -14,16 +17,12 @@ class SupplierListItem extends StatelessWidget {
     required this.supplierName,
     required this.phone,
     required this.email,
-    required this.status,
     required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool isActive = status == 'Active';
-    final Color statusColor = isActive ? Colors.green : Colors.red;
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -35,6 +34,8 @@ class SupplierListItem extends StatelessWidget {
           ],
         ),
         child: ListTile(
+          contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           leading: CircleAvatar(
             backgroundColor: Colors.blueGrey.shade100,
             child: const Icon(Icons.store, color: Colors.black54),
@@ -45,37 +46,22 @@ class SupplierListItem extends StatelessWidget {
           ),
           subtitle: Text(
             "Phone: $phone\nEmail: $email",
+            style: const TextStyle(fontSize: 13),
           ),
-          trailing: SizedBox(
-            width: 120,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
-                  onPressed: onEdit,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: onDelete,
-                ),
-              ],
-            ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined,
+                    color: Colors.blueGrey, size: 20),
+                onPressed: onEdit,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline,
+                    color: Colors.red, size: 20),
+                onPressed: onDelete,
+              ),
+            ],
           ),
         ),
       ),
@@ -83,7 +69,7 @@ class SupplierListItem extends StatelessWidget {
   }
 }
 
-// ---------------- SUPPLIER LIST PAGE ----------------
+/// ---------------- SUPPLIER LIST PAGE ----------------
 class SupplierListPage extends StatefulWidget {
   const SupplierListPage({super.key});
 
@@ -92,19 +78,38 @@ class SupplierListPage extends StatefulWidget {
 }
 
 class _SupplierListPageState extends State<SupplierListPage> {
-  int _currentIndex = 0;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchText = '';
 
-  Stream<QuerySnapshot> get _supplierStream {
-    return FirebaseFirestore.instance
-        .collection("supplier")
-        .snapshots();
-  }
+  Stream<QuerySnapshot> get _supplierStream =>
+      FirebaseFirestore.instance.collection("supplier").snapshots();
 
-  void _onBottomNavTap(int index) {
-    if (index == 1) return;
-    if (index == 0 || index == 2) {
-      Navigator.pop(context, index);
-    }
+  void _confirmDelete(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Supplier"),
+        content:
+        const Text("Are you sure you want to delete this supplier?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await FirebaseFirestore.instance
+                  .collection("supplier")
+                  .doc(id)
+                  .delete();
+              Navigator.pop(context);
+            },
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -112,25 +117,59 @@ class _SupplierListPageState extends State<SupplierListPage> {
     return Scaffold(
       backgroundColor: Colors.white,
 
-      /// AppBar
+      /// APP BAR
       appBar: AppBar(
-        title: const Text(
-          "Suppliers",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        titleSpacing: 0, // make title start a little to the left
+        title: Padding(
+          padding: const EdgeInsets.only(left: 10), // shift title slightly left
+          child: const Text(
+            "Suppliers",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 26, // make it bigger
+              color: Colors.black,
+            ),
+          ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_box_outlined, color: Color(0xFF233E99), size: 30),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SupplierAddPage()),
+            ),
+          ),
+        ],
       ),
+
 
       body: Column(
         children: [
-          /// Dashboard Card (TOTAL SUPPLIERS)
+          /// 🔍 SEARCH BAR
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) =>
+                  setState(() => _searchText = v.toLowerCase()),
+              decoration: InputDecoration(
+                hintText: "Search supplier name or phone...",
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+
+          /// DASHBOARD CARD
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -138,31 +177,27 @@ class _SupplierListPageState extends State<SupplierListPage> {
                 borderRadius: BorderRadius.circular(15),
               ),
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("supplier")
-                    .snapshots(),
+                stream: _supplierStream,
                 builder: (context, snapshot) {
                   final count = snapshot.hasData
                       ? snapshot.data!.docs.length.toString()
                       : "...";
-
                   return Row(
                     children: [
-                      const Icon(Icons.store, color: Colors.white, size: 30),
+                      const Icon(Icons.store,
+                          color: Colors.white, size: 30),
                       const SizedBox(width: 10),
                       Text(
                         count,
                         style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
                       ),
                       const Spacer(),
-                      const Text(
-                        "Total Suppliers",
-                        style: TextStyle(fontSize: 16, color: Colors.white70),
-                      ),
+                      const Text("Total Suppliers",
+                          style:
+                          TextStyle(color: Colors.white70)),
                     ],
                   );
                 },
@@ -170,57 +205,75 @@ class _SupplierListPageState extends State<SupplierListPage> {
             ),
           ),
 
-          /// Supplier List
+          /// SUPPLIER LIST
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _supplierStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) {
+                  return const Center(
+                      child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+
+                final docs = snapshot.data!.docs.where((doc) {
+                  final d = doc.data() as Map<String, dynamic>;
+                  final name =
+                  (d['supplierName'] ?? '').toString().toLowerCase();
+                  final phone =
+                  (d['contactNo'] ?? '').toString().toLowerCase();
+                  return name.contains(_searchText) ||
+                      phone.contains(_searchText);
+                }).toList();
+
+                if (docs.isEmpty) {
                   return const Center(child: Text("No suppliers found"));
                 }
 
-                final docs = snapshot.data!.docs;
-
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final doc = docs[index];
-                    final supplier = doc.data() as Map<String, dynamic>;
+                    final s =
+                    doc.data() as Map<String, dynamic>;
 
                     return SupplierListItem(
-                      supplierName: supplier['supplierName'] ?? '',
-                      phone: supplier['contactNo'] ?? '',
-                      email: supplier['email'] ?? '',
-                      status: supplier['status'] ?? 'Inactive',
-                      onEdit: () {
-                        // TODO: SupplierEditPage
-                      },
-                      onDelete: () {
-                        // TODO: SupplierDeletePage
-                      },
+                      supplierName: s['supplierName'],
+                      phone: s['contactNo'],
+                      email: s['email'],
+                      onEdit: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SupplierEditPage(
+                            supplierId: doc.id,
+                            supplierData: s,
+                          ),
+                        ),
+                      ),
+                      onDelete: () async {
+                        final deleted = await showDialog<bool>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) =>
+                              SupplierDeleteDialog(
+                                supplierId: doc.id,
+                                supplierData: s,
+                              ),
+                        );
+
+                        if (deleted == true && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Supplier deleted')),
+                          );
+                        }
+                      }
                     );
                   },
                 );
               },
             ),
           ),
-        ],
-      ),
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onBottomNavTap,
-        selectedItemColor: const Color(0xFF233E99),
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Features'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outlined), label: 'Profile'),
         ],
       ),
     );

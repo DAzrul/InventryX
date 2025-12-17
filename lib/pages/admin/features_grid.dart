@@ -5,8 +5,8 @@ import 'package:inventryx/pages/admin/admin_features/supplier_list_page.dart';
 // Import halaman-halaman destinasi
 import '../Profile/User_profile_page.dart';
 import '../Features_app/report_page.dart';
-import 'admin_features/dummy_pages.dart';
 import 'admin_features/product_list_page.dart';
+import 'admin_features/supplier_list_page.dart';
 
 
 // Widget Reusable untuk setiap ikon Features
@@ -42,7 +42,7 @@ class FeaturesGrid extends StatelessWidget {
 
   const FeaturesGrid({super.key, required this.loggedInUsername});
 
-  @override
+  @override 
   Widget build(BuildContext context) {
     return Column(
       children: [

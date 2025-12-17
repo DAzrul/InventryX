@@ -1,14 +1,128 @@
+// File: staff_dashboard_page.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../Features_app/barcode_scanner_page.dart'; // Ensure this file exists!
 
 class StaffDashboardPage extends StatelessWidget {
   final String username;
 
   const StaffDashboardPage({super.key, required this.username});
 
+  // --- LOGIC: SCAN & CHECK STOCK ---
+  Future<void> _handleScanAndCheck(BuildContext context) async {
+    // 1. Open Scanner Page
+    final scannedCode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => BarcodeScannerPage()),
+    );
+
+    // If user cancels or backs out, stop right there
+    if (scannedCode == null) return;
+
+    // 2. Show Loading Indicator because Firebase takes a second
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    try {
+      // 3. Convert string barcode to int (since DB stores it as number)
+      int? barcodeInt = int.tryParse(scannedCode);
+
+      // 4. Hunt for the product in Firestore
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where('barcodeNo', isEqualTo: barcodeInt)
+          .limit(1)
+          .get();
+
+      // Close the loading spinner
+      if (context.mounted) Navigator.pop(context);
+
+      if (snapshot.docs.isNotEmpty) {
+        // --- PRODUCT FOUND ---
+        final data = snapshot.docs.first.data();
+        if (context.mounted) _showProductDetails(context, data);
+      } else {
+        // --- PRODUCT MISSING ---
+        if (context.mounted) _showNotFoundDialog(context, scannedCode);
+      }
+    } catch (e) {
+      // If shit hits the fan (network error, etc)
+      if (context.mounted) {
+        Navigator.pop(context); // Close loader
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error checking stock: $e"))
+        );
+      }
+    }
+  }
+
+  // Popup when product is FOUND
+  void _showProductDetails(BuildContext context, Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(data['productName'] ?? "Unknown Product"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image (If it exists)
+            if (data['imageUrl'] != null && data['imageUrl'].toString().isNotEmpty)
+              Container(
+                height: 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  image: DecorationImage(image: NetworkImage(data['imageUrl']), fit: BoxFit.cover),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            const SizedBox(height: 15),
+            Text("Category: ${data['category'] ?? '-'}"),
+            Text("Sub-Category: ${data['subCategory'] ?? '-'}"),
+            const SizedBox(height: 8),
+            Text("Price: RM ${data['price']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 15),
+            const Divider(),
+            // Placeholder for Quantity Logic
+            const Text("Stock Status:", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("✅ Item exists in Database", style: TextStyle(color: Colors.green)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Popup when product is NOT FOUND
+  void _showNotFoundDialog(BuildContext context, String code) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Not Found"),
+        content: Text("No product found with barcode: $code"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Warna biru gelap tepat dari gambar
+    // That specific dark blue from your design
     final Color primaryBlue = const Color(0xFF203288);
 
     return SingleChildScrollView(
@@ -16,7 +130,7 @@ class StaffDashboardPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. HEADER (Profile dari Firebase & Bell)
+          // 1. HEADER (Profile from Firebase & Bell)
           _buildHeaderSection(),
 
           const SizedBox(height: 30),
@@ -26,7 +140,7 @@ class StaffDashboardPage extends StatelessWidget {
             children: [
               _buildStatCard(
                 icon: Icons.arrow_circle_down_outlined,
-                count: "14 Items",
+                count: "14 Items", // You can make this dynamic later
                 label: "Low Stock",
               ),
               const SizedBox(width: 16),
@@ -47,13 +161,13 @@ class StaffDashboardPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // BUTTON 1
+          // BUTTON 1: SCANNER LINKED HERE
           _buildQuickActionButton(
             title: "Scan Item/ Check Stock",
-            subtitle: "Scan barcode to view details & qty",
+            subtitle: "Scan barcode to view details",
             icon: Icons.qr_code_scanner,
             color: primaryBlue,
-            onTap: () {},
+            onTap: () => _handleScanAndCheck(context), // <--- THE MAGIC HAPPENS HERE
           ),
 
           const SizedBox(height: 16),
@@ -64,7 +178,10 @@ class StaffDashboardPage extends StatelessWidget {
             subtitle: "Key-in sales data to deduct inventory",
             icon: Icons.note_add_outlined,
             color: primaryBlue,
-            onTap: () {},
+            onTap: () {
+              // Add navigation to sales page later
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sales feature coming soon!")));
+            },
           ),
 
           const SizedBox(height: 30),
@@ -106,26 +223,22 @@ class StaffDashboardPage extends StatelessWidget {
     );
   }
 
-  // --- WIDGET HEADER BARU (FIREBASE LINKED) ---
+  // --- WIDGET HELPERS ---
+
   Widget _buildHeaderSection() {
     return StreamBuilder<QuerySnapshot>(
-      // Query Firebase cari user berdasarkan username
       stream: FirebaseFirestore.instance
           .collection('users')
           .where('username', isEqualTo: username)
           .limit(1)
           .snapshots(),
       builder: (context, snapshot) {
-        // Default values (semantara loading atau jika error)
         String displayName = username.isNotEmpty ? username : "Staff";
         String? photoUrl;
 
-        // Jika data berjaya diambil
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-          // Ambil nama sebenar jika ada, atau guna username
           displayName = data['username'] ?? displayName;
-          // Ambil URL gambar
           photoUrl = data['profilePictureUrl'];
         }
 
@@ -134,15 +247,14 @@ class StaffDashboardPage extends StatelessWidget {
           children: [
             Row(
               children: [
-                // LOGIK GAMBAR PROFIL
                 CircleAvatar(
                   radius: 22,
                   backgroundColor: Colors.grey[200],
                   backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
-                      ? NetworkImage(photoUrl) // Guna gambar dari Firebase
+                      ? NetworkImage(photoUrl)
                       : null,
                   child: (photoUrl == null || photoUrl.isEmpty)
-                      ? const Icon(Icons.person, color: Colors.grey) // Default ikon jika tiada gambar
+                      ? const Icon(Icons.person, color: Colors.grey)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -166,7 +278,6 @@ class StaffDashboardPage extends StatelessWidget {
     );
   }
 
-  // Widget: Stats Card
   Widget _buildStatCard({required IconData icon, required String count, required String label}) {
     return Expanded(
       child: Container(
@@ -202,7 +313,6 @@ class StaffDashboardPage extends StatelessWidget {
     );
   }
 
-  // Widget: Quick Action Button
   Widget _buildQuickActionButton({
     required String title,
     required String subtitle,
@@ -250,7 +360,6 @@ class StaffDashboardPage extends StatelessWidget {
     );
   }
 
-  // Widget: Activity Item
   Widget _buildActivityItem({
     required String title,
     required String subtitle,

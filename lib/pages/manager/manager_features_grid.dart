@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../Features_app/report_page.dart';
 
 class _ManagerFeatureIcon extends StatelessWidget {
   final IconData icon;
@@ -89,7 +90,10 @@ class ManagerFeaturesGrid extends StatelessWidget {
               label: "Report",
               onTap: () {
                 Navigator.pop(context);
-                // Navigate...
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ReportPage())
+                );
               },
             ),
           ],
