@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'product_add_page.dart';
 import 'product_edit_page.dart';
 import 'product_delete_dialog.dart';
-import 'barcode_scanner_page.dart'; // your scanner page
+import '../../Features_app/barcode_scanner_page.dart'; // Ensure this file exists!
 
 /// --------------------
 /// Product List Item

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'barcode_scanner_page.dart'; // the scanner page we made earlier
+import '../../Features_app/barcode_scanner_page.dart'; // Ensure this file exists!
 import 'product_list_page.dart';
 
 class ProductAddPage extends StatefulWidget {
