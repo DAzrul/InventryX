@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'supplier_add_page.dart';
+import 'supplier_edit_page.dart';
+import 'supplier_delete_page.dart';
+
 class SupplierListItem extends StatelessWidget {
   final String supplierName;
   final String phone;
   final String email;
-  final String status;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -14,15 +17,12 @@ class SupplierListItem extends StatelessWidget {
     required this.supplierName,
     required this.phone,
     required this.email,
-    required this.status,
     required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool isActive = status == 'Active';
-    final Color statusColor = isActive ? Colors.green : Colors.red;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -54,16 +54,7 @@ class SupplierListItem extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
                   ),
                 ),
                 IconButton(
@@ -195,7 +186,6 @@ class _SupplierListPageState extends State<SupplierListPage> {
                       supplierName: supplier['supplierName'] ?? '',
                       phone: supplier['contactNo'] ?? '',
                       email: supplier['email'] ?? '',
-                      status: supplier['status'] ?? 'Inactive',
                       onEdit: () {
                         // TODO: SupplierEditPage
                       },
