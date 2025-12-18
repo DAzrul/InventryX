@@ -15,6 +15,9 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage>
 
   late AnimationController _lineController;
 
+  static const double frameWidth = 300;
+  static const double frameHeight = 180;
+
   @override
   void initState() {
     super.initState();
@@ -33,15 +36,17 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage>
 
   @override
   Widget build(BuildContext context) {
-    const frameWidth = 300.0;
-    const frameHeight = 180.0;
-
     return Scaffold(
       backgroundColor: Colors.black,
+
       appBar: AppBar(
-        title: const Text('Scan Barcode'),
         backgroundColor: Colors.black,
         elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Barcode Scanner',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.flash_on),
@@ -53,67 +58,76 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage>
           ),
         ],
       ),
+
       body: Stack(
         alignment: Alignment.center,
         children: [
-          /// Camera
+
+          /// CAMERA
           MobileScanner(
             controller: cameraController,
             onDetect: (capture) {
-              final barcodes = capture.barcodes;
-              if (!_scanned && barcodes.isNotEmpty) {
+              if (_scanned) return;
+
+              final barcode = capture.barcodes.firstOrNull?.rawValue;
+              if (barcode != null && barcode.isNotEmpty) {
                 _scanned = true;
-                final code = barcodes.first.rawValue ?? '';
-                if (code.isNotEmpty) {
-                  Navigator.pop(context, code);
-                }
+                Navigator.pop(context, barcode);
               }
             },
           ),
 
-          /// Overlay
-          Container(
-            color: Colors.black.withOpacity(0.6),
+          /// DARK OVERLAY WITH CUT-OUT
+          CustomPaint(
+            size: Size.infinite,
+            painter: ScannerOverlayPainter(
+              frameWidth: frameWidth,
+              frameHeight: frameHeight,
+            ),
           ),
 
-          /// Transparent scan frame area
+          /// SCAN FRAME
           Center(
             child: SizedBox(
               width: frameWidth,
               height: frameHeight,
               child: Stack(
                 children: [
-                  /// Transparent center
+
+                  /// FRAME BORDER
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white,
-                        width: 2,
+                        color: Colors.white.withOpacity(0.9),
+                        width: 1.5,
                       ),
                     ),
                   ),
 
-                  /// Animated scan line
+                  /// SCAN LINE
                   Positioned.fill(
                     child: AnimatedBuilder(
                       animation: _lineController,
-                      builder: (context, child) {
+                      builder: (_, __) {
                         return Align(
                           alignment: Alignment(0, _lineController.value * 2 - 1),
                           child: Container(
-                            height: 3,
-                            width: double.infinity,
+                            height: 2.5,
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.redAccent.withOpacity(0.8),
+                                  blurRadius: 12,
+                                  spreadRadius: 2,
+                                )
+                              ],
+                              gradient: const LinearGradient(
                                 colors: [
-                                  Colors.redAccent.withOpacity(0),
+                                  Colors.transparent,
                                   Colors.redAccent,
-                                  Colors.redAccent.withOpacity(0)
+                                  Colors.transparent,
                                 ],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
                               ),
                             ),
                           ),
@@ -122,45 +136,57 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage>
                     ),
                   ),
 
-                  /// Corner highlights
+                  /// CORNERS
                   ..._buildCorners(),
                 ],
               ),
             ),
           ),
 
-          /// Hint Text
+          /// TITLE & HINT
           Positioned(
-            top: 100,
-            child: const Text(
-              "Align the barcode within the frame",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
+            top: 110,
+            child: Column(
+              children: const [
+                Text(
+                  "Scan Barcode",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  "Align barcode inside the frame",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
 
-          /// Bottom info card
+          /// BOTTOM INFO
           Positioned(
             bottom: 30,
             left: 20,
             right: 20,
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: const [
-                  Icon(Icons.qr_code_scanner, color: Colors.white, size: 28),
+                  Icon(Icons.qr_code_scanner, color: Colors.white, size: 26),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      "Scanning will auto-detect the barcode",
-                      style: TextStyle(color: Colors.white, fontSize: 14),
+                      "Barcode will be detected automatically",
+                      style: TextStyle(color: Colors.white70),
                     ),
                   ),
                 ],
@@ -172,72 +198,75 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage>
     );
   }
 
+  /// FRAME CORNERS
   List<Widget> _buildCorners() {
-    const cornerSize = 20.0;
-    const borderWidth = 4.0;
-    const borderColor = Colors.redAccent;
+    const double size = 22;
+    const double width = 4;
 
     return [
-      // Top-left
-      Positioned(
-        top: 0,
-        left: 0,
-        child: Container(
-          width: cornerSize,
-          height: cornerSize,
-          decoration: const BoxDecoration(
-            border: Border(
-              top: BorderSide(color: borderColor, width: borderWidth),
-              left: BorderSide(color: borderColor, width: borderWidth),
-            ),
-          ),
-        ),
-      ),
-      // Top-right
-      Positioned(
-        top: 0,
-        right: 0,
-        child: Container(
-          width: cornerSize,
-          height: cornerSize,
-          decoration: const BoxDecoration(
-            border: Border(
-              top: BorderSide(color: borderColor, width: borderWidth),
-              right: BorderSide(color: borderColor, width: borderWidth),
-            ),
-          ),
-        ),
-      ),
-      // Bottom-left
-      Positioned(
-        bottom: 0,
-        left: 0,
-        child: Container(
-          width: cornerSize,
-          height: cornerSize,
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: borderColor, width: borderWidth),
-              left: BorderSide(color: borderColor, width: borderWidth),
-            ),
-          ),
-        ),
-      ),
-      // Bottom-right
-      Positioned(
-        bottom: 0,
-        right: 0,
-        child: Container(
-          width: cornerSize,
-          height: cornerSize,
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: borderColor, width: borderWidth),
-              right: BorderSide(color: borderColor, width: borderWidth),
-            ),
-          ),
-        ),
-      ),
-    ];
+      _corner(Alignment.topLeft, Border(
+        top: BorderSide(color: Colors.redAccent, width: width),
+        left: BorderSide(color: Colors.redAccent, width: width),
+      )),
+      _corner(Alignment.topRight, Border(
+        top: BorderSide(color: Colors.redAccent, width: width),
+        right: BorderSide(color: Colors.redAccent, width: width),
+      )),
+      _corner(Alignment.bottomLeft, Border(
+        bottom: BorderSide(color: Colors.redAccent, width: width),
+        left: BorderSide(color: Colors.redAccent, width: width),
+      )),
+      _corner(Alignment.bottomRight, Border(
+        bottom: BorderSide(color: Colors.redAccent, width: width),
+        right: BorderSide(color: Colors.redAccent, width: width),
+      )),
+    ].map((e) => Positioned.fill(child: e)).toList();
   }
+
+  Widget _corner(Alignment align, Border border) {
+    return Align(
+      alignment: align,
+      child: Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(border: border),
+      ),
+    );
+  }
+}
+
+/// OVERLAY PAINTER WITH CUT-OUT
+class ScannerOverlayPainter extends CustomPainter {
+  final double frameWidth;
+  final double frameHeight;
+
+  ScannerOverlayPainter({
+    required this.frameWidth,
+    required this.frameHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black.withOpacity(0.65);
+
+    final fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    final holeRect = Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: frameWidth,
+      height: frameHeight,
+    );
+
+    final path = Path()
+      ..addRect(fullRect)
+      ..addRRect(
+        RRect.fromRectAndRadius(holeRect, const Radius.circular(14)),
+      )
+      ..fillType = PathFillType.evenOdd;
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
