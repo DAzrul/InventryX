@@ -57,11 +57,48 @@ class _ProductAddPageState extends State<ProductAddPage> {
   }
 
   Future<void> pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      setState(() => pickedImage = File(picked.path));
-    }
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            "Select Image Source",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Color(0xFF233E99)),
+                title: const Text("Take Photo"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final picked = await ImagePicker().pickImage(
+                      source: ImageSource.camera, imageQuality: 80);
+                  if (picked != null) {
+                    setState(() => pickedImage = File(picked.path));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFF233E99)),
+                title: const Text("Choose from Gallery"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery, imageQuality: 80);
+                  if (picked != null) {
+                    setState(() => pickedImage = File(picked.path));
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
+
 
   Future<String?> uploadImage(File file) async {
     final fileName = DateTime.now().millisecondsSinceEpoch.toString();
@@ -177,106 +214,227 @@ class _ProductAddPageState extends State<ProductAddPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Add Product"), backgroundColor: Colors.white, foregroundColor: Colors.black),
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Add New Product", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
 
-            // Product Image
+      appBar: AppBar(
+        title: const Text(
+          "Add Product",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
+
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+
+            /// ===== IMAGE CARD =====
             GestureDetector(
               onTap: pickImage,
               child: Container(
-                height: 150,
+                height: 180,
                 width: double.infinity,
                 decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(15),
                   border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(10),
-                  image: pickedImage != null ? DecorationImage(image: FileImage(pickedImage!), fit: BoxFit.cover) : null,
+                  image: pickedImage != null
+                      ? DecorationImage(
+                    image: FileImage(pickedImage!),
+                    fit: BoxFit.cover,
+                  )
+                      : null,
                 ),
-                child: pickedImage == null
-                    ? const Center(child: Icon(Icons.image, size: 50, color: Colors.grey))
-                    : null,
+                child: pickedImage != null && File(pickedImage!.path).existsSync()
+                    ? ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: Image.file(
+                    pickedImage!,
+                    width: double.infinity,
+                    height: 180,
+                    fit: BoxFit.cover, // fill the container nicely
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Text(
+                          "Failed to load image",
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      );
+                    },
+                  ),
+                )
+                    : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.image_outlined, size: 50, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text("Tap to add product image",
+                        style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 15),
 
-            // Product Name
-            TextField(controller: productNameController, decoration: _inputDecoration("Product Name", Icons.inventory_2_outlined)),
-            const SizedBox(height: 15),
+            const SizedBox(height: 20),
 
-            // Category
-            DropdownButtonFormField<String>(
-              decoration: _dropdownDecoration("Choose Category"),
-              value: selectedCategory,
-              items: categoryMap.keys.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedCategory = value;
-                  selectedSubCategory = null;
-                  subCategories = value != null ? categoryMap[value]! : [];
-                });
-              },
+            /// ===== DETAILS CARD =====
+            _card(
+              child: Column(
+                children: [
+                  _title("Product Details"),
+
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: productNameController,
+                    decoration: _inputDecoration(
+                        "Product Name", Icons.inventory_2_outlined),
+                  ),
+
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Category"),
+                    value: selectedCategory,
+                    items: categoryMap.keys
+                        .map((v) =>
+                        DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedCategory = value;
+                        selectedSubCategory = null;
+                        subCategories =
+                        value != null ? categoryMap[value]! : [];
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Subcategory"),
+                    value: selectedSubCategory,
+                    items: subCategories
+                        .map((v) =>
+                        DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => selectedSubCategory = value),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 15),
 
-            // Subcategory
-            DropdownButtonFormField<String>(
-              decoration: _dropdownDecoration("Choose Subcategory"),
-              value: selectedSubCategory,
-              items: subCategories.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) => setState(() => selectedSubCategory = value),
+            const SizedBox(height: 16),
+
+            /// ===== SUPPLIER & PRICE CARD =====
+            _card(
+              child: Column(
+                children: [
+                  _title("Supplier & Price"),
+
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Supplier"),
+                    value: selectedSupplier,
+                    items: suppliers
+                        .map((v) =>
+                        DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => selectedSupplier = value),
+                  ),
+
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: priceController,
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                    decoration:
+                    _inputDecoration("Price (RM)", Icons.attach_money),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 15),
 
-            // Supplier
-            DropdownButtonFormField<String>(
-              decoration: _dropdownDecoration("Choose Supplier"),
-              value: selectedSupplier,
-              items: suppliers.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) => setState(() => selectedSupplier = value),
+            const SizedBox(height: 16),
+
+            /// ===== BARCODE CARD =====
+            _card(
+              child: Column(
+                children: [
+                  _title("Barcode"),
+
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: barcodeController,
+                          keyboardType: TextInputType.number,
+                          decoration:
+                          _inputDecoration("Barcode", Icons.qr_code),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        icon: const Icon(Icons.qr_code_scanner,
+                            color: Color(0xFF233E99), size: 30),
+                        onPressed: scanBarcode,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 15),
 
-            // Price
-            TextField(controller: priceController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _inputDecoration("Price (RM)", Icons.attach_money_outlined)),
-            const SizedBox(height: 15),
-
-            // Barcode
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(controller: barcodeController, keyboardType: TextInputType.number, decoration: _inputDecoration("Barcode", Icons.qr_code)),
-                ),
-                IconButton(onPressed: scanBarcode, icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF233E99))),
-              ],
-            ),
             const SizedBox(height: 30),
 
-            // Submit Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF233E99),
-                  foregroundColor: Colors.white, // <--- ADD THIS FUCKER so text is white
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: loading ? null : addProduct,
-                child: loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
-                  "Submit Product",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            /// ===== SUBMIT BUTTON =====
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF233E99),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: loading ? null : addProduct,
+            child: loading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text("Submit Product", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _title(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+          color: Color(0xFF233E99),
         ),
       ),
     );
