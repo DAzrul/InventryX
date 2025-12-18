@@ -147,124 +147,132 @@ class _ProductListPageState extends State<ProductListPage> {
   /// PRODUCT DETAIL POPUP
   /// --------------------
   void _showProductDetails(BuildContext context, Map<String, dynamic> data) {
+    final imageUrl = data['imageUrl'];
+    final barcodeNo = data['barcodeNo'];
+
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SingleChildScrollView(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // PRODUCT IMAGE (fits the image format, rounded corners)
-              if (data['imageUrl'] != null && data['imageUrl'].toString().isNotEmpty)
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: AspectRatio(
-                    aspectRatio: 4 / 3, // adjust box to image ratio
-                    child: Image.network(
-                      data['imageUrl'],
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(child: Icon(Icons.image_not_supported)),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // DETAILS SECTION
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // PRODUCT NAME
-                    Text(
-                      data['productName'] ?? "Unknown Product",
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Category & Subcategory
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text("Category: ${data['category'] ?? '-'}"),
-                        Text("Subcategory: ${data['subCategory'] ?? '-'}"),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Supplier
-                    Text("Supplier: ${data['supplier'] ?? '-'}"),
-                    const SizedBox(height: 6),
-
-                    // Barcode & Stock
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text("Barcode: ${data['barcodeNo'] ?? '-'}"),
-                        Text(
-                          "Stock: ${data['quantity'] ?? 0}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: (data['quantity'] ?? 0) > 0 ? Colors.green : Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Price
-                    Text(
-                      "Price: RM ${data['price']?.toStringAsFixed(2) ?? '0.00'}",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF233E99),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // STOCK STATUS
-                    Row(
-                      children: [
-                        const Text("Stock Status: ", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(
-                          (data['quantity'] ?? 0) > 0
-                              ? "✅ Available"
-                              : "❌ Out of stock",
-                          style: TextStyle(
-                            color: (data['quantity'] ?? 0) > 0 ? Colors.green : Colors.red,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // CLOSE BUTTON
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF233E99),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          "Close",
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                      ),
+              // PRODUCT IMAGE (same style)
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  color: Colors.grey.shade100,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
                     ),
                   ],
                 ),
+                clipBehavior: Clip.antiAlias,
+                child: AspectRatio(
+                  aspectRatio: 1, // square image
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _barcodePlaceholder(barcodeNo),
+                  )
+                      : _barcodePlaceholder(barcodeNo),
+                ),
               ),
+              const SizedBox(height: 20),
+
+              // PRODUCT NAME (centered)
+      // DETAILS SECTION
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product Name
+            Text(
+              data['productName'] ?? "Unknown Product",
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+
+            // Category & Subcategory
+            Text("Category: ${data['category'] ?? '-'}"),
+            const SizedBox(height: 6),
+
+            Text("Subcategory: ${data['subCategory'] ?? '-'}"),
+            const SizedBox(height: 6),
+
+            // Supplier
+            Text("Supplier: ${data['supplier'] ?? '-'}"),
+            const SizedBox(height: 6),
+
+            // Barcode & Stock
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Barcode: ${barcodeNo ?? '-'}"),
+                Text(
+                  "Stock: ${data['quantity'] ?? 0}",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: (data['quantity'] ?? 0) > 0 ? Colors.green : Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Price
+            Text(
+              "Price: RM ${data['price']?.toStringAsFixed(2) ?? '0.00'}",
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF233E99),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // STOCK STATUS
+            Row(
+              children: [
+                const Text("Stock Status: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  (data['quantity'] ?? 0) > 0 ? "✅ Available" : "❌ Out of stock",
+                  style: TextStyle(
+                    color: (data['quantity'] ?? 0) > 0 ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // CLOSE BUTTON
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF233E99),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  "Close",
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
             ],
           ),
         ),
@@ -272,6 +280,44 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
+  Widget _detailRow(String title, String? value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$title:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: Text(value ?? '-', style: const TextStyle(color: Colors.black87)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _barcodePlaceholder(dynamic barcodeNo) {
+    return Container(
+      color: Colors.grey.shade100,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.qr_code, size: 50, color: Colors.black38),
+            if (barcodeNo != null)
+              Text(
+                barcodeNo.toString(),
+                style: const TextStyle(fontSize: 14, color: Colors.black38),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
 
   @override

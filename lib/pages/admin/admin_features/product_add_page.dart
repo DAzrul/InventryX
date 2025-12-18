@@ -206,10 +206,35 @@ class _ProductAddPageState extends State<ProductAddPage> {
       context,
       MaterialPageRoute(builder: (_) => BarcodeScannerPage()),
     );
-    if (scanned != null) {
-      setState(() => barcodeController.text = scanned);
+
+    if (scanned == null) return;
+
+    final barcode = int.tryParse(scanned);
+
+    if (barcode == null) {
+      showPopupMessage(
+        "Invalid Barcode",
+        message: "Scanned barcode is not valid.",
+      );
+      return;
     }
+
+    final exists = await _barcodeExists(barcode);
+
+    if (exists) {
+      showPopupMessage(
+        "Barcode Already Exists",
+        message: "This barcode is already registered in the database.",
+      );
+      return;
+    }
+
+    // ✅ Barcode is new → fill the textfield
+    setState(() {
+      barcodeController.text = scanned;
+    });
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +304,37 @@ class _ProductAddPageState extends State<ProductAddPage> {
             ),
 
             const SizedBox(height: 20),
+
+            /// ===== BARCODE CARD =====
+            _card(
+              child: Column(
+                children: [
+                  _title("Barcode"),
+
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: barcodeController,
+                          keyboardType: TextInputType.number,
+                          decoration:
+                          _inputDecoration("Barcode", Icons.qr_code),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        icon: const Icon(Icons.qr_code_scanner,
+                            color: Color(0xFF233E99), size: 30),
+                        onPressed: scanBarcode,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
 
             /// ===== DETAILS CARD =====
             _card(
@@ -353,37 +409,6 @@ class _ProductAddPageState extends State<ProductAddPage> {
                     const TextInputType.numberWithOptions(decimal: true),
                     decoration:
                     _inputDecoration("Price (RM)", Icons.attach_money),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            /// ===== BARCODE CARD =====
-            _card(
-              child: Column(
-                children: [
-                  _title("Barcode"),
-
-                  const SizedBox(height: 15),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: barcodeController,
-                          keyboardType: TextInputType.number,
-                          decoration:
-                          _inputDecoration("Barcode", Icons.qr_code),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton(
-                        icon: const Icon(Icons.qr_code_scanner,
-                            color: Color(0xFF233E99), size: 30),
-                        onPressed: scanBarcode,
-                      ),
-                    ],
                   ),
                 ],
               ),
