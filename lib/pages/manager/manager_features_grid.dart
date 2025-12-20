@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../Features_app/report_page.dart';
+import '../manager/forecast/forecast.dart';
 
 class _ManagerFeatureIcon extends StatelessWidget {
   final IconData icon;
@@ -66,6 +67,8 @@ class ManagerFeaturesGrid extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20), // Ruang tambahan di bawah
+
+        // --- SECOND ROW (Forecast Connection Here) ---
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
           children: [
@@ -74,7 +77,11 @@ class ManagerFeaturesGrid extends StatelessWidget {
               label: "Forecast",
               onTap: () {
                 Navigator.pop(context);
-                // Navigate...
+                // 2. NAVIGATE TO FORECAST PAGE
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ForecastingPage()),
+                );
               },
             ),
             _ManagerFeatureIcon(
