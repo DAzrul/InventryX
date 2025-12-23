@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../staff/add_incoming_stock.dart';
+import '../staff/sales.dart';
+
 // Import halaman-halaman destinasi Staff (pastikan fail ini wujud)
 // import 'staff_features/scan_page.dart';
 // import 'staff_features/stock_in_page.dart';
@@ -63,8 +66,14 @@ class StaffFeaturesGrid extends StatelessWidget {
               icon: Icons.store_mall_directory_outlined,
               label: "Stock",
               onTap: () {
-                Navigator.pop(context);
-                // Navigate...
+                Navigator.pop(context); // close bottom sheet / modal
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddIncomingStockPage(),
+                  ),
+                );
               },
             ),
             _StaffFeatureIcon(
@@ -72,7 +81,12 @@ class StaffFeaturesGrid extends StatelessWidget {
               label: "Sales",
               onTap: () {
                 Navigator.pop(context);
-                // Navigate...
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SalesPage(),
+                  ),
+                );
               },
             ),
           ],
