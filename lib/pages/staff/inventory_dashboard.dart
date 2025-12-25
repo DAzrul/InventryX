@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'add_incoming_stock.dart';
-import 'stock_display.dart';
 
 class InventoryDashboard extends StatefulWidget {
   @override
@@ -196,13 +195,7 @@ class _InventoryDashboardState extends State<InventoryDashboard> {
                 builder: (context) => AddIncomingStockPage()),
           );
         }),
-        _quickActionItem(Icons.storefront, "Stock Display", onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => StockDisplayPage()),
-          );
-        }),
+
         _quickActionItem(Icons.outbond, "Stock Out"),
       ],
     );

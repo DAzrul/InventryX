@@ -1,12 +1,8 @@
-// File: product_edit_page.dart
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import '../../Features_app/barcode_scanner_page.dart';
-import 'product_list_page.dart';
 
 class ProductEditPage extends StatefulWidget {
   final String productId;
@@ -26,6 +22,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _barcodeController = TextEditingController();
+  final TextEditingController _unitController = TextEditingController();
+  final TextEditingController _reorderLevelController = TextEditingController();
+  final TextEditingController _stockController = TextEditingController();
 
   File? _pickedImage;
   String? _imageUrl;
@@ -33,9 +32,11 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
   String? _category;
   String? _subCategory;
-  String? _supplier;
 
-  List<String> _suppliers = [];
+  // GUNA MAP SUPAYA KITA BOLEH TUKAR NAMA KEPADA ID
+  Map<String, String> _supplierMap = {};
+  String? _selectedSupplierId;
+
   List<String> _subCategories = [];
 
   final Map<String, List<String>> _categoryMap = {
@@ -52,27 +53,34 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _nameController.text = data['productName'] ?? '';
     _priceController.text = (data['price'] ?? 0).toString();
     _barcodeController.text = (data['barcodeNo'] ?? '').toString();
-    _barcodeController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _barcodeController.text.length));
+    _unitController.text = data['unit'] ?? 'pcs';
+    _reorderLevelController.text = (data['reorderLevel'] ?? 0).toString();
+    _stockController.text = (data['currentStock'] ?? 0).toString();
 
-    _category = data['category'] ?? 'FOOD';
+    _category = data['category'];
     _subCategories = _categoryMap[_category] ?? [];
-    _subCategory = data['subCategory'] ?? (_subCategories.isNotEmpty ? _subCategories.first : '');
-    _supplier = data['supplier'];
+    _subCategory = data['subCategory'];
+
+    // Ambil supplierId sedia ada
+    _selectedSupplierId = data['supplierId'];
     _imageUrl = data['imageUrl'];
 
     _loadSuppliers();
   }
 
   Future<void> _loadSuppliers() async {
-    final snapshot =
-    await FirebaseFirestore.instance.collection('supplier').get();
-
-    setState(() {
-      _suppliers = snapshot.docs
-          .map((doc) => (doc.data() as Map<String, dynamic>)['supplierName'] as String)
-          .toList();
-    });
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('supplier').get();
+      Map<String, String> tempMap = {};
+      for (var doc in snapshot.docs) {
+        tempMap[doc.id] = doc.data()['supplierName'] ?? 'Unknown';
+      }
+      setState(() {
+        _supplierMap = tempMap;
+      });
+    } catch (e) {
+      debugPrint("Error loading suppliers: $e");
+    }
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -85,9 +93,8 @@ class _ProductEditPageState extends State<ProductEditPage> {
   Future<String?> _uploadImage(File file) async {
     final fileName = DateTime.now().millisecondsSinceEpoch.toString();
     final ref = FirebaseStorage.instance.ref().child('products/$fileName');
-    final uploadTask = ref.putFile(file);
-    final snapshot = await uploadTask;
-    return snapshot.ref.getDownloadURL();
+    await ref.putFile(file);
+    return await ref.getDownloadURL();
   }
 
   void _showImagePickerDialog() {
@@ -125,7 +132,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
         _priceController.text.isEmpty ||
         _category == null ||
         _subCategory == null ||
-        _supplier == null) {
+        _selectedSupplierId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Please fill all required fields.")));
       return;
@@ -147,8 +154,12 @@ class _ProductEditPageState extends State<ProductEditPage> {
         'price': double.tryParse(_priceController.text.trim()) ?? 0,
         'category': _category,
         'subCategory': _subCategory,
-        'supplier': _supplier,
+        'unit': _unitController.text.trim(),
+        'reorderLevel': int.tryParse(_reorderLevelController.text.trim()) ?? 0,
+        'supplierId': _selectedSupplierId,
+        'supplier': _supplierMap[_selectedSupplierId], // Simpan nama gak utk query senang
         'imageUrl': newImageUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -196,15 +207,14 @@ class _ProductEditPageState extends State<ProductEditPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Edit Product", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text("Update Details", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
 
             // Image Picker
             GestureDetector(
               onTap: _showImagePickerDialog,
               child: Container(
-                width: double.infinity,
-                height: 180,
+                width: double.infinity, height: 180,
                 decoration: BoxDecoration(
                   color: Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(15),
@@ -221,108 +231,86 @@ class _ProductEditPageState extends State<ProductEditPage> {
                   children: const [
                     Icon(Icons.image_outlined, size: 50, color: Colors.grey),
                     SizedBox(height: 8),
-                    Text("Tap to add product image", style: TextStyle(color: Colors.grey)),
+                    Text("Tap to change image", style: TextStyle(color: Colors.grey)),
                   ],
-                )
-                    : null,
+                ) : null,
               ),
             ),
             const SizedBox(height: 20),
 
-            // Product Name
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                hintText: "Product Name",
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.inventory_2_outlined, color: Colors.grey),
-              ),
-            ),
-            const SizedBox(height: 15),
+            _buildLabel("Product Name"),
+            _buildTextField(_nameController, "Coca Cola", Icons.inventory_2_outlined),
 
-            // Barcode (read-only)
-            TextField(
-              controller: _barcodeController,
-              readOnly: true,
-              decoration: InputDecoration(
-                hintText: "Barcode",
-                filled: true,
-                fillColor: Colors.grey.shade200,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.qr_code, color: Colors.grey),
-              ),
-            ),
             const SizedBox(height: 15),
+            _buildLabel("Barcode (Read Only)"),
+            _buildTextField(_barcodeController, "123456", Icons.qr_code, isReadOnly: true),
 
-            // Category
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                hintText: "Choose Category",
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-              value: _category,
-              items: _categoryMap.keys.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() {
-                  _category = value;
-                  _subCategories = _categoryMap[value]!;
-                  _subCategory = _subCategories.first;
-                });
-              },
-            ),
             const SizedBox(height: 15),
+            _buildLabel("Category"),
+            _buildCategoryDropdown(),
 
-            // Subcategory
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                hintText: "Choose Subcategory",
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-              value: _subCategory,
-              items: _subCategories.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (v) => setState(() => _subCategory = v),
-            ),
             const SizedBox(height: 15),
+            _buildLabel("Sub Category"),
+            _buildSubCategoryDropdown(),
 
-            // Supplier
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                hintText: "Choose Supplier",
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-              value: _supplier,
-              items: _suppliers.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-              onChanged: (v) => setState(() => _supplier = v),
-            ),
             const SizedBox(height: 15),
+            _buildLabel("Supplier"),
+            _buildSupplierDropdown(),
 
-            // Price
-            TextField(
-              controller: _priceController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                hintText: "Price (RM)",
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.attach_money_outlined, color: Colors.grey),
-              ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLabel("Unit"),
+                      _buildTextField(_unitController, "pcs", Icons.straighten),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLabel("Price (RM)"),
+                      _buildTextField(_priceController, "2.50", Icons.attach_money, isNumber: true),
+                    ],
+                  ),
+                ),
+              ],
             ),
+
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLabel("Current Stock"),
+                      _buildTextField(_stockController, "0", Icons.storage, isReadOnly: true),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildLabel("Reorder Level"),
+                      _buildTextField(_reorderLevelController, "10", Icons.warning_amber_rounded, isNumber: true),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
             const SizedBox(height: 30),
 
-            // Update button
             SizedBox(
-              width: double.infinity,
-              height: 50,
+              width: double.infinity, height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF233E99),
@@ -331,12 +319,80 @@ class _ProductEditPageState extends State<ProductEditPage> {
                 onPressed: _loading ? null : _updateProduct,
                 child: _loading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Update Product", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text("Save Changes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // --- WIDGET BUILDERS UNTUK KEMAS ---
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5, left: 2),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {bool isReadOnly = false, bool isNumber = false}) {
+    return TextField(
+      controller: controller,
+      readOnly: isReadOnly,
+      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: isReadOnly ? Colors.grey.shade200 : Colors.grey.shade100,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+        prefixIcon: Icon(icon, color: Colors.grey),
+      ),
+    );
+  }
+
+  Widget _buildCategoryDropdown() {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(
+        filled: true, fillColor: Colors.grey.shade100,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      ),
+      value: _category,
+      items: _categoryMap.keys.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() {
+          _category = value;
+          _subCategories = _categoryMap[value]!;
+          _subCategory = _subCategories.first;
+        });
+      },
+    );
+  }
+
+  Widget _buildSubCategoryDropdown() {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(
+        filled: true, fillColor: Colors.grey.shade100,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      ),
+      value: _subCategory,
+      items: _subCategories.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+      onChanged: (v) => setState(() => _subCategory = v),
+    );
+  }
+
+  Widget _buildSupplierDropdown() {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(
+        filled: true, fillColor: Colors.grey.shade100,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      ),
+      value: _selectedSupplierId,
+      hint: const Text("Select Supplier"),
+      items: _supplierMap.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+      onChanged: (v) => setState(() => _selectedSupplierId = v),
     );
   }
 }

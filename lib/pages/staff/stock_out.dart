@@ -1,41 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'add_incoming_stock.dart';
 
 class StockOutPage extends StatefulWidget {
+  const StockOutPage({super.key});
+
   @override
-  _StockOutPageState createState() => _StockOutPageState();
+  State<StockOutPage> createState() => _StockOutPageState();
 }
 
 class _StockOutPageState extends State<StockOutPage> {
   final Color mainBlue = const Color(0xFF00147C);
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  int _selectedTab = 0; // 0 = Sold, 1 = Others
+  int _currentSubTab = 0;
   bool _autoDeduct = true;
-  DateTime _selectedDate = DateTime.now();
-  String _searchQuery = '';
-
-  // For 'Others' tab
-  final TextEditingController _productController = TextEditingController();
-  final TextEditingController _quantityController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-  String _selectedReasonOther = 'Damaged';
-
-  // Sample data for Sold tab
-  List<ProductStock> _soldProducts = [
-    ProductStock(
-        name: 'Organic Whole Milk (1L)',
-        sku: 'RS-PRO-BLK-10',
-        unit: 'Bottle',
-        prevStock: 50,
-        autoDeducted: 35,
-        sold: 15),
-    ProductStock(
-        name: 'Smart Water Bottle',
-        sku: 'SWB-GRN-500ML',
-        unit: 'Bottle',
-        prevStock: 25,
-        autoDeducted: 5,
-        sold: 20),
-  ];
+  bool _isProcessing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -44,390 +27,355 @@ class _StockOutPageState extends State<StockOutPage> {
       appBar: AppBar(
         backgroundColor: mainBlue,
         elevation: 0,
-        title: const Text('Record Outgoing Stock'),
+        title: const Text('Record Outgoing Stock', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          _buildSegmentedControl(),
+          _buildTopPageSwitcher(),
+          _buildSubTabSwitcher(),
           Expanded(
-            child: _selectedTab == 0 ? _buildSoldTab() : _buildOthersTab(),
+            child: _currentSubTab == 0
+                ? _buildSoldTab()
+                : const Center(child: Text("Others Tab Content")),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSegmentedControl() {
+  Widget _buildTopPageSwitcher() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          _buildSegmentButton('Sold', 0),
-          const SizedBox(width: 8),
-          _buildSegmentButton('Others', 1),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: SegmentedButton<int>(
+        segments: const [
+          ButtonSegment(value: 0, label: Text('Stock In')),
+          ButtonSegment(value: 1, label: Text('Stock Out')),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSegmentButton(String label, int index) {
-    bool selected = _selectedTab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTab = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? mainBlue : Colors.grey[200],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(label,
-                style: TextStyle(
-                    color: selected ? Colors.white : Colors.grey[800],
-                    fontWeight: FontWeight.bold)),
-          ),
+        selected: const {1},
+        onSelectionChanged: (value) {
+          if (value.first == 0) {
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddIncomingStockPage()));
+          }
+        },
+        style: SegmentedButton.styleFrom(
+          backgroundColor: Colors.grey.shade200,
+          selectedBackgroundColor: mainBlue,
+          selectedForegroundColor: Colors.white,
         ),
       ),
     );
   }
 
-  // ---------------- SOLD TAB ----------------
-  Widget _buildSoldTab() {
-    final filteredProducts = _soldProducts
-        .where((p) =>
-    p.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        p.sku.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
-
-    int totalPrevStock =
-    _soldProducts.fold(0, (sum, p) => sum + p.prevStock);
-    int totalSold = _soldProducts.fold(0, (sum, p) => sum + p.sold);
-    int totalAuto =
-    _soldProducts.fold(0, (sum, p) => sum + p.autoDeducted);
-    int totalCurrent = totalPrevStock - totalSold - totalAuto;
-
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
+  Widget _buildSubTabSwitcher() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
         children: [
-          _buildDatePicker(),
-          const SizedBox(height: 12),
-          _buildSearchField(),
-          const SizedBox(height: 8),
-          _buildAutoDeductToggle(),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredProducts.length,
-              itemBuilder: (context, index) {
-                return _buildProductCard(filteredProducts[index]);
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildSummary(totalPrevStock, totalSold, totalAuto, totalCurrent),
-          const SizedBox(height: 12),
-          _buildCancelApplyButtons(),
+          _subTabBtn('Sold', 0),
+          const SizedBox(width: 8),
+          _subTabBtn('Others', 1),
         ],
       ),
     );
   }
 
-  // ---------------- OTHERS TAB ----------------
-  Widget _buildOthersTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          _buildDatePicker(),
-          const SizedBox(height: 16),
-          // Product Search / Scan
-          TextField(
-            controller: _productController,
-            decoration: InputDecoration(
-              hintText: 'Search product or scan barcode',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                  icon: const Icon(Icons.qr_code_scanner), onPressed: () {}),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Quantity
-          TextField(
-            controller: _quantityController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: 'Quantity to Remove',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Reason Dropdown
-          DropdownButtonFormField<String>(
-            value: _selectedReasonOther,
-            items: ['Damaged', 'Expired', 'Returned']
-                .map((e) => DropdownMenuItem(child: Text(e), value: e))
-                .toList(),
-            onChanged: (val) => setState(() => _selectedReasonOther = val!),
-            decoration: InputDecoration(
-              labelText: 'Reason for Removal',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Notes
-          TextField(
-            controller: _notesController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: 'Notes (Optional)',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300)),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
+  Widget _subTabBtn(String label, int index) {
+    bool sel = _currentSubTab == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _currentSubTab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(color: sel ? mainBlue : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+          child: Center(child: Text(label, style: TextStyle(color: sel ? Colors.white : Colors.black, fontWeight: FontWeight.bold))),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSoldTab() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          child: Row(
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: mainBlue),
-                    foregroundColor: mainBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Cancel'),
+              const Icon(Icons.calendar_month, color: Colors.grey),
+              const SizedBox(width: 12),
+              Text(DateFormat('MM/dd/yyyy').format(DateTime.now()), style: const TextStyle(fontSize: 16)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search product',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Save stock removal logic
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: mainBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Apply Auto-Deduction", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Switch(
+                      value: _autoDeduct,
+                      activeColor: mainBlue,
+                      onChanged: (v) => setState(() => _autoDeduct = v)
                   ),
-                  child: const Text('Save'),
-                ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- COMMON WIDGETS ----------------
-  Widget _buildDatePicker() {
-    return GestureDetector(
-      onTap: () async {
-        DateTime? picked = await showDatePicker(
-            context: context,
-            initialDate: _selectedDate,
-            firstDate: DateTime(2023),
-            lastDate: DateTime(2030));
-        if (picked != null) setState(() => _selectedDate = picked);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300)),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
-            const SizedBox(width: 12),
-            Text('${_selectedDate.month}/${_selectedDate.day}/${_selectedDate.year}'),
-          ],
         ),
-      ),
-    );
-  }
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _db.collection('sales').where('status', isEqualTo: 'pending_deduction').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No pending sales."));
 
-  Widget _buildSearchField() {
-    return TextField(
-      onChanged: (val) => setState(() => _searchQuery = val),
-      decoration: InputDecoration(
-        hintText: 'Search product',
-        prefixIcon: const Icon(Icons.search),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
-      ),
-    );
-  }
+              final salesDocs = snapshot.data!.docs;
 
-  Widget _buildAutoDeductToggle() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('Apply Auto-Deduction'),
-        Switch(
-          value: _autoDeduct,
-          onChanged: (val) => setState(() => _autoDeduct = val),
-          activeColor: mainBlue,
+              return FutureBuilder<Map<String, int>>(
+                  future: _calculateTotals(salesDocs),
+                  builder: (context, totalSnapshot) {
+                    int tPrev = 0;
+                    int tSold = 0;
+                    int tAutoResult = 0;
+
+                    if (totalSnapshot.hasData) {
+                      tPrev = totalSnapshot.data!['prev']!;
+                      tSold = totalSnapshot.data!['sold']!;
+                      // LOGIC FOOTER: Bila switch OFF, total jadi 0
+                      tAutoResult = _autoDeduct ? (tPrev - tSold) : 0;
+                    }
+
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: salesDocs.length,
+                            itemBuilder: (context, index) {
+                              final sale = salesDocs[index].data() as Map<String, dynamic>;
+                              return _buildSaleDeductionCard(sale);
+                            },
+                          ),
+                        ),
+                        _buildApplyFooter(tPrev, tSold, tAutoResult),
+                      ],
+                    );
+                  }
+              );
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildProductCard(ProductStock p) {
-    int currentStock =
-        p.prevStock - p.sold - (_autoDeduct ? p.autoDeducted : 0);
-    Color statusColor = currentStock <= 0 ? Colors.orange : Colors.green;
-    String statusText = currentStock <= 0 ? 'Low' : 'OK';
+  Future<Map<String, int>> _calculateTotals(List<QueryDocumentSnapshot> docs) async {
+    int prevTotal = 0;
+    int soldTotal = 0;
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      soldTotal += (data['quantitySold'] as int? ?? 0);
+      var pDoc = await _db.collection('products').doc(data['productID']).get();
+      if (pDoc.exists) {
+        prevTotal += (pDoc.data()?['currentStock'] as int? ?? 0);
+      }
+    }
+    return {'prev': prevTotal, 'sold': soldTotal};
+  }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text('SKU: ${p.sku}  •  Unit: ${p.unit}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildSaleDeductionCard(Map<String, dynamic> sale) {
+    return FutureBuilder<DocumentSnapshot>(
+        future: _db.collection('products').doc(sale['productID']).get(),
+        builder: (context, prodSnap) {
+          if (!prodSnap.hasData) return const SizedBox.shrink();
+          final prodData = prodSnap.data!.data() as Map<String, dynamic>? ?? {};
+
+          final int prevStock = prodData['currentStock'] ?? 0;
+          final int soldQty = sale['quantitySold'] ?? 0;
+
+          // LOGIC KAD: Bila switch OFF, Auto-Deducted paparkan 0
+          final int autoDeductedValue = _autoDeduct ? (prevStock - soldQty) : 0;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStockInfo('Prev Stock', p.prevStock),
-                _buildStockInfo('Auto-Deducted', _autoDeduct ? p.autoDeducted : 0),
-                _buildStockInfo('Sold', p.sold, color: statusColor),
-                _buildStockInfo('Current Display', currentStock),
+                Text(sale['snapshotName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text("SKU: ${prodData['barcodeNo'] ?? '-'}  •  Unit: ${prodData['unit'] ?? 'pcs'}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _statColumn("Prev Stock", prevStock.toString()),
+                    _statColumn("Auto-Deducted", autoDeductedValue.toString(), color: _autoDeduct ? Colors.blue[900] : Colors.grey),
+                    _statColumn("Sold", soldQty.toString(), color: Colors.orange[800]),
+                  ],
+                )
               ],
             ),
-          ],
-        ),
-      ),
+          );
+        }
     );
   }
 
-  Widget _buildStockInfo(String label, int value, {Color? color}) {
+  Widget _statColumn(String label, String value, {Color? color}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        const SizedBox(height: 2),
-        Text(value.toString(),
-            style: TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 14, color: color ?? Colors.black)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w600)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color ?? Colors.black)),
       ],
     );
   }
 
-  Widget _buildSummary(int prev, int sold, int auto, int current) {
+  Widget _buildApplyFooter(int tPrev, int tSold, int tAutoResult) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300)),
-      child: Column(
-        children: [
-          _buildSummaryRow('Total Previous Stock', prev),
-          _buildSummaryRow('Total Sold', sold),
-          _buildSummaryRow('Total Auto-Deducted Stock', auto),
-          _buildSummaryRow('Total Current Display Stock', current),
-        ],
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -4))]
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _rowSummary("Total Previous Stock", tPrev.toString()),
+            _rowSummary("Total Sold", tSold.toString()),
+            _rowSummary("Total Auto-Deducted Stock", tAutoResult.toString()),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _clearPendingSales,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.red)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: mainBlue,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _isProcessing ? null : _applyStockDeduction,
+                    child: _isProcessing
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text("Apply", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSummaryRow(String label, int value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          Text(value.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
+  // --- Fungsi Cancel & Apply tetap sama logic dia ---
+  Future<void> _clearPendingSales() async {
+    bool confirm = await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Cancel Sales?"),
+          content: const Text("This will delete all pending sales from the list."),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Stay")),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes, Cancel", style: TextStyle(color: Colors.red))),
+          ],
+        )
+    ) ?? false;
+    if (!confirm) return;
+    setState(() => _isProcessing = true);
+    try {
+      final salesQuery = await _db.collection('sales').where('status', isEqualTo: 'pending_deduction').get();
+      final batchDelete = _db.batch();
+      for (var doc in salesQuery.docs) batchDelete.delete(doc.reference);
+      await batchDelete.commit();
+    } catch (e) {
+      debugPrint("Error: $e");
+    } finally {
+      setState(() => _isProcessing = false);
+    }
   }
 
-  Widget _buildCancelApplyButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: mainBlue),
-              foregroundColor: mainBlue,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Cancel'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton(
-            onPressed: () {
-              // TODO: Apply stock out logic
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: mainBlue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Apply'),
-          ),
-        ),
-      ],
-    );
+  Future<void> _applyStockDeduction() async {
+    setState(() => _isProcessing = true);
+    try {
+      final salesQuery = await _db.collection('sales').where('status', isEqualTo: 'pending_deduction').get();
+      if (salesQuery.docs.isEmpty) return;
+      final batchWrite = _db.batch();
+      final now = Timestamp.now();
+
+      for (var saleDoc in salesQuery.docs) {
+        final saleData = saleDoc.data() as Map<String, dynamic>;
+        final productId = saleData['productID'];
+        int qtyToDeduct = saleData['quantitySold'];
+
+        final batchesQuery = await _db.collection('batches')
+            .where('productId', isEqualTo: productId)
+            .where('currentQuantity', isGreaterThan: 0)
+            .orderBy('currentQuantity')
+            .orderBy('expiryDate', descending: false)
+            .get();
+
+        for (var bDoc in batchesQuery.docs) {
+          if (qtyToDeduct <= 0) break;
+          int batchQty = bDoc['currentQuantity'];
+          int take = (batchQty >= qtyToDeduct) ? qtyToDeduct : batchQty;
+          batchWrite.update(bDoc.reference, {'currentQuantity': FieldValue.increment(-take), 'updatedAt': now});
+          qtyToDeduct -= take;
+
+          batchWrite.set(_db.collection('stockMovements').doc(), {
+            'productId': productId, 'productName': saleData['snapshotName'], 'movementType': 'OUT_SALE',
+            'quantity': -take, 'batchId': bDoc.id, 'batchNumber': bDoc.data()['batchNumber'],
+            'userId': _auth.currentUser?.uid, 'movementDate': now, 'referenceId': saleDoc.id,
+          });
+        }
+        batchWrite.update(_db.collection('products').doc(productId), {'currentStock': FieldValue.increment(-saleData['quantitySold']), 'updatedAt': now});
+        batchWrite.update(saleDoc.reference, {'status': 'completed'});
+      }
+      await batchWrite.commit();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stock applied!"), backgroundColor: Colors.green));
+    } catch (e) {
+      debugPrint("Apply Error: $e");
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
-}
 
-class ProductStock {
-  final String name;
-  final String sku;
-  final String unit;
-  final int prevStock;
-  final int autoDeducted;
-  final int sold;
-
-  ProductStock({
-    required this.name,
-    required this.sku,
-    required this.unit,
-    required this.prevStock,
-    required this.autoDeducted,
-    required this.sold,
-  });
+  Widget _rowSummary(String l, String v) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l, style: const TextStyle(color: Colors.grey, fontSize: 13)), Text(v, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
+  );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../staff/add_incoming_stock.dart';
 import '../staff/sales.dart';
+import '../staff/stock.dart';
 
 // Import halaman-halaman destinasi Staff (pastikan fail ini wujud)
 // import 'staff_features/scan_page.dart';
@@ -71,7 +72,7 @@ class StaffFeaturesGrid extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AddIncomingStockPage(),
+                    builder: (context) => StockPage(),
                   ),
                 );
               },
