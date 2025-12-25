@@ -32,7 +32,6 @@ class _StockOutPageState extends State<StockOutPage> {
       ),
       body: Column(
         children: [
-          _buildTopPageSwitcher(),
           _buildSubTabSwitcher(),
           Expanded(
             child: _currentSubTab == 0
@@ -40,30 +39,6 @@ class _StockOutPageState extends State<StockOutPage> {
                 : const Center(child: Text("Others Tab Content")),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTopPageSwitcher() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: SegmentedButton<int>(
-        segments: const [
-          ButtonSegment(value: 0, label: Text('Stock In')),
-          ButtonSegment(value: 1, label: Text('Stock Out')),
-        ],
-        selected: const {1},
-        onSelectionChanged: (value) {
-          if (value.first == 0) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddIncomingStockPage()));
-          }
-        },
-        style: SegmentedButton.styleFrom(
-          backgroundColor: Colors.grey.shade200,
-          selectedBackgroundColor: mainBlue,
-          selectedForegroundColor: Colors.white,
-        ),
       ),
     );
   }
@@ -225,7 +200,7 @@ class _StockOutPageState extends State<StockOutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(sale['snapshotName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Text("SKU: ${prodData['barcodeNo'] ?? '-'}  •  Unit: ${prodData['unit'] ?? 'pcs'}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text("Barcode No: ${prodData['barcodeNo'] ?? '-'}  •  Unit: ${prodData['unit'] ?? 'pcs'}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 const Divider(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

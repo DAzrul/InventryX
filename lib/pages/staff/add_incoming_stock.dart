@@ -51,8 +51,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       ),
       body: Column(
         children: [
-          _segmentedControl(),
-          // SCROLLABLE LIST
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -71,48 +69,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
           // FOOTER (Notes + Totals + Button)
           _bottomSection(),
         ],
-      ),
-    );
-  }
-
-  // ======================== UI WIDGETS ========================
-
-  Widget _segmentedControl() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: SegmentedButton<int>(
-        segments: const [
-          ButtonSegment(value: 0, label: Text('Stock In')),
-          ButtonSegment(value: 1, label: Text('Stock Out')),
-        ],
-        selected: {_selectedTab},
-        onSelectionChanged: (value) {
-          final selected = value.first;
-          if (selected == _selectedTab) return;
-
-          Widget page;
-          switch (selected) {
-            case 0:
-              page = const AddIncomingStockPage();
-              break;
-            case 1:
-              page = StockOutPage();
-              break;
-            default:
-              return;
-          }
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => page),
-          );
-        },
-        style: SegmentedButton.styleFrom(
-          backgroundColor: Colors.grey.shade200,
-          selectedBackgroundColor: const Color(0xFF00147C),
-          selectedForegroundColor: Colors.white,
-        ),
       ),
     );
   }
@@ -223,7 +179,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       maxLines: 2,
       decoration: const InputDecoration(
         labelText: 'Notes (Optional)',
-        hintText: 'Invoice no, condition, etc.',
+        hintText: 'Regular stock in, additional, etc.',
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(),
@@ -340,34 +296,46 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     final scannedBarcode = await Navigator.push<String>(
       context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
     );
+
+
     if (scannedBarcode == null || scannedBarcode.isEmpty) return;
 
     final query = await _db.collection('products')
-        .where('supplier', isEqualTo: selectedSupplierName)
         .where('barcodeNo', isEqualTo: scannedBarcode)
-        .limit(1).get();
+        .limit(1)
+        .get();
+
 
     if (query.docs.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Product not found for this supplier'),
-          backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Product with barcode $scannedBarcode not found!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
+
     final doc = query.docs.first;
     final data = doc.data();
-    _addBatchItem(doc.id, data['productName'],
-        (data['barcodeNo'] ?? data['sku'] ?? '-').toString(), data['imageUrl']);
+
+    _addBatchItem(
+        doc.id,
+        data['productName'],
+        (data['barcodeNo'] ?? data['sku'] ?? '-').toString(),
+        data['imageUrl']
+    );
   }
 
-  void _addBatchItem(String productId, String? productName, String barcodeNo,
-      String? imageUrl) {
-    final exists = batchItems.any((item) => item.productId == productId);
-    if (exists) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Product already added'),
-          backgroundColor: Colors.orange));
-      return;
-    }
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red)
+    );
+  }
+  void _addBatchItem(String productId, String? productName, String barcodeNo, String? imageUrl) {
+    // ... kod sedia ada anda ...
     setState(() {
       batchItems.add(StockItem(
         productId: productId,
@@ -375,7 +343,8 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
         barcodeNo: barcodeNo,
         imageUrl: imageUrl,
         quantity: 0,
-        expiryDate: DateTime.now().add(const Duration(days: 180)),
+        // TUKAR DI SINI: Guna DateTime.now() bukannya tambah 180 hari
+        expiryDate: DateTime.now(),
       ));
     });
   }
@@ -449,6 +418,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                         final date = await showDatePicker(
                           context: context,
                           initialDate: item.expiryDate,
+                          // TUKAR DI SINI: Pastikan firstDate adalah hari ini
                           firstDate: DateTime.now(),
                           lastDate: DateTime(2035),
                         );

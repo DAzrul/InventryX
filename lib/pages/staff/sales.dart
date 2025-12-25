@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'daily_sales.dart';
+import 'history_sales.dart'; // Import fail history yang telah anda sediakan
 
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
@@ -17,21 +18,30 @@ class _SalesPageState extends State<SalesPage> {
       selectedIndex = index;
     });
 
-    // Optional: Add a small delay so the user sees the color change
-    // before the screen transitions
+    // Memberi maklum balas visual (warna bertukar) sebelum navigasi
     await Future.delayed(const Duration(milliseconds: 150));
 
+    if (!mounted) return;
+
     if (index == 0) {
-      // Navigate to Daily Sales Page
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const DailySalesPage()),
-        ).then((_) {
-          // Reset the color when coming back to this page
-          setState(() => selectedIndex = null);
-        });
-      }
+      // Navigasi ke Daily Sales Page
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const DailySalesPage()),
+      ).then((_) {
+        // Reset warna kad apabila kembali ke halaman ini
+        if (mounted) setState(() => selectedIndex = null);
+      });
+    }
+    else if (index == 1) {
+      // Navigasi ke History Sales Page [Penyelesaian kepada permintaan anda]
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const HistorySalesPage()),
+      ).then((_) {
+        // Reset warna kad apabila kembali ke halaman ini
+        if (mounted) setState(() => selectedIndex = null);
+      });
     }
   }
 
@@ -67,9 +77,8 @@ class _SalesPageState extends State<SalesPage> {
             // Option 0: Daily Sales Input
             _SalesOptionCard(
               title: "Daily Sales Input",
-              subtitle: "Key-in sales at closing time",
+              subtitle: "Automated sales simulation",
               icon: Icons.assignment_outlined,
-              // If index 0 is selected, turn blue; otherwise stay white
               isActive: selectedIndex == 0,
               onTap: () => _handleTap(0),
             ),
@@ -81,7 +90,6 @@ class _SalesPageState extends State<SalesPage> {
               title: "Sales History",
               subtitle: "View previous entries & edits",
               icon: Icons.history,
-              // If index 1 is selected, turn blue; otherwise stay white
               isActive: selectedIndex == 1,
               onTap: () => _handleTap(1),
             ),
@@ -109,13 +117,12 @@ class _SalesOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Define colors based on whether the card is active
     final Color backgroundColor = isActive ? const Color(0xFF20338F) : Colors.white;
     final Color contentColor = isActive ? Colors.white : Colors.black;
     final Color subtitleColor = isActive ? Colors.white.withOpacity(0.8) : Colors.grey.shade600;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200), // Smooth color transition
+      duration: const Duration(milliseconds: 200),
       width: double.infinity,
       decoration: BoxDecoration(
         color: backgroundColor,
