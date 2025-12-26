@@ -75,7 +75,7 @@ class StaffFeaturesGrid extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => StockPage(),
+                    builder: (context) => StockPage(username: '',),
                   ),
                 );
               },

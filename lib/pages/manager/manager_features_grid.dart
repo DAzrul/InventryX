@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:inventryx/pages/ProductPage/product_list_page_view.dart';
 import 'package:inventryx/pages/Supplier/supplier_list_page_view.dart';
-import 'package:inventryx/pages/admin/admin_features/supplier_list_page.dart';
 import '../Features_app/report_page.dart';
-import '../ProductPage/product_list_page_view.dart';
 import '../manager/forecast/forecast.dart';
-import '../Supplier/supplier_list_page_view.dart';
 
 class _ManagerFeatureIcon extends StatelessWidget {
   final IconData icon;

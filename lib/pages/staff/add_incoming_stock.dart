@@ -1,19 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'stock_out.dart';
 import '../Features_app/barcode_scanner_page.dart';
 
 class AddIncomingStockPage extends StatefulWidget {
-  const AddIncomingStockPage({super.key});
+  final String username;
+  const AddIncomingStockPage({super.key, required this.username});
 
   @override
   State<AddIncomingStockPage> createState() => _AddIncomingStockPageState();
 }
 
 class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
-  final Color mainBlue = const Color(0xFF00147C);
+  final Color primaryBlue = const Color(0xFF1E3A8A); // Indigo Premium
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -23,13 +24,9 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
 
   String? selectedSupplierName;
   String? selectedSupplierId;
-
   List<StockItem> batchItems = [];
-  int _selectedTab = 0;
 
-  int get totalQuantity =>
-      batchItems.fold(0, (sum, item) => sum + item.quantity);
-
+  int get totalQuantity => batchItems.fold(0, (sum, item) => sum + item.quantity);
   bool get hasQuantity => batchItems.any((item) => item.quantity > 0);
 
   @override
@@ -42,582 +39,443 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
-      backgroundColor: Colors.grey[100],
+      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        backgroundColor: mainBlue,
-        title: const Text('Add Incoming Stock'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Incoming Stock',
+            style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.w800, fontSize: 18)),
         centerTitle: true,
       ),
       body: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSectionHeader("1. Supplier Information", Icons.local_shipping_rounded),
+                  const SizedBox(height: 12),
                   _supplierDropdown(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 30),
+
+                  _buildSectionHeader("2. Add Products", Icons.add_business_rounded),
+                  const SizedBox(height: 12),
                   _findProductField(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 30),
+
+                  _buildSectionHeader("3. Batch Review (${batchItems.length})", Icons.inventory_rounded),
+                  const SizedBox(height: 12),
                   _batchList(),
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
           ),
-          // FOOTER (Notes + Totals + Button)
           _bottomSection(),
         ],
       ),
     );
   }
 
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: primaryBlue),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+      ],
+    );
+  }
+
   Widget _supplierDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Select Supplier",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        StreamBuilder<QuerySnapshot>(
-          stream: _db.collection('supplier').snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const LinearProgressIndicator();
-
-            final suppliers = snapshot.data!.docs;
-
-            return DropdownButtonFormField<String>(
-              value: selectedSupplierName,
-              hint: const Text('Select supplier'),
-              items: suppliers.map<DropdownMenuItem<String>>((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final name = data['supplierName'] as String;
-                return DropdownMenuItem<String>(
-                  value: name,
-                  child: Text(name),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  selectedSupplierName = newValue;
-                  batchItems.clear();
-
-                  if (newValue != null) {
-                    try {
-                      final selectedDoc = suppliers.firstWhere(
-                              (doc) =>
-                          (doc.data() as Map<String,
-                              dynamic>)['supplierName'] == newValue
-                      );
-                      selectedSupplierId = selectedDoc.id;
-                    } catch (e) {
-                      selectedSupplierId = 'Unknown';
-                    }
-                  } else {
-                    selectedSupplierId = null;
-                  }
-                });
-              },
-              decoration: const InputDecoration(
-                filled: true, fillColor: Colors.white,
-                border: OutlineInputBorder(),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _findProductField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Find Products",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                readOnly: true,
-                onTap: selectedSupplierName == null ? null : _showProductDialog,
-                decoration: InputDecoration(
-                  hintText: 'Search by name or barcode',
-                  filled: true,
-                  fillColor: selectedSupplierName == null
-                      ? Colors.grey.shade100
-                      : Colors.white,
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.search),
-                ),
-              ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
+      ),
+      child: StreamBuilder<QuerySnapshot>(
+        stream: _db.collection('supplier').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const LinearProgressIndicator();
+          final suppliers = snapshot.data!.docs;
+          return DropdownButtonFormField<String>(
+            value: selectedSupplierName,
+            isExpanded: true,
+            hint: const Text('Choose active supplier', style: TextStyle(fontSize: 14)),
+            items: suppliers.map<DropdownMenuItem<String>>((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return DropdownMenuItem<String>(
+                value: data['supplierName'],
+                child: Text(data['supplierName'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              );
+            }).toList(),
+            onChanged: (val) {
+              setState(() {
+                selectedSupplierName = val;
+                if (val != null) {
+                  final doc = suppliers.firstWhere((d) => d['supplierName'] == val);
+                  selectedSupplierId = doc.id;
+                }
+              });
+            },
+            decoration: InputDecoration(
+              prefixIcon: Icon(Icons.business_center_rounded, color: primaryBlue, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
             ),
-            const SizedBox(width: 8),
-            InkWell(
-              onTap: selectedSupplierName == null ? null : _scanBarcode,
-              child: Container(
-                height: 56, width: 56,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: const Icon(Icons.qr_code_scanner),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _notesField() {
-    return TextField(
-      controller: _notesController,
-      maxLines: 2,
-      decoration: const InputDecoration(
-        labelText: 'Notes (Optional)',
-        hintText: 'Regular stock in, additional, etc.',
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          );
+        },
       ),
     );
   }
 
-  // ======================== LOGIC ========================
+  Widget _findProductField() {
+    bool isLocked = selectedSupplierName == null;
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: isLocked ? () => _showError('Pilih supplier dulu mat!') : _showProductDialog,
+            child: Container(
+              height: 55,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isLocked ? Colors.grey.shade100 : Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: isLocked ? Colors.transparent : primaryBlue.withValues(alpha: 0.1)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.search_rounded, color: isLocked ? Colors.grey : primaryBlue, size: 22),
+                  const SizedBox(width: 12),
+                  Text(
+                    isLocked ? 'Select supplier first' : 'Search products...',
+                    style: TextStyle(color: isLocked ? Colors.grey : Colors.grey.shade600, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        InkWell(
+          onTap: isLocked ? null : _scanBarcode,
+          child: Container(
+            height: 55, width: 55,
+            decoration: BoxDecoration(
+              gradient: isLocked ? null : LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]),
+              color: isLocked ? Colors.grey.shade200 : null,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: isLocked ? null : [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
+            ),
+            child: Icon(Icons.qr_code_scanner_rounded, color: isLocked ? Colors.grey : Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
 
   void _showProductDialog() {
     showModalBottomSheet(
       context: context, isScrollControlled: true,
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                top: 20, left: 16, right: 16,
-              ),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.7,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text("Select Product", style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _searchController,
-                      onChanged: (value) {
-                        setModalState(() {
-                          _searchQuery = value.toLowerCase().trim();
-                        });
-                      },
-                      decoration: const InputDecoration(
-                        hintText: 'Type to filter...',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: _db.collection('products')
-                            .where('supplier', isEqualTo: selectedSupplierName)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) return const Center(
-                              child: CircularProgressIndicator());
-
-                          final allProducts = snapshot.data!.docs;
-                          final filteredProducts = allProducts.where((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final name = (data['productName'] ?? '').toString().toLowerCase();
-                            final barcode = (data['barcodeNo'] ?? data['sku'] ?? '').toString().toLowerCase();
-                            if (_searchQuery.isEmpty) return true;
-                            return name.contains(_searchQuery) ||
-                                barcode.contains(_searchQuery);
-                          }).toList();
-
-                          if (filteredProducts.isEmpty) return const Center(
-                              child: Text('No products found.'));
-
-                          return ListView.builder(
-                            itemCount: filteredProducts.length,
-                            itemBuilder: (context, index) {
-                              final doc = filteredProducts[index];
-                              final data = doc.data() as Map<String, dynamic>;
-                              return ListTile(
-                                leading: data['imageUrl'] != null &&
-                                    data['imageUrl'].isNotEmpty
-                                    ? Image.network(data['imageUrl'], width: 50,
-                                    height: 50,
-                                    fit: BoxFit.cover)
-                                    : Container(width: 50,
-                                    height: 50,
-                                    color: Colors.grey[200],
-                                    child: const Icon(Icons.inventory_2)),
-                                title: Text(data['productName'] ?? 'Unknown'),
-                                subtitle: Text(
-                                    'Barcode: ${data['barcodeNo'] ?? '-'}'),
-                                trailing: const Icon(Icons.add_circle_outline,
-                                    color: Colors.blue),
-                                onTap: () {
-                                  _addBatchItem(
-                                      doc.id, data['productName'],
-                                      (data['barcodeNo'] ?? data['sku'] ?? '-')
-                                          .toString(),
-                                      data['imageUrl']
-                                  );
-                                  _searchController.clear();
-                                  _searchQuery = '';
-                                  Navigator.pop(context);
-                                },
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10))),
+              const SizedBox(height: 20),
+              Text("Products: $selectedSupplierName", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _searchController,
+                onChanged: (v) => setModalState(() => _searchQuery = v.toLowerCase()),
+                decoration: InputDecoration(
+                  hintText: 'Search item name...',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true, fillColor: const Color(0xFFF8FAFF),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                 ),
               ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _scanBarcode() async {
-    final scannedBarcode = await Navigator.push<String>(
-      context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
-    );
-
-
-    if (scannedBarcode == null || scannedBarcode.isEmpty) return;
-
-    final query = await _db.collection('products')
-        .where('barcodeNo', isEqualTo: scannedBarcode)
-        .limit(1)
-        .get();
-
-
-    if (query.docs.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Product with barcode $scannedBarcode not found!'),
-            backgroundColor: Colors.red,
+              const SizedBox(height: 15),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _db.collection('products').where('supplier', isEqualTo: selectedSupplierName).snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final list = snapshot.data!.docs.where((d) {
+                      final name = d['productName'].toString().toLowerCase();
+                      return name.contains(_searchQuery);
+                    }).toList();
+                    return ListView.builder(
+                      itemCount: list.length,
+                      itemBuilder: (context, i) {
+                        final d = list[i].data() as Map<String, dynamic>;
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(vertical: 5),
+                          leading: _imgPreview(d['imageUrl']),
+                          title: Text(d['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: Text('Current Stock: ${d['currentStock']}', style: const TextStyle(fontSize: 12)),
+                          trailing: Icon(Icons.add_circle_rounded, color: primaryBlue),
+                          onTap: () {
+                            _addBatchItem(list[i].id, d['productName'], d['barcodeNo'].toString(), d['imageUrl']);
+                            Navigator.pop(context);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        );
-      }
-      return;
-    }
-
-    final doc = query.docs.first;
-    final data = doc.data();
-
-    _addBatchItem(
-        doc.id,
-        data['productName'],
-        (data['barcodeNo'] ?? data['sku'] ?? '-').toString(),
-        data['imageUrl']
+        ),
+      ),
     );
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red)
+  Widget _imgPreview(String? url) {
+    return Container(
+      width: 45, height: 45,
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+      child: url != null ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(url, fit: BoxFit.cover)) : const Icon(Icons.image_outlined),
     );
   }
-  void _addBatchItem(String productId, String? productName, String barcodeNo, String? imageUrl) {
-    // ... kod sedia ada anda ...
+
+  void _addBatchItem(String pid, String? name, String bc, String? url) {
     setState(() {
       batchItems.add(StockItem(
-        productId: productId,
-        productName: productName ?? 'Unknown',
-        barcodeNo: barcodeNo,
-        imageUrl: imageUrl,
-        quantity: 0,
-        // TUKAR DI SINI: Guna DateTime.now() bukannya tambah 180 hari
-        expiryDate: DateTime.now(),
+        productId: pid, productName: name ?? 'Unknown', barcodeNo: bc,
+        imageUrl: url, supplierName: selectedSupplierName!, supplierId: selectedSupplierId!,
+        quantity: 0, expiryDate: DateTime.now().add(const Duration(days: 180)),
       ));
     });
   }
 
   Widget _batchList() {
-    if (batchItems.isEmpty) return const Center(child: Text('No products added'));
+    if (batchItems.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(40), child: Column(children: [Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey.shade300), const SizedBox(height: 10), Text('No batches added yet', style: TextStyle(color: Colors.grey.shade400))])));
     return Column(
       children: batchItems.asMap().entries.map((entry) {
-        final index = entry.key;
-        final item = entry.value;
-        final qtyController = TextEditingController(text: item.quantity.toString());
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: item.imageUrl != null
-                          ? Image.network(item.imageUrl!, fit: BoxFit.cover)
-                          : const Icon(Icons.shopping_bag),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item.productName, style: const TextStyle(
-                              fontWeight: FontWeight.w600)),
-                          Text('Code: ${item.barcodeNo}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () =>
-                          setState(() => batchItems.removeAt(index)),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Row(
-                  children: [
-                    _qtyButton(icon: Icons.remove, onTap: () =>
-                        setState(() {
-                          if (item.quantity > 0) item.quantity--;
-                        })),
-                    SizedBox(width: 60, child: TextField(
-                      controller: qtyController,
+        final i = entry.key; final item = entry.value;
+        final TextEditingController _qtyController = TextEditingController(text: item.quantity.toString());
+        _qtyController.selection = TextSelection.fromPosition(TextPosition(offset: _qtyController.text.length));
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  _imgPreview(item.imageUrl),
+                  const SizedBox(width: 15),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                    Text("From: ${item.supplierName}", style: TextStyle(fontSize: 11, color: primaryBlue, fontWeight: FontWeight.bold)),
+                  ])),
+                  IconButton(icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20), onPressed: () => setState(() => batchItems.removeAt(i))),
+                ],
+              ),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+              Row(
+                children: [
+                  _qtyBtn(Icons.remove_rounded, () => setState(() { if(item.quantity > 0) item.quantity--; })),
+                  SizedBox(
+                    width: 60,
+                    child: TextField(
+                      controller: _qtyController,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
-                      onChanged: (val) {
-                        final q = int.tryParse(val);
-                        if (q != null && q >= 0) item.quantity = q;
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                      onChanged: (v) {
+                        int? n = int.tryParse(v);
+                        if(n != null) { item.quantity = n; setState(() {}); }
                       },
-                      decoration: const InputDecoration(
-                          border: InputBorder.none),
-                    )),
-                    _qtyButton(icon: Icons.add, onTap: () =>
-                        setState(() => item.quantity++)),
-                    const Spacer(),
-                    InkWell(
-                      onTap: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: item.expiryDate,
-                          // TUKAR DI SINI: Pastikan firstDate adalah hari ini
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2035),
-                        );
-                        if (date != null) setState(() => item.expiryDate = date);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200)
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month, size: 16, color: Colors.orange),
-                            const SizedBox(width: 4),
-                            Text(DateFormat('dd/MM/yyyy').format(item.expiryDate),
-                                style: TextStyle(color: Colors.orange.shade900)),
-                          ],
-                        ),
-                      ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                  _qtyBtn(Icons.add_rounded, () => setState(() { item.quantity++; })),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () async {
+                      final d = await showDatePicker(context: context, initialDate: item.expiryDate, firstDate: DateTime.now(), lastDate: DateTime(2035));
+                      if(d != null) setState(() => item.expiryDate = d);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+                      child: Row(children: [
+                        const Icon(Icons.event_available_rounded, size: 14, color: Colors.orange),
+                        const SizedBox(width: 6),
+                        Text(DateFormat('dd/MM/yy').format(item.expiryDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
+                      ]),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       }).toList(),
     );
   }
 
-  Widget _qtyButton({required IconData icon, required VoidCallback onTap}) {
+  Widget _qtyBtn(IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Container(
-        width: 32, height: 32,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.grey.shade300)),
-        child: Icon(icon, size: 18),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+        child: Icon(icon, size: 18, color: primaryBlue),
       ),
     );
   }
 
   Widget _bottomSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))
-          ]
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 35),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, -5))],
       ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _notesField(),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Items: ${batchItems.length}',
-                    style: TextStyle(color: Colors.grey[700])),
-                Text('Total Qty: $totalQuantity', style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _notesController,
+            decoration: InputDecoration(
+              hintText: 'General notes...',
+              prefixIcon: const Icon(Icons.note_alt_rounded),
+              filled: true, fillColor: const Color(0xFFF8FAFF),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity, height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: mainBlue),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text("Total Quantity", style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text("$totalQuantity Units", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              ]),
+              ElevatedButton(
                 onPressed: hasQuantity ? _saveStockToFirebase : null,
-                child: const Text('CONFIRM STOCK IN', style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryBlue,
+                  padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: const Text("Confirm Stock", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.orange));
+  }
+
+  // --- LOGIC SAVE KEKAL SAMA MAT ---
   Future<void> _saveStockToFirebase() async {
     final user = _auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login first!')));
-      return;
-    }
-    if (selectedSupplierName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a supplier!')));
-      return;
-    }
+    if (user == null || batchItems.isEmpty) return;
 
-    showDialog(context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()));
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
 
     try {
       final batchWrite = _db.batch();
       final now = Timestamp.now();
-      final stockInRef = _db.collection('stockIn').doc();
-      final stockInId = stockInRef.id;
-
-      // 1. Save Stock In Header
-      batchWrite.set(stockInRef, {
-        'stockInId': stockInId,
-        'supplierId': selectedSupplierId ?? 'Unknown',
-        'supplierName': selectedSupplierName,
-        'receivedDate': now,
-        'createdBy': user.uid,
-        'createdAt': now,
-        'notes': _notesController.text.trim(),
-        'totalItems': batchItems.length,
-        'totalQuantity': totalQuantity,
-      });
-
+      Map<String, List<StockItem>> grouped = {};
       for (var item in batchItems) {
         if (item.quantity <= 0) continue;
+        grouped.putIfAbsent(item.supplierId, () => []).add(item);
+      }
 
-        final dateStr = DateFormat('yyyyMMdd').format(DateTime.now());
-        final randomSuffix = DateTime.now().microsecondsSinceEpoch.toString().substring(8);
-        final batchNumber = "BATCH-$dateStr-$randomSuffix";
-
-        // 2. Save Item Details in Stock In
-        final stockInItemRef = stockInRef.collection('items').doc();
-        batchWrite.set(stockInItemRef, {
-          'itemId': stockInItemRef.id,
-          'productId': item.productId,
-          'productName': item.productName,
-          'batchNumber': batchNumber,
-          'expiryDate': Timestamp.fromDate(item.expiryDate),
-          'quantity': item.quantity,
-          'createdAt': now,
+      for (var entry in grouped.entries) {
+        final sId = entry.key; final items = entry.value; final sName = items.first.supplierName;
+        final stockInRef = _db.collection('stockIn').doc();
+        batchWrite.set(stockInRef, {
+          'stockInId': stockInRef.id, 'supplierId': sId, 'supplierName': sName,
+          'receivedDate': now, 'createdBy': user.uid, 'notes': _notesController.text.trim(),
+          'totalItems': items.length, 'totalQuantity': items.fold(0, (sum, i) => sum + i.quantity),
         });
 
-        // 3. Save to Batches collection
-        final batchRef = _db.collection('batches').doc();
-        final daysLeft = item.expiryDate.difference(DateTime.now()).inDays;
-        batchWrite.set(batchRef, {
-          'batchId': batchRef.id,
-          'batchNumber': batchNumber,
-          'productId': item.productId,
-          'productName': item.productName,
-          'initialQuantity': item.quantity,
-          'currentQuantity': item.quantity,
-          'expiryDate': Timestamp.fromDate(item.expiryDate),
-          'daysToExpiry': daysLeft,
-          'receivedDate': now,
-          'status': 'active',
-          'stockInId': stockInId,
-          'supplierId': selectedSupplierId ?? 'Unknown',
-          'createdAt': now,
-        });
+        for (var item in items) {
+          final dateStr = DateFormat('yyyyMMdd').format(DateTime.now());
+          final randomSuffix = DateTime.now().microsecondsSinceEpoch.toString().substring(8);
+          final batchNumber = "BATCH-$dateStr-$randomSuffix";
+          final stockInItemRef = stockInRef.collection('items').doc();
+          batchWrite.set(stockInItemRef, {
+            'itemId': stockInItemRef.id, 'productId': item.productId, 'productName': item.productName,
+            'batchNumber': batchNumber, 'expiryDate': Timestamp.fromDate(item.expiryDate), 'quantity': item.quantity,
+          });
 
-        // 4. UPDATE CURRENT STOCK IN PRODUCT DOCUMENT
-        final productRef = _db.collection('products').doc(item.productId);
-        batchWrite.update(productRef, {
-          'currentStock': FieldValue.increment(item.quantity),
-          'updatedAt': now,
-        });
+          final batchRef = _db.collection('batches').doc();
+          batchWrite.set(batchRef, {
+            'batchId': batchRef.id, 'batchNumber': batchNumber, 'productId': item.productId, 'productName': item.productName,
+            'initialQuantity': item.quantity, 'currentQuantity': item.quantity,
+            'expiryDate': Timestamp.fromDate(item.expiryDate), 'receivedDate': now,
+            'status': 'active', 'supplierId': sId, 'supplierName': sName, 'createdAt': now,
+          });
+
+          batchWrite.update(_db.collection('products').doc(item.productId), {
+            'currentStock': FieldValue.increment(item.quantity), 'updatedAt': now,
+          });
+
+          final movementRef = _db.collection('stockMovements').doc();
+          batchWrite.set(movementRef, {
+            'movementId': movementRef.id, 'productId': item.productId, 'productName': item.productName,
+            'quantity': item.quantity, 'type': 'Stock In', 'reason': 'Inventory Received from $sName',
+            'timestamp': now, 'user': widget.username,
+          });
+        }
       }
 
       await batchWrite.commit();
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Stock saved successfully & product quantity updated!'),
-            backgroundColor: Colors.green
-        ));
-        setState(() {
-          batchItems.clear();
-          _notesController.clear();
-        });
-      }
-    } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Multi-supplier stock saved!'), backgroundColor: Colors.green));
+        setState(() { batchItems.clear(); _notesController.clear(); selectedSupplierName = null; });
       }
+    } catch (e) {
+      if (mounted) { Navigator.pop(context); _showError('Error: $e'); }
     }
+  }
+
+  Future<void> _scanBarcode() async {
+    final scannedBarcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+    if (scannedBarcode == null || scannedBarcode.isEmpty) return;
+    dynamic searchKey; int? intBarcode = int.tryParse(scannedBarcode); searchKey = intBarcode ?? scannedBarcode;
+    final query = await _db.collection('products').where('barcodeNo', isEqualTo: searchKey).limit(1).get();
+    if (query.docs.isEmpty) { _showError('Product not found!'); return; }
+    final doc = query.docs.first; final data = doc.data();
+    if (data['supplier'] != selectedSupplierName) { _showError('Product belongs to ${data['supplier']}'); return; }
+    _addBatchItem(doc.id, data['productName'], (data['barcodeNo'] ?? '-').toString(), data['imageUrl']);
   }
 }
 
 class StockItem {
-  String productId;
-  String productName;
-  String barcodeNo;
-  String? imageUrl;
-  int quantity;
-  DateTime expiryDate;
-
-  StockItem({
-    required this.productId, required this.productName, required this.barcodeNo,
-    this.imageUrl, required this.quantity, required this.expiryDate,
-  });
+  String productId, productName, barcodeNo, supplierName, supplierId;
+  String? imageUrl; int quantity; DateTime expiryDate;
+  StockItem({required this.productId, required this.productName, required this.barcodeNo, required this.supplierName, required this.supplierId, this.imageUrl, required this.quantity, required this.expiryDate});
 }

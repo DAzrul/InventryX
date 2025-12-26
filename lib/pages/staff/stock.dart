@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'add_incoming_stock.dart';
 import 'stock_out.dart';
 import '../Features_app/barcode_scanner_page.dart';
 
 class StockPage extends StatefulWidget {
-  const StockPage({super.key});
+  final String username;
+  const StockPage({super.key, required this.username});
 
   @override
   State<StockPage> createState() => _StockPageState();
@@ -13,16 +15,16 @@ class StockPage extends StatefulWidget {
 
 class _StockPageState extends State<StockPage> {
   String selectedCategory = 'All';
-  String searchQuery = ''; // Untuk menyimpan teks carian
+  String searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final Color primaryBlue = const Color(0xFF1E3A8A); // Warna indigo premium
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
-
 
   Future<void> _scanBarcode() async {
     final scannedResult = await Navigator.push<String>(
@@ -38,255 +40,343 @@ class _StockPageState extends State<StockPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FB),
-      body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _db.collection('products').snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) return const Center(child: Text('Ada error la mat!'));
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+  // ======================== MODAL DETAILS KEMAS ========================
+  void _showProductDetails(Map<String, dynamic> data, String productId) {
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+    String imgUrl = data['imageUrl'] ?? '';
 
-            final allDocs = snapshot.data!.docs;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
 
-            // LOGIC KIRA SUMMARY (Kekal sama)
-            int totalItems = allDocs.length;
-            int outOfStock = 0;
-            int lowStock = 0;
-
-            for (var doc in allDocs) {
-              final data = doc.data() as Map<String, dynamic>;
-              int currentQty = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-              int reorder = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
-              if (currentQty == 0) outOfStock++; else if (currentQty <= reorder) lowStock++;
-            }
-
-            // FILTER LIST IKUT CATEGORY & SEARCH QUERY
-            final filteredDocs = allDocs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final name = (data['productName'] ?? '').toString().toLowerCase();
-              final barcode = (data['barcodeNo'] ?? '').toString().toLowerCase();
-
-              bool matchCategory = selectedCategory == 'All' || data['category'] == selectedCategory;
-              bool matchSearch = name.contains(searchQuery.toLowerCase()) || barcode.contains(searchQuery.toLowerCase());
-
-              return matchCategory && matchSearch;
-            }).toList();
-
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(24),
                 children: [
-                  // HEADER (Kekal sama)
+                  // Product Header Premium
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      const Expanded(
-                        child: Center(
-                          child: Text('Inventory Management', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(width: 40),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // SUMMARY CARD (Kekal sama)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _SummaryItem(value: '$totalItems', label: 'Total Items', color: Colors.indigo),
-                        _SummaryItem(value: '$lowStock', label: 'Low Stock', color: Colors.orange),
-                        _SummaryItem(value: '$outOfStock', label: 'Out of Stock', color: Colors.red),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ACTION BUTTONS (Kekal sama)
-                  Row(
-                    children: [
+                      _buildProductImage(imgUrl, size: 80),
+                      const SizedBox(width: 20),
                       Expanded(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00147C),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          icon: const Icon(Icons.download, color: Colors.white),
-                          label: const Text('Stock In', style: TextStyle(color: Colors.white)),
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddIncomingStockPage())),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          icon: const Icon(Icons.upload, color: Colors.red),
-                          label: const Text('Stock Out', style: TextStyle(color: Colors.red)),
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StockOutPage())),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                            Text("SKU: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w600)),
+                          ],
                         ),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 24),
-
-                  // ===== BARU: SEARCH & SCANNER BAR =====
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-                          ),
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (value) => setState(() => searchQuery = value),
-                            decoration: InputDecoration(
-                              hintText: 'Search product...',
-                              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                              suffixIcon: searchQuery.isNotEmpty
-                                  ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
-                                _searchController.clear();
-                                setState(() => searchQuery = '');
-                              })
-                                  : null,
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: _scanBarcode,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00147C),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-                  const Text('Products', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-
-                  // CATEGORY FILTER
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: ['All', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'].map((cat) => _categoryChip(cat)).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // PRODUCT LIST (DENGAN FILTER SEARCH)
-                  Expanded(
-                    child: filteredDocs.isEmpty
-                        ? const Center(child: Text('No products found.'))
-                        : ListView.builder(
-                      itemCount: filteredDocs.length,
-                      itemBuilder: (context, index) {
-                        final data = filteredDocs[index].data() as Map<String, dynamic>;
-                        int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-                        String imgUrl = data['imageUrl'] ?? '';
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 50, height: 50,
-                                decoration: BoxDecoration(color: const Color(0xFFF0F2F6), borderRadius: BorderRadius.circular(10)),
-                                child: imgUrl.isNotEmpty
-                                    ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(imgUrl, fit: BoxFit.cover))
-                                    : const Icon(Icons.inventory_2, color: Colors.indigo),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    Text(data['barcodeNo']?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                  ],
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('$stock', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: stock <= 10 ? Colors.red : Colors.indigo)),
-                                  Text(data['unit'] ?? 'pcs', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  const SizedBox(height: 25),
+                  _buildQuickStats(data, stock),
+                  const SizedBox(height: 30),
+                  const Text("Active Batches", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  const SizedBox(height: 15),
+                  _buildBatchStream(productId, data['unit'] ?? 'pcs'),
                 ],
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _categoryChip(String label) {
-    final bool isSelected = selectedCategory == label;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: isSelected,
-        selectedColor: const Color(0xFF00147C),
-        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-        onSelected: (_) => setState(() => selectedCategory = label),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFF),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20), onPressed: () => Navigator.pop(context)),
+        title: const Text("Inventory Management", style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.w800, fontSize: 18)),
+        centerTitle: true,
       ),
+      body: Column(
+        children: [
+          _buildCombinedSummary(), //
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                _buildActionButtons(),
+                const SizedBox(height: 20),
+                _buildSearchBar(),
+                const SizedBox(height: 15),
+                _buildCategoryFilter(),
+              ],
+            ),
+          ),
+          Expanded(child: _buildProductStream()),
+        ],
+      ),
+    );
+  }
+
+  // --- UI COMPONENTS PREMIUM ---
+
+  Widget _buildCombinedSummary() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db.collection('products').snapshots(),
+      builder: (context, prodSnap) => StreamBuilder<QuerySnapshot>(
+        stream: _db.collection('batches').snapshots(),
+        builder: (context, batchSnap) {
+          int total = prodSnap.hasData ? prodSnap.data!.docs.length : 0;
+          int low = 0;
+          int expired = 0;
+
+          if (prodSnap.hasData) {
+            for (var d in prodSnap.data!.docs) {
+              int q = int.tryParse(d['currentStock']?.toString() ?? '0') ?? 0;
+              if (q > 0 && q <= 10) low++;
+            }
+          }
+
+          if (batchSnap.hasData) {
+            DateTime now = DateTime.now();
+            for (var d in batchSnap.data!.docs) {
+              var b = d.data() as Map<String, dynamic>;
+              if (b['expiryDate'] != null && (b['currentQuantity'] ?? 0) > 0) {
+                if ((b['expiryDate'] as Timestamp).toDate().isBefore(now)) expired++;
+              }
+            }
+          }
+
+          return Container(
+            margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15)],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _SummaryItem(value: '$total', label: 'Total SKUs', color: primaryBlue),
+                _SummaryItem(value: '$low', label: 'Low Stock', color: Colors.orange),
+                _SummaryItem(value: '$expired', label: 'Expired', color: Colors.red),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(children: [
+      Expanded(child: _actionBtn("Stock In", Icons.add_box_rounded, primaryBlue, () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddIncomingStockPage(username: widget.username))))),
+      const SizedBox(width: 12),
+      Expanded(child: _actionBtn("Stock Out", Icons.indeterminate_check_box_rounded, Colors.red.shade700, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StockOutPage())))),
+    ]);
+  }
+
+  Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: Colors.white),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => searchQuery = v),
+              decoration: const InputDecoration(hintText: "Search products...", border: InputBorder.none, hintStyle: TextStyle(fontSize: 14)),
+            ),
+          ),
+          IconButton(icon: Icon(Icons.qr_code_scanner_rounded, color: primaryBlue), onPressed: _scanBarcode),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryFilter() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: ['All', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'].map((cat) {
+          final isSel = selectedCategory == cat;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(cat),
+              selected: isSel,
+              onSelected: (_) => setState(() => selectedCategory = cat),
+              selectedColor: primaryBlue,
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(color: isSel ? Colors.white : Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isSel ? primaryBlue : Colors.grey.shade100)),
+              elevation: 0,
+              pressElevation: 0,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildProductStream() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db.collection('products').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final docs = snapshot.data!.docs.where((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          final name = (d['productName'] ?? '').toString().toLowerCase();
+          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase();
+          return (selectedCategory == 'All' || d['category'] == selectedCategory) &&
+              (name.contains(searchQuery.toLowerCase()) || barcode.contains(searchQuery.toLowerCase()));
+        }).toList();
+
+        if (docs.isEmpty) return Center(child: Text("No products found.", style: TextStyle(color: Colors.grey.shade400)));
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          physics: const BouncingScrollPhysics(),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+            return _buildProductCard(data, docs[index].id, stock);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildProductCard(Map<String, dynamic> data, String id, int stock) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+      ),
+      child: ListTile(
+        onTap: () => _showProductDetails(data, id),
+        contentPadding: const EdgeInsets.all(12),
+        leading: _buildProductImage(data['imageUrl'], size: 55),
+        title: Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        subtitle: Text("ID: ${data['barcodeNo'] ?? '-'}", style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text('$stock', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: stock <= 10 ? Colors.red : primaryBlue)),
+            Text(data['unit'] ?? 'pcs', style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductImage(String? url, {double size = 50}) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(color: const Color(0xFFF0F2F6), borderRadius: BorderRadius.circular(15)),
+      child: (url != null && url.isNotEmpty)
+          ? ClipRRect(borderRadius: BorderRadius.circular(15), child: Image.network(url, fit: BoxFit.cover))
+          : Icon(Icons.inventory_2_rounded, color: primaryBlue, size: size * 0.5),
+    );
+  }
+
+  Widget _buildQuickStats(Map<String, dynamic> data, int stock) {
+    String status = stock <= 0 ? "Out of Stock" : (stock <= 10 ? "Low Stock" : "Healthy");
+    Color color = stock <= 0 ? Colors.red : (stock <= 10 ? Colors.orange : Colors.green);
+    return Row(children: [
+      _infoBox("Current Status", status, color),
+      const SizedBox(width: 12),
+      _infoBox("Main Supplier", data['supplier'] ?? 'N/A', primaryBlue),
+    ]);
+  }
+
+  Widget _infoBox(String t, String v, Color c) {
+    return Expanded(child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(18), border: Border.all(color: c.withValues(alpha: 0.1))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(t, style: TextStyle(fontSize: 10, color: c.withValues(alpha: 0.6), fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        Text(v, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: c)),
+      ]),
+    ));
+  }
+
+  Widget _buildBatchStream(String pid, String unit) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db.collection('batches').where('productId', isEqualTo: pid).where('currentQuantity', isGreaterThan: 0).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return Center(child: Text("No active batches.", style: TextStyle(color: Colors.grey.shade400, fontSize: 12)));
+        return Column(children: docs.map((doc) {
+          final b = doc.data() as Map<String, dynamic>;
+          final exp = b['expiryDate'] != null ? (b['expiryDate'] as Timestamp).toDate() : null;
+          final isExp = exp != null && exp.isBefore(DateTime.now());
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: isExp ? Colors.red.withValues(alpha: 0.2) : Colors.grey.shade100)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text("Batch #${b['batchNumber'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                if (exp != null) Text("Exp: ${DateFormat('dd/MM/yyyy').format(exp)}", style: TextStyle(fontSize: 11, color: isExp ? Colors.red : Colors.grey)),
+              ]),
+              Text("${b['currentQuantity']} $unit", style: TextStyle(fontWeight: FontWeight.w900, color: primaryBlue)),
+            ]),
+          );
+        }).toList());
+      },
     );
   }
 }
 
 class _SummaryItem extends StatelessWidget {
-  final String value;
-  final String label;
-  final Color color;
+  final String value, label; final Color color;
   const _SummaryItem({required this.value, required this.label, required this.color});
-
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      ],
-    );
+    return Column(children: [
+      Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color)),
+      const SizedBox(height: 2),
+      Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w700)),
+    ]);
   }
 }
