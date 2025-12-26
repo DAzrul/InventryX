@@ -43,119 +43,119 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
     final barcodeNo = data['barcodeNo'];
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // compact for small screens
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Product Image
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                color: Colors.grey.shade100,
-                boxShadow: [
-                  const BoxShadow(
-                      color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Product Image
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey.shade100,
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _barcodePlaceholder(barcodeNo),
+                  )
+                      : _barcodePlaceholder(barcodeNo),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Product Name
+              Text(
+                data['productName'] ?? 'Unnamed Product',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+
+              // Product Details
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _detailRow('Category', data['category']),
+                  _detailRow('Subcategory', data['subCategory']),
+                  _detailRow('Supplier', data['supplier']),
+                  _detailRow('Barcode', barcodeNo?.toString()),
+                  _detailRow('Stock', data['quantity']?.toString() ?? '0'),
+                  _detailRow('Price', data['price'] != null
+                      ? 'RM ${data['price'].toStringAsFixed(2)}'
+                      : '-'),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: AspectRatio(
-                aspectRatio: 1, // default square
-                child: imageUrl != null && imageUrl.isNotEmpty
-                    ? Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _barcodePlaceholder(barcodeNo),
-                )
-                    : _barcodePlaceholder(barcodeNo),
+              const SizedBox(height: 12),
+
+              // Warning Text
+              const Text(
+                'Are you sure you want to delete this product? This action cannot be undone.',
+                style: TextStyle(fontSize: 13, color: Colors.redAccent),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-            // Product Name
-            Text(
-              data['productName'] ?? 'Unnamed Product',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-
-            // Product Details
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _detailRow('Category', data['category']),
-                _detailRow('Subcategory', data['subCategory']),
-                _detailRow('Supplier', data['supplier']),
-                _detailRow('Barcode', barcodeNo?.toString()),
-                _detailRow('Stock', data['quantity']?.toString() ?? '0'),
-                _detailRow('Price', data['price'] != null
-                    ? 'RM ${data['price'].toStringAsFixed(2)}'
-                    : '-'),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Warning Text
-            const Text(
-              'Are you sure you want to delete this product? This action cannot be undone.',
-              style: TextStyle(fontSize: 14, color: Colors.redAccent),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.black87,
-                      side: BorderSide(color: Colors.grey.shade400),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.black87,
+                        side: BorderSide(color: Colors.grey.shade400),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    onPressed: _loading ? null : () => Navigator.pop(context),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(fontSize: 16),
+                      onPressed: _loading ? null : () => Navigator.pop(context),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(fontSize: 14),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    onPressed: _loading ? null : _deleteProduct,
-                    child: _loading
-                        ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+                      onPressed: _loading ? null : _deleteProduct,
+                      child: _loading
+                          ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : const Text(
+                        'Delete',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                       ),
-                    )
-                        : const Text(
-                      'Delete',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -167,8 +167,11 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          SizedBox(width: 100, child: Text('$title:', style: const TextStyle(fontWeight: FontWeight.bold))),
-          Expanded(child: Text(value ?? '-', style: const TextStyle(color: Colors.black87))),
+          SizedBox(
+            width: 90,
+            child: Text('$title:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+          Expanded(child: Text(value ?? '-', style: const TextStyle(color: Colors.black87, fontSize: 13))),
         ],
       ),
     );
@@ -182,11 +185,11 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.qr_code, size: 50, color: Colors.black38),
+            const Icon(Icons.qr_code, size: 40, color: Colors.black38),
             if (barcodeNo != null)
               Text(
                 barcodeNo.toString(),
-                style: const TextStyle(fontSize: 14, color: Colors.black38),
+                style: const TextStyle(fontSize: 12, color: Colors.black38),
               ),
           ],
         ),
@@ -194,3 +197,4 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
     );
   }
 }
+

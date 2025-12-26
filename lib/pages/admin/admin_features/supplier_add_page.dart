@@ -9,40 +9,70 @@ class SupplierAddPage extends StatefulWidget {
 }
 
 class _SupplierAddPageState extends State<SupplierAddPage> {
-  final TextEditingController _name = TextEditingController();
-  final TextEditingController _phone = TextEditingController();
-  final TextEditingController _email = TextEditingController();
-  final TextEditingController _address = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController addressController = TextEditingController();
 
-  Widget _field(String label, TextEditingController controller,
-      {int maxLines = 1}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: TextField(
-        controller: controller,
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-        ),
+  void _saveSupplier() async {
+    if (nameController.text.isEmpty ||
+        phoneController.text.isEmpty ||
+        emailController.text.isEmpty ||
+        addressController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill in all fields.")),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection("supplier").add({
+        'supplierName': nameController.text.trim(),
+        'contactNo': phoneController.text.trim(),
+        'email': emailController.text.trim(),
+        'address': addressController.text.trim(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Supplier added successfully.")),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
+      child: child,
     );
   }
 
-  void _saveSupplier() async {
-    await FirebaseFirestore.instance.collection("supplier").add({
-      'supplierName': _name.text.trim(),
-      'contactNo': _phone.text.trim(),
-      'email': _email.text.trim(),
-      'address': _address.text.trim(), // ✅ NEW
-    });
-
-    Navigator.pop(context);
+  Widget _buildTextField(String label, TextEditingController controller,
+      {int maxLines = 1, IconData? icon}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        hintText: label,
+        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
   }
 
   @override
@@ -53,27 +83,39 @@ class _SupplierAddPageState extends State<SupplierAddPage> {
         title: const Text("Add Supplier",
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _field("Supplier Name", _name),
-            _field("Phone Number", _phone),
-            _field("Email", _email),
-            _field("Address", _address, maxLines: 3), // ✅ NEW
-            const SizedBox(height: 20),
+            _buildCard(
+              child: Column(
+                children: [
+                  _buildTextField("Supplier Name", nameController, icon: Icons.person),
+                  const SizedBox(height: 15),
+                  _buildTextField("Phone Number", phoneController, icon: Icons.phone),
+                  const SizedBox(height: 15),
+                  _buildTextField("Email", emailController, icon: Icons.email),
+                  const SizedBox(height: 15),
+                  _buildTextField("Address", addressController, maxLines: 3, icon: Icons.location_on),
+                ],
+              ),
+            ),
             SizedBox(
               width: double.infinity,
+              height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF233E99),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: _saveSupplier,
-                child: const Text("Save Supplier"),
+                child: const Text(
+                  "Save Supplier",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
               ),
             ),
           ],
