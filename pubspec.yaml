@@ -72,6 +72,10 @@ dev_dependencies:
 flutter_native_splash:
   color: "#FFFFFF" # Background putih ikut logo kau
   image: "assets/logo.png" # Logo kacak kau tadi
+  android_gravity: center
+  ios_content_mode: center
+    # Kalau nak logo tu betul-betul besar dlm Android 12+, guna branding
+  branding: "assets/logo.png"
   android_12:
     image: "assets/logo.png"
     color: "#FFFFFF"

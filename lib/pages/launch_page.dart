@@ -77,7 +77,7 @@ class _LaunchPageState extends State<LaunchPage> with SingleTickerProviderStateM
       backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          double logoSize = constraints.maxWidth * 0.45;
+          double logoSize = constraints.maxWidth * 0.65;
 
           return Container(
             width: double.infinity,
