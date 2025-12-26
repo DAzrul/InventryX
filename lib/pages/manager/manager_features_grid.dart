@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../Features_app/report_page.dart';
-import '../manager/forecast/forecast.dart';
+import '../Features_app/report_page.dart'; // [FIX] Pastikan import ni betul mat
 
 class _ManagerFeatureIcon extends StatelessWidget {
   final IconData icon;
@@ -11,17 +10,25 @@ class _ManagerFeatureIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    const Color primaryColor = Color(0xFF1E3A8A);
+
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Ikon warna kelabu gelap ikut design gambar
-          Icon(icon, color: const Color(0xFF233E99), size: 30),
+          // Bersih tanpa kotak ikut selera kau
+          Icon(icon, color: primaryColor, size: 28),
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF233E99)),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF333333),
+            ),
           ),
         ],
       ),
@@ -34,78 +41,52 @@ class ManagerFeaturesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min, // Penting: Hanya ambil ruang yang perlu
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
-          children: [
-            _ManagerFeatureIcon(
-              icon: Icons.inventory_2_outlined,
-              label: "Product",
-              onTap: () {
-                Navigator.pop(context); // Tutup modal dulu
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ProductPage()));
-              },
-            ),
-            _ManagerFeatureIcon(
-              icon: Icons.local_shipping_outlined,
-              label: "Supplier",
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate...
-              },
-            ),
-            _ManagerFeatureIcon(
-              icon: Icons.store_mall_directory_outlined,
-              label: "Stock",
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate...
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 20), // Ruang tambahan di bawah
+    final List<Map<String, dynamic>> features = [
+      {'icon': Icons.inventory_2_outlined, 'label': 'Product', 'onTap': () {}},
+      {'icon': Icons.local_shipping_outlined, 'label': 'Supplier', 'onTap': () {}},
+      {'icon': Icons.warehouse_outlined, 'label': 'Stock', 'onTap': () {}},
+      {'icon': Icons.auto_graph_outlined, 'label': 'Forecast', 'onTap': () {}},
+      {'icon': Icons.tips_and_updates_outlined, 'label': 'Recommend', 'onTap': () {}},
+      {
+        'icon': Icons.summarize_outlined,
+        'label': 'Report',
+        // [FIX] Ini logic untuk lompat ke page report mat!
+        'onTap': (BuildContext ctx) => Navigator.push(
+            ctx,
+            MaterialPageRoute(builder: (context) => const ReportPage())
+        )
+      },
+    ];
 
-        // --- SECOND ROW (Forecast Connection Here) ---
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
-          children: [
-            _ManagerFeatureIcon(
-              icon: Icons.flag_outlined,
-              label: "Forecast",
-              onTap: () {
-                Navigator.pop(context);
-                // 2. NAVIGATE TO FORECAST PAGE
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ForecastingPage()),
-                );
-              },
-            ),
-            _ManagerFeatureIcon(
-              icon: Icons.volunteer_activism_outlined,
-              label: "Recomamend",
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate...
-              },
-            ),
-            _ManagerFeatureIcon(
-              icon: Icons.description_outlined,
-              label: "Report",
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ReportPage())
-                );
-              },
-            ),
-          ],
-        ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: features.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.0,
+      ),
+      itemBuilder: (context, index) {
+        final f = features[index];
+        return _ManagerFeatureIcon(
+          icon: f['icon'],
+          label: f['label'],
+          onTap: () {
+            // Tutup modal dulu baru pergi page baru supaya tak serabut
+            Navigator.pop(context);
+            if (f['label'] == 'Report') {
+              f['onTap'](context);
+            } else {
+              // Untuk butang lain yang belum ada page
+              ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("${f['label']} coming soon!"))
+              );
+            }
+          },
+        );
+      },
     );
   }
 }

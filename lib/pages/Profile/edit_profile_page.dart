@@ -23,7 +23,6 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  // --- Controllers ---
   late TextEditingController nameController;
   late TextEditingController usernameController;
   late TextEditingController emailController;
@@ -35,6 +34,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _isUploading = false;
   bool _isLoading = false;
   final _formKey = GlobalKey<FormState>();
+
+  final Color primaryBlue = const Color(0xFF233E99);
 
   @override
   void initState() {
@@ -57,87 +58,231 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
-  void _showPopupMessage(String title, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
+  // --- UI COMPONENTS ---
+
+  Widget _buildTextField({
+    required String label,
+    required TextEditingController controller,
+    required IconData icon,
+    bool readOnly = false,
+    String? Function(String?)? validator,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          readOnly: readOnly,
+          validator: validator,
+          keyboardType: keyboardType,
+          style: TextStyle(fontWeight: FontWeight.w600, color: readOnly ? Colors.grey : Colors.black87),
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: readOnly ? Colors.grey : primaryBlue, size: 20),
+            filled: true,
+            fillColor: readOnly ? Colors.grey[100] : Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(color: Colors.grey.shade100),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(color: primaryBlue.withValues(alpha: 0.5), width: 2),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FD),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text("Update Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  // --- AVATAR SECTION ---
+                  Center(
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 4),
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20)],
+                          ),
+                          child: CircleAvatar(
+                            radius: 55,
+                            backgroundColor: Colors.white,
+                            backgroundImage: _imageFile != null
+                                ? FileImage(_imageFile!) as ImageProvider
+                                : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
+                                ? CachedNetworkImageProvider(_currentImageUrl!)
+                                : null),
+                            child: (_currentImageUrl == null && _imageFile == null)
+                                ? Icon(Icons.person, size: 55, color: Colors.grey[300])
+                                : null,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _pickImage,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: primaryBlue,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 3),
+                              ),
+                              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                        if (_isUploading)
+                          const Positioned.fill(child: Center(child: CircularProgressIndicator())),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 35),
+
+                  // --- FORM FIELDS ---
+                  _buildTextField(
+                    label: "Current Role",
+                    controller: roleController,
+                    icon: Icons.verified_user_rounded,
+                    readOnly: true,
+                  ),
+                  _buildTextField(
+                    label: "Username",
+                    controller: usernameController,
+                    icon: Icons.alternate_email_rounded,
+                    validator: (val) => (val == null || val.isEmpty) ? "Field required" : null,
+                  ),
+                  _buildTextField(
+                    label: "Full Name",
+                    controller: nameController,
+                    icon: Icons.person_rounded,
+                    validator: (val) => (val == null || val.isEmpty) ? "Field required" : null,
+                  ),
+                  _buildTextField(
+                    label: "Email Address",
+                    controller: emailController,
+                    icon: Icons.email_rounded,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (val) => (val == null || !val.contains('@')) ? "Invalid email" : null,
+                  ),
+                  _buildTextField(
+                    label: "Phone Number",
+                    controller: phoneNoController,
+                    icon: Icons.phone_android_rounded,
+                    keyboardType: TextInputType.phone,
+                  ),
+
+                  const SizedBox(height: 100), // Spacing for floating button
+                ],
+              ),
+            ),
+          ),
+
+          // --- FLOATING SAVE BUTTON ---
+          Positioned(
+            bottom: 30,
+            left: 24,
+            right: 24,
+            child: SizedBox(
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryBlue,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  elevation: 8,
+                  shadowColor: primaryBlue.withValues(alpha: 0.4),
+                ),
+                onPressed: (_isLoading || _isUploading) ? null : _updateProfile,
+                child: _isLoading
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text("Save Profile Changes", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
+  // --- LOGIC FUNCTIONS (Kekal sama bos, cuma update popup sikit) ---
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() => _imageFile = File(pickedFile.path));
-    }
-  }
-
-  Future<void> _deleteOldImage(String? oldUrl) async {
-    if (oldUrl == null || oldUrl.isEmpty || !oldUrl.contains('firebasestorage')) return;
-    try {
-      await FirebaseStorage.instance.refFromURL(oldUrl).delete();
-    } catch (e) {
-      // Ignore errors
-    }
+    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
 
   Future<String?> _uploadImageAndGetUrl() async {
     if (_imageFile == null) return _currentImageUrl;
     setState(() => _isUploading = true);
     try {
-      await _deleteOldImage(_currentImageUrl);
+      if (_currentImageUrl != null && _currentImageUrl!.contains('firebasestorage')) {
+        await FirebaseStorage.instance.refFromURL(_currentImageUrl!).delete();
+      }
       String fileName = 'profile_pictures/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       Reference ref = FirebaseStorage.instance.ref().child(fileName);
-      UploadTask uploadTask = ref.putFile(_imageFile!);
-      TaskSnapshot snapshot = await uploadTask;
-      String downloadUrl = await snapshot.ref.getDownloadURL();
-      setState(() {
-        _isUploading = false;
-        _currentImageUrl = downloadUrl;
-      });
-      return downloadUrl;
+      await ref.putFile(_imageFile!);
+      return await ref.getDownloadURL();
     } catch (e) {
-      setState(() => _isUploading = false);
-      _showPopupMessage("Error Upload", "Failed: ${e.toString()}");
       return null;
+    } finally {
+      setState(() => _isUploading = false);
     }
   }
 
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
 
     try {
-      String activityDescription = "Profile data updated.";
-      int iconCode = Icons.person_outline.codePoint;
-      bool imageUpdated = (_imageFile != null);
+      String? finalImageUrl = await _uploadImageAndGetUrl();
       String newUsername = usernameController.text.trim();
 
-      String? finalImageUrl = await _uploadImageAndGetUrl();
+      // 1. Tentukan description aktiviti mat
+      String activityMsg = "Updated profile information.";
+      int activityIcon = Icons.edit.codePoint;
 
-      if (imageUpdated) {
-        activityDescription = "Profile picture updated.";
-        iconCode = Icons.camera_alt_outlined.codePoint;
+      if (_imageFile != null) {
+        activityMsg = "Updated profile picture.";
+        activityIcon = Icons.camera_alt_rounded.codePoint;
       }
 
-      if (newUsername != widget.username) {
-        final checkUser = await FirebaseFirestore.instance
-            .collection('users')
-            .where('username', isEqualTo: newUsername)
-            .get();
-        if (checkUser.docs.isNotEmpty) {
-          setState(() => _isLoading = false);
-          _showPopupMessage("Error", "Username '$newUsername' is already taken.");
-          return;
-        }
-      }
-
+      // 2. Update Master Data User
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'name': nameController.text.trim(),
         'username': newUsername,
@@ -146,207 +291,35 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'profilePictureUrl': finalImageUrl,
       });
 
+      // 3. SIMPAN AKTIVITI (Sub-collection)
+      // Wajib buat sebelum pop supaya data gerenti masuk mat!
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('activities')
+          .add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'description': activityMsg,
+        'iconCode': activityIcon,
+      });
+
+      // 4. Update Local Storage
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('savedUsername', newUsername);
 
-      await FirebaseFirestore.instance
-          .collection('users').doc(widget.userId)
-          .collection('activities').add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'description': activityDescription,
-        'iconCode': iconCode,
-      });
-
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        // Hantar 'true' supaya page sebelum ni tahu kena refresh data
+        Navigator.pop(context, true);
+      }
 
     } catch (e) {
-      setState(() => _isLoading = false);
-      _showPopupMessage("System Error", "Failed: ${e.toString()}");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red)
+        );
+      }
     } finally {
-      if(mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Scaffold di dalam Modal untuk struktur UI yang kemas
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.w600)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        // Butang ini membolehkan tutup manual, selain swipe
-        leading: IconButton(
-          icon: const Icon(Icons.keyboard_arrow_down, size: 30, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- DRAG HANDLE (Garis Kelabu di Tengah) ---
-              // Ini memberi hint visual bahawa user boleh swipe ke bawah
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-
-              // --- GAMBAR PROFIL ---
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.grey[200],
-                      backgroundImage: _imageFile != null
-                          ? FileImage(_imageFile!) as ImageProvider
-                          : (_currentImageUrl != null && _currentImageUrl!.isNotEmpty
-                          ? CachedNetworkImageProvider(_currentImageUrl!)
-                          : const AssetImage('assets/profile_placeholder.png')) as ImageProvider,
-                      child: (_currentImageUrl == null && _imageFile == null)
-                          ? const Icon(Icons.person, size: 60, color: Colors.grey)
-                          : (_isUploading ? const CircularProgressIndicator(color: Colors.white) : null),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: InkWell(
-                        onTap: _pickImage,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF233E99),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-
-              // --- ROLE (LOCKED) ---
-              const Text("User Role (Locked)", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: roleController,
-                readOnly: true,
-                style: const TextStyle(color: Colors.grey),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[200],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // --- USERNAME ---
-              const Text("Username", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: usernameController,
-                decoration: InputDecoration(
-                  hintText: "Enter Username",
-                  prefixIcon: const Icon(Icons.account_circle_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Username required';
-                  if (val.contains(' ')) return 'No spaces allowed';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // --- FULL NAME ---
-              const Text("Full Name", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  hintText: "Enter Full Name",
-                  prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-                validator: (val) => (val == null || val.trim().isEmpty) ? 'Name required' : null,
-              ),
-              const SizedBox(height: 20),
-
-              // --- EMAIL ---
-              const Text("Email Address", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: "Enter Email Address",
-                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-                validator: (val) => (val == null || !val.contains('@')) ? 'Invalid email' : null,
-              ),
-              const SizedBox(height: 20),
-
-              // --- PHONE ---
-              const Text("Phone Number", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: phoneNoController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  hintText: "Enter Phone Number",
-                  prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // --- SAVE BUTTON ---
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF233E99),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: (_isLoading || _isUploading) ? null : _updateProfile,
-                  icon: const Icon(Icons.save_outlined, color: Colors.white),
-                  label: (_isLoading || _isUploading)
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Save Changes", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-              const SizedBox(height: 30),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

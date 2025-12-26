@@ -2,210 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:intl/intl.dart';
 
-// Import dependencies
+// Import path pastikan ngam mat
 import '../../../pages/login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
 
-// ==========================================================
-// KELAS WIDGET PEMBANTU
-// ==========================================================
-
-// --- 1. USER PROFILE HEADER WIDGET ---
-class UserProfileHeader extends StatelessWidget {
-  final String username;
-  final String role;
-  final String? profilePictureUrl;
-
-  const UserProfileHeader({
-    super.key,
-    required this.username,
-    required this.role,
-    this.profilePictureUrl
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ImageProvider? imageProvider = profilePictureUrl != null && profilePictureUrl!.isNotEmpty
-        ? CachedNetworkImageProvider(profilePictureUrl!)
-        : null;
-
-    final bool isPlaceholder = profilePictureUrl == null || profilePictureUrl!.isEmpty;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: Colors.grey[300],
-            backgroundImage: imageProvider,
-            child: isPlaceholder
-                ? Icon(Icons.person, size: 40, color: Colors.grey[600])
-                : null,
-          ),
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 15.0),
-            child: Text(
-              username.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                height: 1.2,
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            role,
-            style: const TextStyle(color: Colors.grey, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- 2. CONTACT INFORMATION WIDGET ---
-class ContactInformationSection extends StatelessWidget {
-  final String name;
-  final String email;
-  final String phoneNo;
-
-  const ContactInformationSection({
-    super.key,
-    required this.name,
-    required this.email,
-    required this.phoneNo,
-  });
-
-  Widget _buildContactItem({required IconData icon, required String text}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey[600], size: 20),
-          const SizedBox(width: 15),
-          Flexible(child: Text(text, style: const TextStyle(fontSize: 15))),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Contact Information", style: TextStyle(fontWeight: FontWeight.bold)),
-          const Divider(height: 20),
-          _buildContactItem(icon: Icons.account_circle_outlined, text: name),
-          _buildContactItem(icon: Icons.email_outlined, text: email),
-          _buildContactItem(icon: Icons.phone_outlined, text: phoneNo),
-        ],
-      ),
-    );
-  }
-}
-
-// --- 3. QUICK ACTIONS WIDGET (Dikemaskini: Buang Switch Account) ---
-class QuickActionsSection extends StatelessWidget {
-  final VoidCallback onChangePassword;
-  final VoidCallback onLogout; // Kekalkan Logout sahaja
-
-  const QuickActionsSection({
-    super.key,
-    required this.onChangePassword,
-    required this.onLogout
-  });
-
-  Widget _buildQuickActionButton({required IconData icon, required String label, required VoidCallback onPressed, Color? color}) {
-    return Container(
-      width: double.infinity,
-      height: 55,
-      margin: const EdgeInsets.only(bottom: 10),
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, color: color ?? const Color(0xFF233E99)),
-        label: Text(label, style: TextStyle(color: color ?? Colors.black87, fontSize: 16)),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: color != Colors.red[700] ? Colors.white : Colors.red[700],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          side: BorderSide(color: color == Colors.red[700] ? Colors.red[700]! : Colors.grey[300]!),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Quick Action", style: TextStyle(fontWeight: FontWeight.bold)),
-          const Divider(height: 20),
-          const SizedBox(height: 10),
-
-          // Butang Change Password
-          _buildQuickActionButton(
-            icon: Icons.key_outlined,
-            label: "Change Password",
-            onPressed: onChangePassword,
-          ),
-
-          // Butang Log Out
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton.icon(
-              onPressed: onLogout,
-              icon: const Icon(Icons.logout, color: Colors.white),
-              label: const Text("Log Out", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[700],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==========================================================
-// KELAS UTAMA PROFILE PAGE
-// ==========================================================
-
 class ProfilePage extends StatefulWidget {
   final String username;
-
   const ProfilePage({super.key, required this.username});
 
   @override
@@ -213,18 +18,12 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // Controllers
-  final TextEditingController usernameController = TextEditingController();
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController phoneNoController = TextEditingController();
-
+  final Color primaryColor = const Color(0xFF233E99);
   String? currentUserId;
   String userRole = '';
   bool isLoading = true;
   String? profilePictureUrl;
-
-  List<Map<String, dynamic>> realActivityData = [];
+  Map<String, String> userData = {};
 
   @override
   void initState() {
@@ -232,24 +31,8 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadUserProfile();
   }
 
-  Future<bool> _isNetworkAvailable() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    return connectivityResult != ConnectivityResult.none;
-  }
-
-  String _formatTimestamp(Timestamp? timestamp) {
-    if (timestamp == null) return 'N/A';
-    final duration = DateTime.now().difference(timestamp.toDate());
-    if (duration.inMinutes < 1) return 'Just now';
-    if (duration.inMinutes < 60) return '${duration.inMinutes} mins ago';
-    if (duration.inHours < 24) return '${duration.inHours} hours ago';
-    if (duration.inDays < 7) return '${duration.inDays} days ago';
-    return '${timestamp.toDate().month}/${timestamp.toDate().day}/${timestamp.toDate().year}';
-  }
-
+  // --- LOGIC 1: FETCH DATA USER ---
   Future<void> _loadUserProfile() async {
-    final isOnline = await _isNetworkAvailable();
-
     try {
       QuerySnapshot userSnap = await FirebaseFirestore.instance
           .collection("users")
@@ -258,289 +41,298 @@ class _ProfilePageState extends State<ProfilePage> {
           .get();
 
       if (userSnap.docs.isNotEmpty) {
-        var userData = userSnap.docs.first.data() as Map<String, dynamic>;
-        String userId = userSnap.docs.first.id;
-
-        QuerySnapshot activitySnap;
-        if (isOnline) {
-          activitySnap = await FirebaseFirestore.instance
-              .collection("users").doc(userId)
-              .collection("activities")
-              .orderBy('timestamp', descending: true)
-              .limit(4)
-              .get();
-        } else {
-          activitySnap = await FirebaseFirestore.instance.collection("users").doc(userId).collection("activities").get(const GetOptions(source: Source.cache));
-        }
-
-        List<Map<String, dynamic>> tempActivities = [];
-        for (var doc in activitySnap.docs) {
-          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-          String timeAgo = _formatTimestamp(data['timestamp']);
-          tempActivities.add({
-            'icon': IconData(data['iconCode'] ?? Icons.info_outline.codePoint, fontFamily: 'MaterialIcons'),
-            'text': data['description'] ?? 'Activity recorded.',
-            'time': timeAgo,
-          });
-        }
-
-        if(mounted) {
+        var data = userSnap.docs.first.data() as Map<String, dynamic>;
+        if (mounted) {
           setState(() {
-            currentUserId = userId;
-            usernameController.text = userData['username'] ?? 'N/A';
-            nameController.text = userData['name'] ?? 'N/A';
-            emailController.text = userData['email'] ?? 'N/A';
-            phoneNoController.text = userData['phoneNo'] ?? 'N/A';
-            userRole = userData['role'] ?? 'N/A';
-            profilePictureUrl = userData['profilePictureUrl'];
-            realActivityData = tempActivities;
+            currentUserId = userSnap.docs.first.id;
+            userData = {
+              'username': data['username'] ?? 'N/A',
+              'name': data['name'] ?? 'N/A',
+              'email': data['email'] ?? 'N/A',
+              'phoneNo': data['phoneNo'] ?? 'N/A',
+            };
+            userRole = data['role'] ?? 'STAFF';
+            profilePictureUrl = data['profilePictureUrl'];
             isLoading = false;
           });
         }
-
-      } else {
-        if(mounted) setState(() => isLoading = false);
       }
     } catch (e) {
-      if(mounted) setState(() => isLoading = false);
-      print("Error loading user data: $e");
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  void _editProfile() async {
-    if (currentUserId == null || isLoading) return;
-
-    if (!await _isNetworkAvailable()) {
-      _showPopupMessage("Offline Mode", "You must be online to edit your profile.");
-      return;
-    }
-
-    final Map<String, String> dataToEdit = {
-      'username': usernameController.text,
-      'name': nameController.text,
-      'email': emailController.text,
-      'phoneNo': phoneNoController.text,
-      'role': userRole,
-      'profilePictureUrl': profilePictureUrl ?? '',
-    };
-
-    // [PENTING] Guna showModalBottomSheet untuk effect Popup & Swipe Down
-    final result = await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.90,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: EditProfilePage(
-              userId: currentUserId!,
-              username: widget.username,
-              initialData: dataToEdit,
-            ),
-          ),
-        );
-      },
-    );
-
-    // Refresh data jika edit berjaya
-    if (result == true) {
-      await _loadUserProfile();
-      _showPopupMessage("Success! 🎉", "Profile updated successfully.");
-    }
+  // --- LOGIC 2: STREAM UNTUK LATEST ACTIVITY ---
+  Stream<QuerySnapshot> _activityStream() {
+    return FirebaseFirestore.instance
+        .collection("users")
+        .doc(currentUserId)
+        .collection("activities")
+        .orderBy('timestamp', descending: true)
+        .limit(5)
+        .snapshots();
   }
 
-  void _logout() async {
-    final isOnline = await _isNetworkAvailable();
-    if (isOnline && currentUserId != null) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users').doc(currentUserId!)
-            .collection('activities').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'description': 'Signed out of account.',
-          'iconCode': Icons.logout.codePoint,
-        });
-      } catch (e) {}
-    }
-
-    await LoginPage.clearLoginState();
-    await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-          (Route<dynamic> route) => false,
-    );
-  }
-
-  // [DIHAPUS] Fungsi _changeAccount dan _showAccountSwitcherDialog telah dibuang kerana tidak digunakan
-
-  void _showPopupMessage(String title, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExpansionTile({required String title, required IconData icon, required List<Widget> children}) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      elevation: 1,
-      child: ExpansionTile(
-        leading: Icon(icon, color: Colors.grey[700]),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        childrenPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        children: children,
-      ),
-    );
-  }
-
-  Widget _buildActivityAccordion({required String title, required List<Map<String, dynamic>> activities, required bool showDropdownIcon}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (title.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 16),
-            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ...activities.map((activity) =>
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(activity['icon'], color: Colors.grey[700]),
-              title: Text(activity['text'], style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-              trailing: Text(activity['time'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            )
-        ).toList(),
-        const SizedBox(height: 10),
-      ],
-    );
-  }
-
-  void _showChangePasswordModal() async {
-    if (currentUserId == null) return;
-    if (!await _isNetworkAvailable()) {
-      _showPopupMessage("Offline Mode", "You must be online to change your password.");
-      return;
-    }
-
-    final result = await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.7,
-          child: ChangePasswordProfilePage(
-            username: widget.username,
-            userId: currentUserId!,
-          ),
-        );
-      },
-    );
-
-    if (result != null) {
-      if (result == 'success') {
-        _showPopupMessage("Success! 🎉", "Password updated successfully.");
-      } else if (result == 'fail') {
-        _showPopupMessage("Update Failed ❌", "Incorrect password or system error.");
-      }
-    }
+  String _formatTimestamp(Timestamp? ts) {
+    if (ts == null) return 'Just now';
+    return DateFormat('dd MMM, hh:mm a').format(ts.toDate());
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Scaffold(
-        appBar: null,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: const Text("User Profile", style: TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text("Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: _editProfile,
-          ),
-        ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        // [FIX] Scroll sentiasa reset ke atas (Gambar 1)
+        key: UniqueKey(),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            UserProfileHeader(
-              username: usernameController.text,
-              role: userRole,
-              profilePictureUrl: profilePictureUrl,
-            ),
-            const SizedBox(height: 20),
-            ContactInformationSection(
-              name: nameController.text,
-              email: emailController.text,
-              phoneNo: phoneNoController.text,
-            ),
-            const SizedBox(height: 20),
-            QuickActionsSection(
-              onChangePassword: _showChangePasswordModal,
-              // onChangeAccount telah dibuang
-              onLogout: _logout,
-            ),
-            const SizedBox(height: 20),
-            _buildExpansionTile(
-              title: "Profile",
-              icon: Icons.person_outline,
+            const SizedBox(height: 10),
+            _buildProfileHeader(),
+            const SizedBox(height: 25),
+
+            _buildSectionTitle("Contact Information"),
+            _buildInfoCard(),
+
+            const SizedBox(height: 25),
+            _buildSectionTitle("Account Settings"),
+
+            // SECURITY: Default Tertutup
+            _buildSettingsTile(
+              title: "Security & Safety",
+              icon: Icons.security_rounded,
               children: [
-                _buildActivityAccordion(
-                  title: "Latest Activity",
-                  activities: realActivityData,
-                  showDropdownIcon: false,
+                _buildSubTile("Change Password", Icons.key_rounded, _showChangePasswordModal),
+                _buildSubTile("Two-Factor Auth", Icons.vibration_rounded, null),
+              ],
+            ),
+
+            // ACTIVITY: Default Tertutup (Tutup baris initiallyExpanded kat function bawah)
+            _buildSettingsTile(
+              title: "Latest Activity",
+              icon: Icons.history_rounded,
+              children: [
+                StreamBuilder<QuerySnapshot>(
+                  stream: _activityStream(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return const Text("Error loading data.");
+                    if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const Padding(padding: EdgeInsets.all(20), child: Text("No recent activity.", style: TextStyle(color: Colors.grey)));
+                    }
+
+                    return Column(
+                      children: snapshot.data!.docs.map((doc) {
+                        var d = doc.data() as Map<String, dynamic>;
+                        return _buildActivityTile({
+                          'icon': IconData(d['iconCode'] ?? Icons.info_outline.codePoint, fontFamily: 'MaterialIcons'),
+                          'description': d['description'] ?? 'Activity recorded.',
+                          'time': _formatTimestamp(d['timestamp'] as Timestamp?),
+                        });
+                      }).toList(),
+                    );
+                  },
                 ),
               ],
             ),
-            _buildExpansionTile(
-              title: "Safety",
-              icon: Icons.security_outlined,
-              children: const [
-                ListTile(
-                  dense: true,
-                  title: Text("Two-Factor Authentication"),
-                  trailing: Icon(Icons.chevron_right),
-                )
-              ],
-            ),
-            _buildExpansionTile(
-              title: "Notification",
-              icon: Icons.notifications_none,
-              children: [
-                ListTile(
-                  dense: true,
-                  title: const Text("Email Notifications"),
-                  trailing: Switch(value: true, onChanged: (val){}),
-                )
-              ],
-            ),
-            const SizedBox(height: 100),
+
+            const SizedBox(height: 30),
+            _buildLogoutButton(),
+            const SizedBox(height: 120),
           ],
         ),
       ),
     );
+  }
+
+  // --- UI COMPONENTS ---
+
+  Widget _buildSettingsTile({required String title, required IconData icon, required List<Widget> children}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white, borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          // [FIX] initiallyExpanded dibuang supaya sentiasa tutup bila balik semula
+          leading: Icon(icon, color: primaryColor, size: 22),
+          title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return Container(
+      width: double.infinity,
+      height: 55,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: _logout,
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        label: const Text("Log Out Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red[50], foregroundColor: Colors.red, elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor, width: 2)),
+              child: CircleAvatar(
+                radius: 50, backgroundColor: Colors.grey[200],
+                backgroundImage: (profilePictureUrl != null && profilePictureUrl!.isNotEmpty)
+                    ? CachedNetworkImageProvider(profilePictureUrl!) : null,
+                child: (profilePictureUrl == null || profilePictureUrl!.isEmpty)
+                    ? Icon(Icons.person, size: 50, color: Colors.grey[400]) : null,
+              ),
+            ),
+            GestureDetector(
+              onTap: _editProfile,
+              child: CircleAvatar(radius: 16, backgroundColor: primaryColor, child: const Icon(Icons.edit, size: 16, color: Colors.white)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 15),
+        Text(userData['name'] ?? 'N/A', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(userRole.toUpperCase(), style: TextStyle(fontSize: 14, color: Colors.grey[600], letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
+      child: Column(
+        children: [
+          _buildInfoRow(Icons.alternate_email_rounded, "Username", userData['username'] ?? 'N/A'),
+          _buildInfoRow(Icons.email_outlined, "Email", userData['email'] ?? 'N/A'),
+          _buildInfoRow(Icons.phone_android_rounded, "Phone", userData['phoneNo'] ?? 'N/A'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityTile(Map<String, dynamic> act) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(border: Border(left: BorderSide(color: primaryColor.withValues(alpha: 0.2), width: 2.5))),
+      child: ListTile(
+        dense: true,
+        leading: Icon(act['icon'], size: 16, color: primaryColor),
+        title: Text(act['description'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        subtitle: Text(act['time'], style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[800]))),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubTile(String title, IconData icon, VoidCallback? onTap) {
+    return ListTile(
+      leading: Icon(icon, size: 18, color: Colors.grey[700]),
+      title: Text(title, style: const TextStyle(fontSize: 14)),
+      trailing: const Icon(Icons.chevron_right, size: 18),
+      onTap: onTap,
+    );
+  }
+
+  // --- FUNCTIONS ---
+
+  void _editProfile() async {
+    final Map<String, String> dataToEdit = {...userData, 'role': userRole, 'profilePictureUrl': profilePictureUrl ?? ''};
+    await showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.9,
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+        child: EditProfilePage(userId: currentUserId!, username: widget.username, initialData: dataToEdit),
+      ),
+    );
+    _loadUserProfile();
+  }
+
+  void _showChangePasswordModal() {
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: ChangePasswordProfilePage(username: widget.username, userId: currentUserId!),
+      ),
+    );
+  }
+
+  void _logout() async {
+    setState(() => isLoading = true);
+    try {
+      if (currentUserId != null) {
+        // [FIX] Simpan aktiviti logout mat!
+        await FirebaseFirestore.instance
+            .collection("users").doc(currentUserId)
+            .collection("activities").add({
+          'description': 'Logged out from account.',
+          'iconCode': Icons.logout.codePoint,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (r) => false);
+    } catch (e) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (r) => false);
+    }
   }
 }
