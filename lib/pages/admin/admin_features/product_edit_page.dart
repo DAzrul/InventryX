@@ -40,7 +40,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
   final Map<String, List<String>> categoryMap = {
     'FOOD': ['Bakery', 'Dairy & Milk', 'Snacks & Chips'],
-    'BEVERAGES': ['Soft Drink', 'Coffee & Tea', 'Water'],
+    'BEVERAGES': ['Soft Drinks', 'Coffee & Tea', 'Water'],
     'PERSONAL CARE': ['Oral Care', 'Healthcare'],
   };
 
@@ -62,6 +62,10 @@ class _ProductEditPageState extends State<ProductEditPage> {
     selectedSupplierId = data['supplierId'];
     imageUrl = data['imageUrl'];
 
+    if (!subCategories.contains(selectedSubCategory)) {
+      selectedSubCategory = null;
+    }
+
     _loadSuppliers();
   }
 
@@ -72,7 +76,14 @@ class _ProductEditPageState extends State<ProductEditPage> {
       for (var doc in snapshot.docs) {
         tempMap[doc.id] = doc.data()['supplierName'] ?? 'Unknown';
       }
-      setState(() => supplierMap = tempMap);
+      setState(() {
+        supplierMap = tempMap;
+
+        // 🔥 IMPORTANT FIX
+        if (!supplierMap.containsKey(selectedSupplierId)) {
+          selectedSupplierId = null;
+        }
+      });
     } catch (e) {
       debugPrint("Error loading suppliers: $e");
     }
@@ -215,22 +226,26 @@ class _ProductEditPageState extends State<ProductEditPage> {
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     decoration: _dropdownDecoration("Category"),
-                    value: selectedCategory,
+                    value: categoryMap.keys.contains(selectedCategory)
+                        ? selectedCategory
+                        : null,
                     items: categoryMap.keys
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                     onChanged: (value) {
                       setState(() {
                         selectedCategory = value;
-                        selectedSubCategory = null;
                         subCategories = value != null ? categoryMap[value]! : [];
+                        selectedSubCategory = null;
                       });
                     },
                   ),
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     decoration: _dropdownDecoration("Subcategory"),
-                    value: selectedSubCategory,
+                    value: subCategories.contains(selectedSubCategory)
+                        ? selectedSubCategory
+                        : null,
                     items: subCategories
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
@@ -252,11 +267,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     decoration: _dropdownDecoration("Supplier"),
-                    value: selectedSupplierId,
+                    value: supplierMap.containsKey(selectedSupplierId)
+                        ? selectedSupplierId
+                        : null,
                     items: supplierMap.entries
-                        .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                        .map(
+                          (e) => DropdownMenuItem(
+                        value: e.key,
+                        child: Text(e.value),
+                      ),
+                    )
                         .toList(),
-                    onChanged: (value) => setState(() => selectedSupplierId = value),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedSupplierId = value;
+                      });
+                    },
                   ),
                   const SizedBox(height: 15),
                   TextField(
