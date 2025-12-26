@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:inventryx/pages/Supplier/supplier_list_page_view.dart';
 
+import '../ProductPage/product_list_page_view.dart';
 import '../staff/add_incoming_stock.dart';
 import '../staff/sales.dart';
 import '../staff/stock.dart';
+import '../Supplier/supplier_list_page_view.dart';
 
 // Import halaman-halaman destinasi Staff (pastikan fail ini wujud)
 // import 'staff_features/scan_page.dart';
@@ -52,7 +55,7 @@ class StaffFeaturesGrid extends StatelessWidget {
               label: "Product",
               onTap: () {
                 Navigator.pop(context); // Tutup modal dulu
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ProductPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ProductListViewPage()));
               },
             ),
             _StaffFeatureIcon(
@@ -60,7 +63,7 @@ class StaffFeaturesGrid extends StatelessWidget {
               label: "Supplier",
               onTap: () {
                 Navigator.pop(context);
-                // Navigate...
+                Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierListPageView()));
               },
             ),
             _StaffFeatureIcon(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../../Features_app/barcode_scanner_page.dart';
 
 class ProductEditPage extends StatefulWidget {
   final String productId;
@@ -19,29 +20,27 @@ class ProductEditPage extends StatefulWidget {
 }
 
 class _ProductEditPageState extends State<ProductEditPage> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _barcodeController = TextEditingController();
-  final TextEditingController _unitController = TextEditingController();
-  final TextEditingController _reorderLevelController = TextEditingController();
-  final TextEditingController _stockController = TextEditingController();
+  final TextEditingController productNameController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
+  final TextEditingController barcodeController = TextEditingController();
+  final TextEditingController unitController = TextEditingController();
+  final TextEditingController reorderLevelController = TextEditingController();
+  final TextEditingController stockController = TextEditingController();
 
-  File? _pickedImage;
-  String? _imageUrl;
-  bool _loading = false;
+  File? pickedImage;
+  String? imageUrl;
+  bool loading = false;
 
-  String? _category;
-  String? _subCategory;
+  String? selectedCategory;
+  String? selectedSubCategory;
 
-  // GUNA MAP SUPAYA KITA BOLEH TUKAR NAMA KEPADA ID
-  Map<String, String> _supplierMap = {};
-  String? _selectedSupplierId;
+  Map<String, String> supplierMap = {};
+  String? selectedSupplierId;
+  List<String> subCategories = [];
 
-  List<String> _subCategories = [];
-
-  final Map<String, List<String>> _categoryMap = {
+  final Map<String, List<String>> categoryMap = {
     'FOOD': ['Bakery', 'Dairy & Milk', 'Snacks & Chips'],
-    'BEVERAGES': ['Soft Drink', 'Coffee & Tea', 'Water'],
+    'BEVERAGES': ['Soft Drinks', 'Coffee & Tea', 'Water'],
     'PERSONAL CARE': ['Oral Care', 'Healthcare'],
   };
 
@@ -50,20 +49,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
     super.initState();
     final data = widget.productData;
 
-    _nameController.text = data['productName'] ?? '';
-    _priceController.text = (data['price'] ?? 0).toString();
-    _barcodeController.text = (data['barcodeNo'] ?? '').toString();
-    _unitController.text = data['unit'] ?? 'pcs';
-    _reorderLevelController.text = (data['reorderLevel'] ?? 0).toString();
-    _stockController.text = (data['currentStock'] ?? 0).toString();
+    productNameController.text = data['productName'] ?? '';
+    priceController.text = (data['price'] ?? 0).toString();
+    barcodeController.text = (data['barcodeNo'] ?? '').toString();
+    unitController.text = data['unit'] ?? 'pcs';
+    reorderLevelController.text = (data['reorderLevel'] ?? 0).toString();
+    stockController.text = (data['currentStock'] ?? 0).toString();
 
-    _category = data['category'];
-    _subCategories = _categoryMap[_category] ?? [];
-    _subCategory = data['subCategory'];
+    selectedCategory = data['category'];
+    subCategories = categoryMap[selectedCategory] ?? [];
+    selectedSubCategory = data['subCategory'];
+    selectedSupplierId = data['supplierId'];
+    imageUrl = data['imageUrl'];
 
-    // Ambil supplierId sedia ada
-    _selectedSupplierId = data['supplierId'];
-    _imageUrl = data['imageUrl'];
+    if (!subCategories.contains(selectedSubCategory)) {
+      selectedSubCategory = null;
+    }
 
     _loadSuppliers();
   }
@@ -71,23 +72,32 @@ class _ProductEditPageState extends State<ProductEditPage> {
   Future<void> _loadSuppliers() async {
     try {
       final snapshot = await FirebaseFirestore.instance.collection('supplier').get();
+
       Map<String, String> tempMap = {};
       for (var doc in snapshot.docs) {
         tempMap[doc.id] = doc.data()['supplierName'] ?? 'Unknown';
       }
+
       setState(() {
-        _supplierMap = tempMap;
+        supplierMap = tempMap;
+
+        // Set selectedSupplierId only if it exists in supplierMap
+        final productSupplierId = widget.productData['supplierId'];
+        if (supplierMap.containsKey(productSupplierId)) {
+          selectedSupplierId = productSupplierId;
+        } else {
+          selectedSupplierId = null;
+        }
       });
     } catch (e) {
       debugPrint("Error loading suppliers: $e");
     }
   }
 
+
   Future<void> _pickImage(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(source: source);
-    if (picked != null) {
-      setState(() => _pickedImage = File(picked.path));
-    }
+    final picked = await ImagePicker().pickImage(source: source, imageQuality: 80);
+    if (picked != null) setState(() => pickedImage = File(picked.path));
   }
 
   Future<String?> _uploadImage(File file) async {
@@ -128,36 +138,36 @@ class _ProductEditPageState extends State<ProductEditPage> {
   }
 
   Future<void> _updateProduct() async {
-    if (_nameController.text.isEmpty ||
-        _priceController.text.isEmpty ||
-        _category == null ||
-        _subCategory == null ||
-        _selectedSupplierId == null) {
+    if (productNameController.text.isEmpty ||
+        priceController.text.isEmpty ||
+        selectedCategory == null ||
+        selectedSubCategory == null ||
+        selectedSupplierId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Please fill all required fields.")));
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() => loading = true);
 
     try {
-      String? newImageUrl = _imageUrl;
-      if (_pickedImage != null) {
-        newImageUrl = await _uploadImage(_pickedImage!);
+      String? newImageUrl = imageUrl;
+      if (pickedImage != null) {
+        newImageUrl = await _uploadImage(pickedImage!);
       }
 
       await FirebaseFirestore.instance
           .collection('products')
           .doc(widget.productId)
           .update({
-        'productName': _nameController.text.trim(),
-        'price': double.tryParse(_priceController.text.trim()) ?? 0,
-        'category': _category,
-        'subCategory': _subCategory,
-        'unit': _unitController.text.trim(),
-        'reorderLevel': int.tryParse(_reorderLevelController.text.trim()) ?? 0,
-        'supplierId': _selectedSupplierId,
-        'supplier': _supplierMap[_selectedSupplierId], // Simpan nama gak utk query senang
+        'productName': productNameController.text.trim(),
+        'price': double.tryParse(priceController.text.trim()) ?? 0,
+        'category': selectedCategory,
+        'subCategory': selectedSubCategory,
+        'unit': unitController.text.trim(),
+        'reorderLevel': int.tryParse(reorderLevelController.text.trim()) ?? 0,
+        'supplierId': selectedSupplierId,
+        'supplier': supplierMap[selectedSupplierId],
         'imageUrl': newImageUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -184,142 +194,134 @@ class _ProductEditPageState extends State<ProductEditPage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Edit Product"),
+        title: const Text("Edit Product", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
-      backgroundColor: Colors.white,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Update Details", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            _imagePickerCard(),
             const SizedBox(height: 20),
-
-            // Image Picker
-            GestureDetector(
-              onTap: _showImagePickerDialog,
-              child: Container(
-                width: double.infinity, height: 180,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.grey.shade300),
-                  image: (_pickedImage != null)
-                      ? DecorationImage(image: FileImage(_pickedImage!), fit: BoxFit.cover)
-                      : (_imageUrl != null && _imageUrl!.isNotEmpty)
-                      ? DecorationImage(image: NetworkImage(_imageUrl!), fit: BoxFit.cover)
-                      : null,
-                ),
-                child: (_pickedImage == null && (_imageUrl == null || _imageUrl!.isEmpty))
-                    ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.image_outlined, size: 50, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text("Tap to change image", style: TextStyle(color: Colors.grey)),
-                  ],
-                ) : null,
+            _card(
+              child: Column(
+                children: [
+                  _title("Product Info"),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: barcodeController,
+                    readOnly: true,
+                    decoration: _inputDecoration("Barcode (Read Only)", Icons.qr_code),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: productNameController,
+                    decoration: _inputDecoration("Product Name", Icons.inventory_2_outlined),
+                  ),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Category"),
+                    value: categoryMap.keys.contains(selectedCategory)
+                        ? selectedCategory
+                        : null,
+                    items: categoryMap.keys
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedCategory = value;
+                        subCategories = value != null ? categoryMap[value]! : [];
+                        selectedSubCategory = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Subcategory"),
+                    value: subCategories.contains(selectedSubCategory)
+                        ? selectedSubCategory
+                        : null,
+                    items: subCategories
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (value) => setState(() => selectedSubCategory = value),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: unitController,
+                    decoration: _inputDecoration("Unit (pcs, kg, etc.)", Icons.straighten),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-
-            _buildLabel("Product Name"),
-            _buildTextField(_nameController, "Coca Cola", Icons.inventory_2_outlined),
-
-            const SizedBox(height: 15),
-            _buildLabel("Barcode (Read Only)"),
-            _buildTextField(_barcodeController, "123456", Icons.qr_code, isReadOnly: true),
-
-            const SizedBox(height: 15),
-            _buildLabel("Category"),
-            _buildCategoryDropdown(),
-
-            const SizedBox(height: 15),
-            _buildLabel("Sub Category"),
-            _buildSubCategoryDropdown(),
-
-            const SizedBox(height: 15),
-            _buildLabel("Supplier"),
-            _buildSupplierDropdown(),
-
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel("Unit"),
-                      _buildTextField(_unitController, "pcs", Icons.straighten),
-                    ],
+            const SizedBox(height: 16),
+            _card(
+              child: Column(
+                children: [
+                  _title("Supplier & Inventory"),
+                  const SizedBox(height: 15),
+                  supplierMap.isEmpty
+                      ? const Center(child: CircularProgressIndicator()) // optional loading indicator
+                      : DropdownButtonFormField<String>(
+                    decoration: _dropdownDecoration("Supplier"),
+                    value: selectedSupplierId,
+                    items: supplierMap.entries
+                        .map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value),
+                    ))
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() => selectedSupplierId = value);
+                    },
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel("Price (RM)"),
-                      _buildTextField(_priceController, "2.50", Icons.attach_money, isNumber: true),
-                    ],
+
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: priceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: _inputDecoration("Price (RM)", Icons.attach_money),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: reorderLevelController,
+                    keyboardType: TextInputType.number,
+                    decoration: _inputDecoration("Reorder Level", Icons.notifications_active_outlined),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: stockController,
+                    readOnly: true,
+                    decoration: _inputDecoration("Current Stock", Icons.storage),
+                  ),
+                ],
+              ),
             ),
-
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel("Current Stock"),
-                      _buildTextField(_stockController, "0", Icons.storage, isReadOnly: true),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLabel("Reorder Level"),
-                      _buildTextField(_reorderLevelController, "10", Icons.warning_amber_rounded, isNumber: true),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
             const SizedBox(height: 30),
-
             SizedBox(
-              width: double.infinity, height: 50,
+              width: double.infinity,
+              height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF233E99),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                onPressed: _loading ? null : _updateProduct,
-                child: _loading
+                onPressed: loading ? null : _updateProduct,
+                child: loading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Save Changes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text("Save Changes",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],
@@ -328,71 +330,76 @@ class _ProductEditPageState extends State<ProductEditPage> {
     );
   }
 
-  // --- WIDGET BUILDERS UNTUK KEMAS ---
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 5, left: 2),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
-    );
-  }
-
-  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {bool isReadOnly = false, bool isNumber = false}) {
-    return TextField(
-      controller: controller,
-      readOnly: isReadOnly,
-      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: isReadOnly ? Colors.grey.shade200 : Colors.grey.shade100,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        prefixIcon: Icon(icon, color: Colors.grey),
+  Widget _imagePickerCard() {
+    return GestureDetector(
+      onTap: _showImagePickerDialog,
+      child: Container(
+        height: 180,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade300),
+          image: pickedImage != null
+              ? DecorationImage(image: FileImage(pickedImage!), fit: BoxFit.cover)
+              : (imageUrl != null && imageUrl!.isNotEmpty)
+              ? DecorationImage(image: NetworkImage(imageUrl!), fit: BoxFit.cover)
+              : null,
+        ),
+        child: pickedImage == null && (imageUrl == null || imageUrl!.isEmpty)
+            ? Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.image_outlined, size: 50, color: Colors.grey),
+            SizedBox(height: 8),
+            Text("Tap to change image", style: TextStyle(color: Colors.grey)),
+          ],
+        )
+            : null,
       ),
     );
   }
 
-  Widget _buildCategoryDropdown() {
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        filled: true, fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+  Widget _card({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
-      value: _category,
-      items: _categoryMap.keys.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-      onChanged: (value) {
-        if (value == null) return;
-        setState(() {
-          _category = value;
-          _subCategories = _categoryMap[value]!;
-          _subCategory = _subCategories.first;
-        });
-      },
+      child: child,
     );
   }
 
-  Widget _buildSubCategoryDropdown() {
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        filled: true, fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+  Widget _title(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+            fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF233E99)),
       ),
-      value: _subCategory,
-      items: _subCategories.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-      onChanged: (v) => setState(() => _subCategory = v),
     );
   }
 
-  Widget _buildSupplierDropdown() {
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        filled: true, fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-      ),
-      value: _selectedSupplierId,
-      hint: const Text("Select Supplier"),
-      items: _supplierMap.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
-      onChanged: (v) => setState(() => _selectedSupplierId = v),
+  InputDecoration _inputDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 20, color: Colors.grey[600]),
+      filled: true,
+      fillColor: Colors.grey[100],
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+    );
+  }
+
+  InputDecoration _dropdownDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey[100],
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     );
   }
 }

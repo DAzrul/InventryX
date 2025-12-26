@@ -1,27 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'supplier_add_page.dart';
-import 'supplier_edit_page.dart';
-import 'supplier_delete_dialog.dart';
 
 /// --------------------
-/// Supplier List Item (UI like ProductListItem)
+/// Supplier List Item (Read-Only)
 /// --------------------
-class SupplierListItem extends StatelessWidget {
+class SupplierListItemView extends StatelessWidget {
   final String supplierName;
   final String phone;
   final String email;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
   final VoidCallback onTap;
 
-  const SupplierListItem({
+  const SupplierListItemView({
     super.key,
     required this.supplierName,
     required this.phone,
     required this.email,
-    this.onEdit,
-    this.onDelete,
     required this.onTap,
   });
 
@@ -86,24 +79,6 @@ class SupplierListItem extends StatelessWidget {
                   ),
                 ),
               ),
-              // Edit/Delete Buttons
-              if (onEdit != null && onDelete != null)
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _hoverButton(
-                      icon: Icons.edit_outlined,
-                      color: Colors.blueGrey,
-                      onPressed: onEdit!,
-                    ),
-                    const SizedBox(height: 6),
-                    _hoverButton(
-                      icon: Icons.delete_outline,
-                      color: Colors.redAccent,
-                      onPressed: onDelete!,
-                    ),
-                  ],
-                ),
               const SizedBox(width: 8),
             ],
           ),
@@ -111,42 +86,19 @@ class SupplierListItem extends StatelessWidget {
       ),
     );
   }
-
-  // Bigger button with hover effect
-  Widget _hoverButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-  }) {
-    return Material(
-      color: Colors.grey.shade100,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(50),
-        splashColor: Colors.grey.shade300,
-        highlightColor: Colors.grey.shade200,
-        child: SizedBox(
-          width: 36,
-          height: 36,
-          child: Icon(icon, color: color, size: 24),
-        ),
-      ),
-    );
-  }
 }
 
 /// --------------------
-/// Supplier List Page
+/// Supplier List Page (Read-Only)
 /// --------------------
-class SupplierListPage extends StatefulWidget {
-  const SupplierListPage({super.key});
+class SupplierListPageView extends StatefulWidget {
+  const SupplierListPageView({super.key});
 
   @override
-  State<SupplierListPage> createState() => _SupplierListPageState();
+  State<SupplierListPageView> createState() => _SupplierListPageViewState();
 }
 
-class _SupplierListPageState extends State<SupplierListPage> {
+class _SupplierListPageViewState extends State<SupplierListPageView> {
   final TextEditingController _searchController = TextEditingController();
   String _searchText = '';
   int _currentIndex = 1;
@@ -179,7 +131,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
               const SizedBox(height: 10),
               _detailRow('Phone', data['contactNo']),
               _detailRow('Email', data['email']),
-              _detailRow('Address', data['address']), // <-- Added address here
+              _detailRow('Address', data['address']),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -201,7 +153,6 @@ class _SupplierListPageState extends State<SupplierListPage> {
       ),
     );
   }
-
 
   Widget _detailRow(String title, String? value) {
     return Padding(
@@ -310,34 +261,10 @@ class _SupplierListPageState extends State<SupplierListPage> {
                     final doc = docs[index];
                     final s = doc.data() as Map<String, dynamic>;
 
-                    return SupplierListItem(
+                    return SupplierListItemView(
                       supplierName: s['supplierName'] ?? '-',
                       phone: s['contactNo'] ?? '-',
                       email: s['email'] ?? '-',
-                      onEdit: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SupplierEditPage(
-                            supplierId: doc.id,
-                            supplierData: s,
-                          ),
-                        ),
-                      ),
-                      onDelete: () async {
-                        final deleted = await showDialog<bool>(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (_) => SupplierDeleteDialog(
-                            supplierId: doc.id,
-                            supplierData: s,
-                          ),
-                        );
-                        if (deleted == true && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Supplier deleted')),
-                          );
-                        }
-                      },
                       onTap: () => _showSupplierDetails(context, s),
                     );
                   },
@@ -347,15 +274,6 @@ class _SupplierListPageState extends State<SupplierListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF233E99),
-        child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SupplierAddPage()),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

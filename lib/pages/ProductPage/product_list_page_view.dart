@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'product_add_page.dart';
-import 'product_edit_page.dart';
-import 'product_delete_dialog.dart';
-import '../../Features_app/barcode_scanner_page.dart';
+import '../Features_app/barcode_scanner_page.dart';
 
 /// --------------------
-/// Product List Item (Dah Fix Subtype Error)
+/// Product List Item (Read-only)
 /// --------------------
-class ProductListItem extends StatelessWidget {
+class ProductListItemReadOnly extends StatelessWidget {
   final String productName;
   final String category;
   final String subCategory;
@@ -17,11 +13,9 @@ class ProductListItem extends StatelessWidget {
   final double price;
   final int quantity;
   final String barcodeNo;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
   final VoidCallback onTap;
 
-  const ProductListItem({
+  const ProductListItemReadOnly({
     super.key,
     required this.productName,
     required this.category,
@@ -30,8 +24,6 @@ class ProductListItem extends StatelessWidget {
     required this.quantity,
     required this.barcodeNo,
     required this.imageUrl,
-    required this.onEdit,
-    required this.onDelete,
     required this.onTap,
   });
 
@@ -115,67 +107,25 @@ class ProductListItem extends StatelessWidget {
                   ),
                 ),
               ),
-              // Edit/Delete Buttons (Bigger + Hover Effect)
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _hoverButton(
-                    icon: Icons.edit_outlined,
-                    color: Colors.blueGrey,
-                    onPressed: onEdit,
-                  ),
-                  const SizedBox(height: 6),
-                  _hoverButton(
-                    icon: Icons.delete_outline,
-                    color: Colors.redAccent,
-                    onPressed: onDelete,
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
             ],
           ),
         ),
       ),
     );
   }
-
-  // Helper: Bigger button with hover/tap effect
-  Widget _hoverButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-  }) {
-    return Material(
-      color: Colors.grey.shade100,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(50),
-        splashColor: Colors.grey.shade300,
-        highlightColor: Colors.grey.shade200,
-        child: SizedBox(
-          width: 36,  // bigger width
-          height: 36, // bigger height
-          child: Icon(icon, color: color, size: 24), // bigger icon
-        ),
-      ),
-    );
-  }
 }
 
-
 /// --------------------
-/// Product List Page
+/// Manager/Staff Product List Page (Read-only)
 /// --------------------
-class ProductListPage extends StatefulWidget {
-  const ProductListPage({super.key});
+class ProductListViewPage extends StatefulWidget {
+  const ProductListViewPage({super.key});
 
   @override
-  State<ProductListPage> createState() => _ProductListPageState();
+  State<ProductListViewPage> createState() => _ProductListViewPageState();
 }
 
-class _ProductListPageState extends State<ProductListPage> {
+class _ProductListViewPageState extends State<ProductListViewPage> {
   String _selectedCategory = 'ALL';
   int _currentIndex = 1; // Features index
   String _searchText = '';
@@ -198,7 +148,6 @@ class _ProductListPageState extends State<ProductListPage> {
 
   void _onBottomNavTap(int index) {
     setState(() => _currentIndex = index);
-    // Tambah logic navigation kau kat sini kalau perlu
   }
 
   Future<void> scanBarcode() async {
@@ -298,7 +247,6 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-// Helper: detail row
   Widget _detailRow(String title, String? value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -317,7 +265,6 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-// Helper: placeholder for missing image
   Widget _barcodePlaceholder(String barcodeNo) {
     return Container(
       color: Colors.grey.shade100,
@@ -336,7 +283,6 @@ class _ProductListPageState extends State<ProductListPage> {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -424,22 +370,19 @@ class _ProductListPageState extends State<ProductListPage> {
                     final doc = filteredDocs[index];
                     final product = doc.data() as Map<String, dynamic>;
 
-                    // --- LOGIC CONVERSION SUPAYA TAK SUBTYPE ERROR ---
                     double price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
                     int stock = int.tryParse(product['currentStock']?.toString() ?? '0') ?? 0;
                     String barcode = (product['barcodeNo'] ?? '').toString();
 
-                    return ProductListItem(
+                    return ProductListItemReadOnly(
                       productName: product['productName'] ?? 'Unnamed',
                       category: product['category'] ?? '-',
                       subCategory: product['subCategory'] ?? '-',
                       price: price,
-                      quantity: stock, // Ngam dengan schema currentStock
+                      quantity: stock,
                       barcodeNo: barcode,
                       imageUrl: product['imageUrl'] ?? '',
                       onTap: () => _showProductDetails(context, product),
-                      onEdit: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductEditPage(productId: doc.id, productData: product))),
-                      onDelete: () => showDialog(context: context, builder: (_) => ProductDeleteDialog(productId: doc.id, productData: product)),
                     );
                   },
                 );
@@ -447,11 +390,6 @@ class _ProductListPageState extends State<ProductListPage> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF233E99),
-        child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
