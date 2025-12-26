@@ -95,9 +95,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Cancel
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
@@ -107,7 +105,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
                   headerText = selectedCategory != null
                       ? "$selectedCategory Alerts"
                       : "All Alerts";
-                  _tabController.index = 0; // Back to All Alerts
+                  _tabController.index = 0;
                 });
                 Navigator.pop(context);
               },
@@ -129,10 +127,8 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Notifications",
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
+        title: const Text("Notifications",
+            style: TextStyle(fontWeight: FontWeight.w600)),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -151,21 +147,16 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
         ),
       ),
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
+          // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  headerText,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(headerText,
+                    style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Row(
                   children: [
                     IconButton(
@@ -174,34 +165,116 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
                       onPressed: _showFilterDialog,
                     ),
                     IconButton(
-                      icon:
-                      const Icon(Icons.search, color: Colors.grey),
-                      onPressed: () {
-                        // Future implementation
-                      },
+                      icon: const Icon(Icons.search, color: Colors.grey),
+                      onPressed: () {},
                     ),
                   ],
-                ),
+                )
               ],
             ),
           ),
 
-          // Placeholder content
+          // CONTENT
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: List.generate(
-                4,
-                    (index) => Center(
-                  child: Text(
-                    "No notifications yet",
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
+              children: [
+                const Center(child: Text("No notifications yet")),
+                const Center(child: Text("No unread notifications")),
+
+                /// ✅ EXPIRY ALERTS TAB
+                ListView(
+                  children: const [
+                    ExpiryNotificationCard(
+                      productName: "Dutch Lady Full Cream Milk (1L)",
+                      category: "Dairy & Milk",
+                      batchId: "STK0021",
+                      expiryDate: "06.12.2025",
+                      daysLeft: 5,
+                    ),
+                  ],
                 ),
-              ),
+
+                const Center(child: Text("No risk alerts yet")),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// ====================
+/// EXPIRY NOTIFICATION CARD
+/// ====================
+class ExpiryNotificationCard extends StatelessWidget {
+  final String productName;
+  final String category;
+  final String batchId;
+  final String expiryDate;
+  final int daysLeft;
+
+  const ExpiryNotificationCard({
+    super.key,
+    required this.productName,
+    required this.category,
+    required this.batchId,
+    required this.expiryDate,
+    required this.daysLeft,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        // Future: navigate to detail page
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "🔔 EXPIRY SOON ($daysLeft Days Left)",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.redAccent,
+                  ),
+                ),
+                Text(
+                  expiryDate,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              productName,
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text("Category: $category"),
+            Text("Batch ID: $batchId"),
+          ],
+        ),
       ),
     );
   }
