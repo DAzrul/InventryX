@@ -7,7 +7,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Destination Imports
 import 'admin/admin_page.dart';
-import 'launch_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
@@ -281,7 +280,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         TextButton(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LaunchPage())),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
           child: Text("Forgot?", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w800, fontSize: 13)),
         ),
       ],
