@@ -72,15 +72,20 @@ class _ProductEditPageState extends State<ProductEditPage> {
   Future<void> _loadSuppliers() async {
     try {
       final snapshot = await FirebaseFirestore.instance.collection('supplier').get();
+
       Map<String, String> tempMap = {};
       for (var doc in snapshot.docs) {
         tempMap[doc.id] = doc.data()['supplierName'] ?? 'Unknown';
       }
+
       setState(() {
         supplierMap = tempMap;
 
-        // 🔥 IMPORTANT FIX
-        if (!supplierMap.containsKey(selectedSupplierId)) {
+        // Set selectedSupplierId only if it exists in supplierMap
+        final productSupplierId = widget.productData['supplierId'];
+        if (supplierMap.containsKey(productSupplierId)) {
+          selectedSupplierId = productSupplierId;
+        } else {
           selectedSupplierId = null;
         }
       });
@@ -88,6 +93,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       debugPrint("Error loading suppliers: $e");
     }
   }
+
 
   Future<void> _pickImage(ImageSource source) async {
     final picked = await ImagePicker().pickImage(source: source, imageQuality: 80);
@@ -265,25 +271,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
                 children: [
                   _title("Supplier & Inventory"),
                   const SizedBox(height: 15),
-                  DropdownButtonFormField<String>(
+                  supplierMap.isEmpty
+                      ? const Center(child: CircularProgressIndicator()) // optional loading indicator
+                      : DropdownButtonFormField<String>(
                     decoration: _dropdownDecoration("Supplier"),
-                    value: supplierMap.containsKey(selectedSupplierId)
-                        ? selectedSupplierId
-                        : null,
+                    value: selectedSupplierId,
                     items: supplierMap.entries
-                        .map(
-                          (e) => DropdownMenuItem(
-                        value: e.key,
-                        child: Text(e.value),
-                      ),
-                    )
+                        .map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value),
+                    ))
                         .toList(),
                     onChanged: (value) {
-                      setState(() {
-                        selectedSupplierId = value;
-                      });
+                      setState(() => selectedSupplierId = value);
                     },
                   ),
+
                   const SizedBox(height: 15),
                   TextField(
                     controller: priceController,
