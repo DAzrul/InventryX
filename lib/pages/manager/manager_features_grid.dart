@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:inventryx/pages/ProductPage/product_list_page_view.dart';
+import 'package:inventryx/pages/Supplier/supplier_list_page_view.dart';
 import '../Features_app/report_page.dart';
 import '../manager/forecast/forecast.dart';
 
@@ -45,7 +47,7 @@ class ManagerFeaturesGrid extends StatelessWidget {
               label: "Product",
               onTap: () {
                 Navigator.pop(context); // Tutup modal dulu
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ProductPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ProductListViewPage()));
               },
             ),
             _ManagerFeatureIcon(
@@ -53,7 +55,7 @@ class ManagerFeaturesGrid extends StatelessWidget {
               label: "Supplier",
               onTap: () {
                 Navigator.pop(context);
-                // Navigate...
+                Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierListPageView()));
               },
             ),
             _ManagerFeatureIcon(
