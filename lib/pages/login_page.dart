@@ -1,28 +1,53 @@
+import 'dart:io'; // Mandatory for platform checking
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Import halaman-halaman destinasi
+// Destination Imports
 import 'admin/admin_page.dart';
+import 'launch_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
-import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
   final String? autoLoginUsername;
-
   const LoginPage({super.key, this.autoLoginUsername});
 
-  static Future<void> clearLoginState() async {
+  // Updated to log sign-out activity before clearing state
+  static Future<void> clearLoginState(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
+    final String? userId = prefs.getString('savedUserId');
+
+    if (userId != null) {
+      await _recordActivity(userId, "Sign Out", "User signed out of the account.");
+    }
+
     await prefs.setBool('isLoggedIn', false);
     await prefs.remove('savedRole');
     await prefs.remove('savedUserId');
-    await FirebaseAuth.instance.signOut();
     await prefs.remove('savedUsername');
+    await FirebaseAuth.instance.signOut();
+  }
+
+  // Global helper to record activity into the user's sub-collection
+  static Future<void> _recordActivity(String userId, String action, String details) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('activities')
+          .add({
+        'action': action,
+        'details': details,
+        'timestamp': FieldValue.serverTimestamp(),
+        'platform': Platform.isAndroid ? 'Android' : 'iOS',
+      });
+    } catch (e) {
+      debugPrint("Failed to record activity: $e");
+    }
   }
 
   @override
@@ -30,15 +55,15 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool rememberMe = false;
   bool showPassword = false;
   bool loading = false;
+
+  final Color primaryBlue = const Color(0xFF233E99);
 
   @override
   void initState() {
@@ -46,151 +71,73 @@ class _LoginPageState extends State<LoginPage> {
     _checkLoginStatus();
   }
 
-  // --- [BAHAGIAN YANG DIBETULKAN] ---
+  // --- REPAIRED AUTO LOGIN LOGIC ---
   Future<void> _checkLoginStatus() async {
-    // Senario 1: Auto-Login dari Change Account (Switch Account)
     if (widget.autoLoginUsername != null) {
       usernameController.text = widget.autoLoginUsername!;
-      showPopupMessage("Account Switch",
-          details: "Please re-enter the password for ${widget.autoLoginUsername} to continue the session.");
       setState(() => loading = false);
       return;
     }
 
-    // Senario 2: Auto-Login Biasa (App Restart)
     final prefs = await SharedPreferences.getInstance();
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final String? savedUserId = prefs.getString('savedUserId'); // Kita bergantung pada ID, bukan Username
+    final String? savedUserId = prefs.getString('savedUserId');
 
     if (isLoggedIn && savedUserId != null) {
       if (!await _isNetworkAvailable()) {
-        // Jika tiada internet, terpaksa guna cached username lama (jika ada)
         final savedUsername = prefs.getString('savedUsername');
         final savedRole = prefs.getString('savedRole');
         if (savedUsername != null && savedRole != null) {
           _navigateToHomePage(savedUsername, savedRole, savedUserId);
-        } else {
-          showPopupMessage("Offline Mode", details: "Please connect to internet to sign in.");
         }
         return;
       }
 
       setState(() => loading = true);
-
       try {
-        // [PENYELESAIAN] Tarik data terkini dari Firestore menggunakan User ID
-        // Ini memastikan kita dapat username BARU jika ia telah ditukar
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(savedUserId)
-            .get();
-
-        if (userDoc.exists && _auth.currentUser != null && _auth.currentUser!.uid == savedUserId) {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(savedUserId).get();
+        if (userDoc.exists && _auth.currentUser != null) {
           Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+          String freshUsername = userData['username'];
+          String freshRole = userData['role'];
+          if (userData['status'] == 'Active') {
+            await prefs.setString('savedUsername', freshUsername);
+            await prefs.setString('savedRole', freshRole);
 
-          String freshUsername = userData['username']; // Username terkini dari DB
-          String freshRole = userData['role'];         // Role terkini dari DB
-          String status = userData['status'] ?? 'Active';
+            // Record Auto-Login Activity
+            await LoginPage._recordActivity(savedUserId, "Auto Login", "Session restored via auto-login.");
 
-          if (status != 'Active') {
-            await LoginPage.clearLoginState();
-            showPopupMessage("Account Disabled", details: "Your account has been disabled.");
-            setState(() => loading = false);
-            return;
+            _navigateToHomePage(freshUsername, freshRole, savedUserId);
+          } else {
+            await LoginPage.clearLoginState(context);
           }
-
-          // Update SharedPreferences dengan data terkini supaya sync
-          await prefs.setString('savedUsername', freshUsername);
-          await prefs.setString('savedRole', freshRole);
-
-          // Masuk ke Home Page dengan Username yang betul
-          _navigateToHomePage(freshUsername, freshRole, savedUserId);
-
-        } else {
-          // Jika user dah kena delete kat database atau token expired
-          await LoginPage.clearLoginState();
-          setState(() => loading = false);
         }
       } catch (e) {
-        // Jika ada error (contoh: network error masa fetch)
-        setState(() => loading = false);
-        print("Auto login error: $e");
+        debugPrint("Auto login error: $e");
+      } finally {
+        if (mounted) setState(() => loading = false);
       }
     }
   }
 
-  void _navigateToHomePage(String username, String role, String userId) {
-    if (!mounted) return;
-    if (role == "admin") {
-      Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AdminScreen(loggedInUsername: username, userId: userId,))
-      );
-    } else if (role == "manager") {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => ManagerPage(loggedInUsername: username, userId: userId,))
-      );
-    } else {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => StaffPage(loggedInUsername: username, userId: userId)));
-    }
-  }
-
-  void _clearControllers() {
-    usernameController.clear();
-    passwordController.clear();
-  }
-
-  void showPopupMessage(String title, {String? details}) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF233E99))),
-          content: details != null ? Text(details) : null,
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _clearControllers();
-              },
-              child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
-            )
-          ],
-        );
-      },
-    );
-  }
-
-  Future<bool> _isNetworkAvailable() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    return connectivityResult != ConnectivityResult.none;
-  }
-
-  // --- LOG MASUK MANUAL ---
+  // --- MANUAL LOGIN LOGIC ---
   Future<void> loginUser() async {
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
-    String emailToAuthenticate = '';
-    String usernameForNavigation = '';
-    String firestoreDocId = '';
-    Map<String, dynamic>? userData;
 
     if (input.isEmpty || password.isEmpty) {
-      showPopupMessage("Incomplete Information", details: "Please enter your username/email and password.");
+      _showSnack("Enter your credentials, mat!");
       return;
     }
 
     if (!await _isNetworkAvailable()) {
-      showPopupMessage("Offline Mode", details: "You need an active internet connection to sign in.");
+      _showSnack("No internet? Fucking connect first.");
       return;
     }
 
     setState(() => loading = true);
 
     try {
-      // 1. Cari User
       QuerySnapshot userSnap;
       if (input.contains('@')) {
         userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: input).limit(1).get();
@@ -198,180 +145,165 @@ class _LoginPageState extends State<LoginPage> {
         userSnap = await FirebaseFirestore.instance.collection("users").where('username', isEqualTo: input).limit(1).get();
       }
 
-      if (userSnap.docs.isNotEmpty) {
-        userData = userSnap.docs.first.data() as Map<String, dynamic>;
-        emailToAuthenticate = userData['email'];
-        // Pastikan kita ambil username dari database, bukan dari input user semata-mata
-        usernameForNavigation = userData['username'] ?? userData['email'];
-        firestoreDocId = userSnap.docs.first.id;
-
-        if (userData["status"] != "Active") {
-          showPopupMessage("Account Disabled", details: "Contact Administrator.");
-          setState(() => loading = false);
-          return;
-        }
-      } else if (!input.contains('@')) {
-        showPopupMessage("Login Failed", details: "Username or email not found.");
+      if (userSnap.docs.isEmpty) {
+        _showSnack("User not found dlm system!");
         setState(() => loading = false);
         return;
-      } else {
-        emailToAuthenticate = input;
       }
 
-      // 2. Authenticate Firebase Auth
-      await _auth.signInWithEmailAndPassword(email: emailToAuthenticate, password: password);
+      var userData = userSnap.docs.first.data() as Map<String, dynamic>;
+      String email = userData['email'];
+      String username = userData['username'];
+      String role = userData['role'];
+      String userId = userSnap.docs.first.id;
 
-      // 3. Double Check (Jika step 1 skip sebab input adalah email terus)
-      if (userData == null) {
-        userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: emailToAuthenticate).limit(1).get();
-        if (userSnap.docs.isNotEmpty) {
-          userData = userSnap.docs.first.data() as Map<String, dynamic>;
-          usernameForNavigation = userData['username'];
-          firestoreDocId = userSnap.docs.first.id;
-        }
+      if (userData['status'] != 'Active') {
+        _showSnack("Account disabled. Go talk to admin.");
+        setState(() => loading = false);
+        return;
       }
 
-      String role = userData?["role"] ?? 'staff';
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
 
-      // 4. Simpan Session
+      // Record Manual Login Activity
+      await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
+
       if (rememberMe) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
-        // Penting: Simpan username yang betul dari Database
-        await prefs.setString('savedUsername', usernameForNavigation);
+        await prefs.setString('savedUsername', username);
         await prefs.setString('savedRole', role);
-        await prefs.setString('savedUserId', firestoreDocId);
+        await prefs.setString('savedUserId', userId);
       }
 
-      _clearControllers();
-      _navigateToHomePage(usernameForNavigation, role, firestoreDocId);
-
+      _navigateToHomePage(username, role, userId);
     } on FirebaseAuthException catch (e) {
-      String errorMessage = "Login failed.";
-      if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-        errorMessage = "Invalid username/email or password.";
-      } else if (e.code == 'invalid-email') {
-        errorMessage = "Invalid email format.";
-      }
-      showPopupMessage("Authentication Failed", details: errorMessage);
+      _showSnack("Auth Failed: ${e.message}");
     } catch (e) {
-      showPopupMessage("System Error", details: e.toString());
+      _showSnack("System Error: $e");
     } finally {
-      if(mounted) setState(() => loading = false);
+      if (mounted) setState(() => loading = false);
     }
   }
 
+  // ... (Keep the rest of your UI building blocks from previous turn) ...
+
+  Future<bool> _isNetworkAvailable() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+  void _navigateToHomePage(String username, String role, String userId) {
+    if (!mounted) return;
+    Widget target = (role == "admin") ? AdminPage(loggedInUsername: username, userId: userId) :
+    (role == "manager") ? ManagerPage(loggedInUsername: username, userId: userId) :
+    StaffPage(loggedInUsername: username, userId: userId);
+
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
+  }
+
+  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating, backgroundColor: primaryBlue)
+  );
+
   @override
   Widget build(BuildContext context) {
+    // UI logic from previous turn mat...
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          bool isPortrait = constraints.maxHeight > constraints.maxWidth;
-          double horizontalPadding = constraints.maxWidth * 0.08;
-
-          return Center(
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          SafeArea(
             child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    height: isPortrait ? constraints.maxHeight * 0.2 : constraints.maxHeight * 0.35,
-                    child: Image.asset("assets/logo.png", fit: BoxFit.contain),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.02),
-                  Text("Welcome", style: TextStyle(
-                      fontSize: isPortrait ? constraints.maxWidth * 0.08 : constraints.maxHeight * 0.07,
-                      fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.005),
-                  Text("Sign in to continue.", style: TextStyle(
-                      fontSize: isPortrait ? constraints.maxWidth * 0.045 : constraints.maxHeight * 0.04,
-                      color: Colors.grey[600]),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.03),
-
-                  TextField(
-                    controller: usernameController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: "Email or Username",
-                      prefixIcon: const Icon(Icons.person_outline),
-                      filled: true,
-                      fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                    ),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.02),
-
-                  TextField(
-                    controller: passwordController,
-                    obscureText: !showPassword,
-                    decoration: InputDecoration(
-                      labelText: "Password",
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => showPassword = !showPassword),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                    ),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.01),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: rememberMe,
-                            onChanged: (v) => setState(() => rememberMe = v!),
-                          ),
-                          const Text("Remember me"),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage()));
-                        },
-                        child: const Text("Forgot password?"),
-                      )
-                    ],
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.03),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: constraints.maxHeight * 0.07,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF233E99),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: loading ? null : loginUser,
-                      child: loading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : Text(
-                        "SIGN IN",
-                        style: TextStyle(
-                          fontSize: isPortrait ? constraints.maxWidth * 0.05 : constraints.maxHeight * 0.04,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.02),
+                  const SizedBox(height: 60),
+                  Center(child: Image.asset("assets/logo.png", height: 100)),
+                  const SizedBox(height: 50),
+                  const Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                  const SizedBox(height: 40),
+                  _buildModernField(usernameController, Icons.person_outline_rounded, label: "Email or Username"),
+                  const SizedBox(height: 25),
+                  _buildModernField(passwordController, Icons.lock_outline_rounded, label: "Password", isPassword: true),
+                  const SizedBox(height: 15),
+                  _buildUtilsRow(),
+                  const SizedBox(height: 40),
+                  _buildLoginButton(),
                 ],
               ),
             ),
-          );
-        },
+          ),
+          if (loading) _buildBlurLoading(),
+        ],
       ),
     );
   }
+
+  Widget _buildModernField(TextEditingController controller, IconData icon, {required String label, bool isPassword = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(18)),
+          child: TextField(
+            controller: controller,
+            obscureText: isPassword && !showPassword,
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: primaryBlue),
+              suffixIcon: isPassword ? IconButton(
+                icon: Icon(showPassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+                onPressed: () => setState(() => showPassword = !showPassword),
+              ) : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUtilsRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => rememberMe = !rememberMe),
+          child: Row(
+            children: [
+              Checkbox(value: rememberMe, onChanged: (v) => setState(() => rememberMe = v!)),
+              const Text("Stay Signed In", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LaunchPage())),
+          child: Text("Forgot?", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w800, fontSize: 13)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginButton() {
+    return Container(
+      width: double.infinity,
+      height: 65,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22))),
+        onPressed: loading ? null : loginUser,
+        child: const Text("SIGN IN", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
+      ),
+    );
+  }
+
+  Widget _buildBlurLoading() => Container(color: Colors.white.withValues(alpha: 0.7), child: Center(child: CircularProgressIndicator(color: primaryBlue)));
 }

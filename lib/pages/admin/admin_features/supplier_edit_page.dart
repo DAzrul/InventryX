@@ -22,6 +22,9 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
   late TextEditingController addressController;
   bool loading = false;
 
+  final Color primaryBlue = const Color(0xFF233E99);
+  final Color bgSecondary = const Color(0xFFF8FAFF);
+
   @override
   void initState() {
     super.initState();
@@ -37,14 +40,14 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
         phoneController.text.isEmpty ||
         emailController.text.isEmpty ||
         addressController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Please fill in all fields.")));
+      _showSnack("Fill in all the fucking fields, mat!");
       return;
     }
 
     setState(() => loading = true);
 
     try {
+      // [FIXED] Changed widget.productId to widget.supplierId
       await FirebaseFirestore.instance
           .collection("supplier")
           .doc(widget.supplierId)
@@ -53,117 +56,138 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
         'contactNo': phoneController.text.trim(),
         'email': emailController.text.trim(),
         'address': addressController.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
-
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text("Success"),
-          content: const Text("Supplier updated successfully."),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context, true);
-              },
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
+      _showSuccessDialog();
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      _showSnack("Error: $e");
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
-  Widget _buildCard({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildTextField(TextEditingController controller, String hint,
-      {IconData? icon, bool isNumber = false, int maxLines = 1}) {
-    return TextField(
-      controller: controller,
-      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
-        ),
-        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgSecondary,
       appBar: AppBar(
-        title: const Text("Edit Supplier", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("Edit Partner Info", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+        centerTitle: true,
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
         elevation: 0,
+        foregroundColor: Colors.black,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: loading
+          ? Center(child: CircularProgressIndicator(color: primaryBlue))
+          : SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Update Supplier", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            _buildCard(
-              child: Column(
-                children: [
-                  _buildTextField(nameController, "Supplier Name", icon: Icons.store),
-                  const SizedBox(height: 15),
-                  _buildTextField(phoneController, "Phone Number", icon: Icons.phone, isNumber: true),
-                  const SizedBox(height: 15),
-                  _buildTextField(emailController, "Email", icon: Icons.email),
-                  const SizedBox(height: 15),
-                  _buildTextField(addressController, "Address", icon: Icons.location_on, maxLines: 3),
-                ],
-              ),
+            _buildHeaderIcon(),
+            const SizedBox(height: 25),
+            _buildSectionCard(
+              title: "Supplier Details",
+              icon: Icons.business_rounded,
+              children: [
+                _buildModernField(nameController, "Supplier Name", Icons.store_rounded),
+                const SizedBox(height: 15),
+                _buildModernField(phoneController, "Contact Number", Icons.phone_rounded, isNumber: true),
+                const SizedBox(height: 15),
+                _buildModernField(emailController, "Email Address", Icons.email_rounded),
+                const SizedBox(height: 15),
+                _buildModernField(addressController, "Business Address", Icons.location_on_rounded, maxLines: 3),
+              ],
             ),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF233E99),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: loading ? null : _updateSupplier,
-                child: loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Save Changes",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              ),
-            ),
+            const SizedBox(height: 40),
+            _buildSaveButton(),
+            const SizedBox(height: 50),
           ],
         ),
+      ),
+    );
+  }
+
+  // --- UI COMPONENTS ---
+
+  Widget _buildHeaderIcon() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        // [FIXED] Use withValues to avoid precision loss warnings
+        color: primaryBlue.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.edit_location_alt_rounded, color: primaryBlue, size: 40),
+    );
+  }
+
+  Widget _buildSectionCard({required String title, required IconData icon, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [Icon(icon, color: primaryBlue, size: 18), const SizedBox(width: 10), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14))]),
+          const Divider(height: 30),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernField(TextEditingController controller, String label, IconData icon, {bool isNumber = false, int maxLines = 1}) {
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 18, color: primaryBlue),
+        filled: true, fillColor: Colors.grey[50],
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey[200]!)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryBlue, width: 1.5)),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return Container(
+      width: double.infinity, height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 10))],
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+        onPressed: loading ? null : _updateSupplier,
+        child: const Text("UPDATE SUPPLIER", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
+      ),
+    );
+  }
+
+  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Success", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text("Supplier info updated successfully."),
+        actions: [TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context, true); }, child: const Text("OK"))],
       ),
     );
   }

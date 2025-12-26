@@ -92,7 +92,6 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       body: SingleChildScrollView(
         // [FIX] Scroll sentiasa reset ke atas (Gambar 1)
-        key: UniqueKey(),
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
@@ -316,8 +315,8 @@ class _ProfilePageState extends State<ProfilePage> {
   void _logout() async {
     setState(() => isLoading = true);
     try {
+      // 1. Rekod aktiviti logout (Dah ada dlm kod kau)
       if (currentUserId != null) {
-        // [FIX] Simpan aktiviti logout mat!
         await FirebaseFirestore.instance
             .collection("users").doc(currentUserId)
             .collection("activities").add({
@@ -327,12 +326,25 @@ class _ProfilePageState extends State<ProfilePage> {
         });
       }
 
-      await FirebaseAuth.instance.signOut();
+      // 2. Clear Session dlm SharedPreferences
+      // Ini fungsi static dlm LoginPage yang kau dah buat sebelum ni
+      await LoginPage.clearLoginState(context);
+
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (r) => false);
+
+      // 3. Destinasi: Sentiasa LoginPage (Paling 'educated' UX)
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
+      );
     } catch (e) {
       await FirebaseAuth.instance.signOut();
-      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (r) => false);
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+              (route) => false,
+        );
+      }
     }
   }
 }
