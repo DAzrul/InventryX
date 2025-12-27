@@ -88,7 +88,7 @@ class ManagerFeaturesGrid extends StatelessWidget {
             ),
             _ManagerFeatureIcon(
               icon: Icons.volunteer_activism_outlined,
-              label: "Recomamend",
+              label: "Recommended",
               onTap: () {
                 Navigator.pop(context);
                 // Navigate...
