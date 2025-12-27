@@ -1,11 +1,14 @@
-/*import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-// Use 'package:inventryx/...' to find files easily anywhere in the project
-import 'package:inventryx/models/sales_model.dart';
-import 'package:inventryx/models/forecast_model.dart';
-import 'forecast.dart';
+
+// 1. IMPORT LOGIC
 import 'forecast_logic.dart';
+
+// 2. IMPORT SHARED MODELS
+import 'package:inventryx/models/forecast_model.dart';
+import 'package:inventryx/models/product_model.dart';
+import 'package:inventryx/models/sales_model.dart';
 
 class ResultPage extends StatefulWidget {
   final Map<String, int> selectedQuantities;
@@ -34,52 +37,43 @@ class _ResultPageState extends State<ResultPage> {
   Future<Map<String, dynamic>> _processForecastData() async {
     try {
       List<String> productIds = widget.selectedQuantities.keys.toList();
-      if (productIds.isEmpty) return {"tableData": [], "forecasts": []};
+      if (productIds.isEmpty) return {"tableData": [], "uiResults": []};
 
-      // 1. FETCH ALL RELEVANT SALES
+      // 1. FETCH SALES HISTORY
+      // Using 'productID' (matches friend's daily_sales.dart)
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('sales')
-          .where('ProductID', whereIn: productIds.take(10).toList())
-          .orderBy('SaleDate', descending: false)
+          .where('productID', whereIn: productIds.take(10).toList())
+          .orderBy('saleDate', descending: false)
           .get();
 
+      // Convert Firebase data to SalesModel
       List<SalesModel> allSales = snapshot.docs.map((doc) {
-        return SalesModel.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        return SalesModel.fromMap(doc.id, data);
       }).toList();
 
       // 2. PREPARE DATA FOR UI
       List<SalesModel> tableDisplayList = [];
-      List<forecast_model> forecastResults = [];
+      List<Map<String, dynamic>> uiResults = [];
 
       for (String productId in productIds) {
-        // A. Filter sales for this specific product
+        // A. Filter & Sort Sales for this product
         final productSales = allSales.where((s) => s.productId == productId).toList();
-
-        // B. Sort Ascending (Oldest -> Newest) for Forecast Math
         productSales.sort((a, b) => a.saleDate.compareTo(b.saleDate));
 
-        // C. PREPARE TABLE DATA (Show Max 5 History)
-        // We take the LAST 5 items (most recent) for the table
+        // B. Add LAST 5 transactions to Table
         int count = productSales.length;
         int startIndex = count > 5 ? count - 5 : 0;
-        List<SalesModel> recentSales = productSales.sublist(startIndex);
-        tableDisplayList.addAll(recentSales);
+        tableDisplayList.addAll(productSales.sublist(startIndex));
 
-        // D. GENERATE FORECAST
+        // C. GENERATE FORECAST (Math)
         final List<int> quantityList = productSales.map((s) => s.quantitySold).toList();
         final String productName = _getProductName(productId);
 
-        Map<String, dynamic> mathResult;
-        if (quantityList.length < 5) {
-          mathResult = {
-            "forecast": 0.0,
-            "method": "Insufficient Data",
-            "trend": "Unknown"
-          };
-        } else {
-          mathResult = ForecastLogic.generateForecast(quantityList);
-        }
+        Map<String, dynamic> mathResult = ForecastLogic.generateForecast(quantityList);
 
+        // D. CREATE FORECAST OBJECT
         ForecastModel forecast = ForecastModel(
           productId: productId,
           productName: productName,
@@ -88,15 +82,22 @@ class _ResultPageState extends State<ResultPage> {
           forecastDate: DateTime.now(),
         );
 
-        forecastResults.add(forecast);
+        // E. SAVE RESULT TO DATABASE
+        await FirebaseFirestore.instance.collection('forecasts').doc(productId).set(
+            forecast.toMap(),
+            SetOptions(merge: true)
+        );
 
-        // E. SAVE TO DATABASE
-        await FirebaseFirestore.instance.collection('forecasts').add(forecast.toMap());
+        // F. PREPARE UI CARD
+        uiResults.add({
+          "model": forecast,
+          "trend": mathResult['trend']
+        });
       }
 
       return {
         "tableData": tableDisplayList,
-        "forecasts": forecastResults,
+        "uiResults": uiResults,
       };
 
     } catch (e) {
@@ -106,11 +107,12 @@ class _ResultPageState extends State<ResultPage> {
   }
 
   String _getProductName(String id) {
-    final product = widget.allProducts.firstWhere(
-          (p) => p.id == id,
-      orElse: () => ProductModel(id: '', name: 'Unknown', category: '', subCategory: '', imageUrl: '', price: 0),
-    );
-    return product.name;
+    try {
+      final product = widget.allProducts.firstWhere((p) => p.id == id);
+      return product.name;
+    } catch (e) {
+      return 'Unknown';
+    }
   }
 
   @override
@@ -118,18 +120,16 @@ class _ResultPageState extends State<ResultPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Forecast", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text("Forecast Results", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         leading: const BackButton(color: Colors.black),
       ),
       bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: Colors.white,
         selectedItemColor: const Color(0xFF233E99),
         unselectedItemColor: Colors.grey,
         currentIndex: 1,
-        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Features"),
@@ -146,21 +146,22 @@ class _ResultPageState extends State<ResultPage> {
             return Center(child: Text("Error: ${snapshot.error}"));
           }
 
-          final List<SalesModel> tableData = snapshot.data!['tableData'];
-          final List<ForecastModel> forecasts = snapshot.data!['forecasts'];
+          final List<SalesModel> tableData = snapshot.data!['tableData'] as List<SalesModel>;
+          final List<Map<String, dynamic>> uiResults = snapshot.data!['uiResults'] as List<Map<String, dynamic>>;
+
+          if (uiResults.isEmpty) {
+            return const Center(child: Text("No sales data found for selected items."));
+          }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- SECTION 1: SALES HISTORY TABLE ---
-                const Text(
-                  "Sales History",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
-                ),
+                const Text("Sales History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
                 const SizedBox(height: 10),
 
+                // Blue Border Table
                 Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFF233E99),
@@ -168,17 +169,14 @@ class _ResultPageState extends State<ResultPage> {
                   ),
                   padding: const EdgeInsets.all(3),
                   child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(9)),
                     child: Table(
-                      border: TableBorder.symmetric(inside: const BorderSide(color: Colors.grey, width: 0.5)),
                       columnWidths: const {
                         0: FlexColumnWidth(2),
                         1: FlexColumnWidth(1.5),
-                        2: FlexColumnWidth(1.2),
+                        2: FlexColumnWidth(1),
                       },
+                      border: TableBorder.symmetric(inside: BorderSide(color: Colors.grey.shade300)),
                       children: [
                         const TableRow(
                           children: [
@@ -187,15 +185,7 @@ class _ResultPageState extends State<ResultPage> {
                             Padding(padding: EdgeInsets.all(12), child: Text("Qty Sold", style: TextStyle(fontWeight: FontWeight.bold))),
                           ],
                         ),
-                        // --- DYNAMIC ROWS ---
-                        if (tableData.isEmpty)
-                          const TableRow(children: [
-                            Padding(padding: EdgeInsets.all(12), child: Text("-")),
-                            Padding(padding: EdgeInsets.all(12), child: Text("-")),
-                            Padding(padding: EdgeInsets.all(12), child: Text("-")),
-                          ])
-                        else
-                          ..._buildGroupedTableRows(tableData),
+                        ..._buildGroupedTableRows(tableData),
                       ],
                     ),
                   ),
@@ -203,33 +193,11 @@ class _ResultPageState extends State<ResultPage> {
 
                 const SizedBox(height: 30),
 
-                // --- SECTION 2: FORECAST OUTPUT CARDS ---
-                const Text(
-                  "Forecast Output",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
-                ),
+                const Text("Forecast Output", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
                 const SizedBox(height: 10),
 
-                ...forecasts.map((forecast) {
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF2F2F2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Product: ${forecast.productName}", style: const TextStyle(fontSize: 14, color: Colors.black87)),
-                        const SizedBox(height: 4),
-                        Text("Predicted Demand: ${forecast.predictedDemand.round()} units", style: const TextStyle(fontSize: 14, color: Colors.black87)),
-                        const SizedBox(height: 4),
-                        Text("Method Used: ${forecast.forecastMethod}", style: const TextStyle(fontSize: 14, color: Colors.black87)),
-                      ],
-                    ),
-                  );
+                ...uiResults.map((item) {
+                  return _buildForecastCard(item['model'], item['trend']);
                 }),
 
                 const SizedBox(height: 20),
@@ -238,7 +206,7 @@ class _ResultPageState extends State<ResultPage> {
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Risk Scoring Feature Coming Soon")));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Risk Scoring Coming Soon")));
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF233E99),
@@ -248,7 +216,6 @@ class _ResultPageState extends State<ResultPage> {
                     child: const Text("Risk Scoring", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const SizedBox(height: 20),
               ],
             ),
           );
@@ -257,28 +224,53 @@ class _ResultPageState extends State<ResultPage> {
     );
   }
 
-  // --- HELPER TO GROUP ROWS VISUALLY ---
-  // This ensures the Product Name only appears once per group
+  Widget _buildForecastCard(ForecastModel forecast, String trend) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F2F2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Product: ${forecast.productName}", style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          const SizedBox(height: 4),
+          Text("Predicted Demand: ${forecast.predictedDemand.round()} units", style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          const SizedBox(height: 4),
+          Text("Trend: $trend", style: const TextStyle(fontSize: 14, color: Colors.black87)),
+        ],
+      ),
+    );
+  }
+
   List<TableRow> _buildGroupedTableRows(List<SalesModel> data) {
     List<TableRow> rows = [];
     String previousProductId = "";
 
+    if (data.isEmpty) {
+      return [const TableRow(children: [
+        Padding(padding: EdgeInsets.all(12), child: Text("-")),
+        Padding(padding: EdgeInsets.all(12), child: Text("-")),
+        Padding(padding: EdgeInsets.all(12), child: Text("-")),
+      ])];
+    }
+
     for (var sale in data) {
       String productName = _getProductName(sale.productId);
-
-      // If same as previous, show empty string
       String displayProduct = (sale.productId == previousProductId) ? "" : productName;
 
       rows.add(TableRow(
         children: [
-          Padding(padding: const EdgeInsets.all(12), child: Text(displayProduct, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
-          Padding(padding: const EdgeInsets.all(12), child: Text(DateFormat('d/M/y').format(sale.saleDate), style: const TextStyle(fontSize: 13))),
+          Padding(padding: const EdgeInsets.all(12), child: Text(displayProduct, style: const TextStyle(fontSize: 13))),
+          Padding(padding: const EdgeInsets.all(12), child: Text(DateFormat('d/M/yyyy').format(sale.saleDate), style: const TextStyle(fontSize: 13))),
           Padding(padding: const EdgeInsets.all(12), child: Text("${sale.quantitySold}", style: const TextStyle(fontSize: 13))),
         ],
       ));
-
       previousProductId = sale.productId;
     }
     return rows;
   }
-}*/
+}
