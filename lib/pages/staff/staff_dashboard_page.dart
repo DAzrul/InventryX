@@ -14,7 +14,6 @@ class StaffDashboardPage extends StatefulWidget {
 }
 
 class _StaffDashboardPageState extends State<StaffDashboardPage> {
-  // Filter state untuk Popup History (Default: Last 7 Days)
   String _selectedHistoryFilter = "Last 7 Days";
 
   // --- LOGIC: QUERY UNTUK POPUP HISTORY ---
@@ -28,7 +27,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     } else if (_selectedHistoryFilter == "Last 7 Days") {
       startOfPeriod = now.subtract(const Duration(days: 7));
     } else {
-      // Last 30 Days
       startOfPeriod = now.subtract(const Duration(days: 30));
     }
 
@@ -37,7 +35,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         .orderBy('timestamp', descending: true);
   }
 
-  // --- LOGIC: POPUP FULL HISTORY (SWIPEABLE & FILTERABLE) ---
+  // --- LOGIC: POPUP FULL HISTORY ---
   void _showAllActivityPopup(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -58,8 +56,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 padding: EdgeInsets.all(20),
                 child: Text("Stock Movement History", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
-
-              // FILTER SECTION (Sama macam Sales History mat)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Row(
@@ -69,7 +65,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                     return GestureDetector(
                       onTap: () {
                         setModalState(() => _selectedHistoryFilter = label);
-                        setState(() {}); // Update main dashboard state if needed
+                        setState(() {});
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -84,35 +80,25 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                   }).toList(),
                 ),
               ),
-              const SizedBox(height: 10),
-
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: _getHistoryQuery().snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
                     final docs = snapshot.data!.docs;
-                    if (docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text("No movements found for this period.", style: TextStyle(color: Colors.grey))));
-
+                    if (docs.isEmpty) return const Center(child: Text("No movements found."));
                     return ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       itemCount: docs.length,
                       itemBuilder: (context, index) {
                         final data = docs[index].data() as Map<String, dynamic>;
                         final int qty = data['quantity'] ?? 0;
-                        final DateTime time = (data['timestamp'] as Timestamp).toDate();
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _buildActivityItem(
-                            title: "${data['type']}: ${data['productName']}",
-                            subtitle: DateFormat('dd MMM yyyy, hh:mm a').format(time),
-                            trailingText: qty > 0 ? "+$qty units" : "$qty units",
-                            trailingColor: qty > 0 ? Colors.green : Colors.red,
-                            icon: qty > 0 ? Icons.add_circle_outline : Icons.remove_circle_outline,
-                          ),
+                        return _buildActivityItem(
+                          title: "${data['type']}: ${data['productName']}",
+                          subtitle: DateFormat('dd MMM yyyy, hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
+                          trailingText: qty > 0 ? "+$qty units" : "$qty units",
+                          trailingColor: qty > 0 ? Colors.green : Colors.red,
+                          icon: qty > 0 ? Icons.add_circle_outline : Icons.remove_circle_outline,
                         );
                       },
                     );
@@ -126,31 +112,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  // --- LOGIC: SCAN & CHECK STOCK ---
-  Future<void> _handleScanAndCheck(BuildContext context) async {
-    final scannedCode = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
-    if (scannedCode == null) return;
-
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-
-    try {
-      dynamic searchKey = int.tryParse(scannedCode) ?? scannedCode;
-      final snapshot = await FirebaseFirestore.instance.collection('products').where('barcodeNo', isEqualTo: searchKey).limit(1).get();
-      if (context.mounted) Navigator.pop(context);
-
-      if (snapshot.docs.isNotEmpty) {
-        if (context.mounted) _showProductDetails(context, snapshot.docs.first.data());
-      } else {
-        if (context.mounted) _showNotFoundDialog(context, scannedCode);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final Color primaryBlue = const Color(0xFF203288);
@@ -160,10 +121,9 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeaderSection(),
+          _buildHeaderSection(primaryBlue),
           const SizedBox(height: 30),
 
-          // 2. STATS CARDS (FIXED EXPIRING SOON)
           Row(
             children: [
               _buildStatCard(
@@ -193,13 +153,11 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           const Text("Quick Action", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
 
-          _buildQuickActionButton(title: "Scan Item/ Check Stock", subtitle: "Scan barcode to view details", icon: Icons.qr_code_scanner, color: primaryBlue, onTap: () => _handleScanAndCheck(context)),
+          _buildQuickActionButton(title: "Scan Item/ Check Stock", subtitle: "Scan barcode to view details", icon: Icons.qr_code_scanner, color: primaryBlue, onTap: () {}),
           const SizedBox(height: 16),
           _buildQuickActionButton(title: "Record Daily Sales", subtitle: "Deduct stock by jualan", icon: Icons.note_add_outlined, color: primaryBlue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesPage()))),
 
           const SizedBox(height: 30),
-
-          // 4. RECENT ACTIVITY (MAIN DASHBOARD LIMIT 5)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -211,22 +169,17 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('stockMovements').orderBy('timestamp', descending: true).limit(5).snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No recent activity."));
-
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               return Column(
                 children: snapshot.data!.docs.map((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final int qty = data['quantity'] ?? 0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildActivityItem(
-                      title: "${data['type']}: ${data['productName']}",
-                      subtitle: DateFormat('hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
-                      trailingText: qty > 0 ? "+$qty units" : "$qty units",
-                      trailingColor: qty > 0 ? Colors.green : Colors.red,
-                      icon: qty > 0 ? Icons.add_circle_outline : Icons.remove_circle_outline,
-                    ),
+                  return _buildActivityItem(
+                    title: "${data['type']}: ${data['productName']}",
+                    subtitle: DateFormat('hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
+                    trailingText: qty > 0 ? "+$qty units" : "$qty units",
+                    trailingColor: qty > 0 ? Colors.green : Colors.red,
+                    icon: qty > 0 ? Icons.add_circle_outline : Icons.remove_circle_outline,
                   );
                 }).toList(),
               );
@@ -238,7 +191,54 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  // --- HELPERS (PROFIL, STAT CARD, QUICK ACTION, ACTIVITY ITEM) ---
+  // --- HELPERS (HEADER REPAIRED) ---
+  Widget _buildHeaderSection(Color primaryColor) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').where('username', isEqualTo: widget.username).limit(1).snapshots(),
+      builder: (context, snapshot) {
+        String name = widget.username; String? img;
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          var d = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+          name = d['username'] ?? name; img = d['profilePictureUrl'];
+        }
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: primaryColor.withValues(alpha: 0.1), width: 2)
+                  ),
+                  child: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.white,
+                    backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null,
+                    // [FIX] Tunjuk Icon Person ikut design Admin Dashboard
+                    child: (img == null || img.isEmpty)
+                        ? Icon(Icons.person_rounded, color: primaryColor.withValues(alpha: 0.4))
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(DateFormat('EEEE, d MMM').format(DateTime.now()),
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                    Text("Hi, $name", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+            const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.grey)
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildStatCard({required Stream<QuerySnapshot> stream, required IconData icon, required String label, required int Function(List<QueryDocumentSnapshot>) calcLogic}) {
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
@@ -256,33 +256,16 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  Widget _buildHeaderSection() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').where('username', isEqualTo: widget.username).limit(1).snapshots(),
-      builder: (context, snapshot) {
-        String name = widget.username; String? img;
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-          var d = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-          name = d['username'] ?? name; img = d['profilePictureUrl'];
-        }
-        return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [CircleAvatar(radius: 22, backgroundColor: Colors.grey[200], backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null, child: img == null ? const Icon(Icons.person) : null), const SizedBox(width: 12), Text("Hi, $name", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]), const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.grey)]);
-      },
-    );
-  }
-
   Widget _buildQuickActionButton({required String title, required String subtitle, required IconData icon, required Color color, required VoidCallback onTap}) {
     return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)), child: Row(children: [Icon(icon, color: Colors.white, size: 30), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 11))])), const Icon(Icons.chevron_right, color: Colors.white)])));
   }
 
   Widget _buildActivityItem({required String title, required String subtitle, required String trailingText, required Color trailingColor, required IconData icon}) {
-    return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [CircleAvatar(backgroundColor: const Color(0xFFF5F5F5), child: Icon(icon, color: trailingColor, size: 20)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11))])), Text(trailingText, style: TextStyle(color: trailingColor, fontWeight: FontWeight.bold, fontSize: 14))]));
-  }
-
-  void _showProductDetails(BuildContext context, Map<String, dynamic> data) {
-    showDialog(context: context, builder: (context) => AlertDialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), title: Text(data['productName'] ?? "Details"), content: Column(mainAxisSize: MainAxisSize.min, children: [if (data['imageUrl'] != null) ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(data['imageUrl'], height: 120, fit: BoxFit.cover)), const SizedBox(height: 10), Text("Stock: ${data['currentStock']} ${data['unit']}")]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close"))]));
-  }
-
-  void _showNotFoundDialog(BuildContext context, String code) {
-    showDialog(context: context, builder: (context) => AlertDialog(title: const Text("Not Found"), content: Text("No product with barcode $code"), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))]));
+    return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+        child: Row(children: [CircleAvatar(backgroundColor: const Color(0xFFF5F5F5), child: Icon(icon, color: trailingColor, size: 20)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11))])), Text(trailingText, style: TextStyle(color: trailingColor, fontWeight: FontWeight.bold, fontSize: 14))])
+    );
   }
 }
