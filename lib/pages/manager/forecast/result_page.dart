@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 // 1. IMPORT LOGIC
 import 'forecast_logic.dart';
+import 'risk_scoring_page.dart';
 
 // 2. IMPORT SHARED MODELS
 import 'package:inventryx/models/forecast_model.dart';
@@ -40,7 +41,6 @@ class _ResultPageState extends State<ResultPage> {
       if (productIds.isEmpty) return {"tableData": [], "uiResults": []};
 
       // 1. FETCH SALES HISTORY
-      // Using 'productID' (matches friend's daily_sales.dart)
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('sales')
           .where('productID', whereIn: productIds.take(10).toList())
@@ -58,7 +58,7 @@ class _ResultPageState extends State<ResultPage> {
       List<Map<String, dynamic>> uiResults = [];
 
       for (String productId in productIds) {
-        // A. Filter & Sort Sales for this product
+        // A. Filter & Sort Sales
         final productSales = allSales.where((s) => s.productId == productId).toList();
         productSales.sort((a, b) => a.saleDate.compareTo(b.saleDate));
 
@@ -153,60 +153,93 @@ class _ResultPageState extends State<ResultPage> {
             return const Center(child: Text("No sales data found for selected items."));
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Sales History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
-                const SizedBox(height: 10),
+          // === LAYOUT CHANGE: Use Column + Expanded to force button to bottom ===
+          return Column(
+            children: [
+              // 1. SCROLLABLE AREA (Takes up all available space)
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Sales History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                      const SizedBox(height: 10),
 
-                // Blue Border Table
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF233E99),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.all(3),
-                  child: Container(
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(9)),
-                    child: Table(
-                      columnWidths: const {
-                        0: FlexColumnWidth(2),
-                        1: FlexColumnWidth(1.5),
-                        2: FlexColumnWidth(1),
-                      },
-                      border: TableBorder.symmetric(inside: BorderSide(color: Colors.grey.shade300)),
-                      children: [
-                        const TableRow(
-                          children: [
-                            Padding(padding: EdgeInsets.all(12), child: Text("Product", style: TextStyle(fontWeight: FontWeight.bold))),
-                            Padding(padding: EdgeInsets.all(12), child: Text("Date", style: TextStyle(fontWeight: FontWeight.bold))),
-                            Padding(padding: EdgeInsets.all(12), child: Text("Qty Sold", style: TextStyle(fontWeight: FontWeight.bold))),
-                          ],
+                      // Table
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF233E99),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        ..._buildGroupedTableRows(tableData),
-                      ],
-                    ),
+                        padding: const EdgeInsets.all(3),
+                        child: Container(
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(9)),
+                          child: Table(
+                            columnWidths: const {
+                              0: FlexColumnWidth(2),
+                              1: FlexColumnWidth(1.5),
+                              2: FlexColumnWidth(1),
+                            },
+                            border: TableBorder.symmetric(inside: BorderSide(color: Colors.grey.shade300)),
+                            children: [
+                              const TableRow(
+                                children: [
+                                  Padding(padding: EdgeInsets.all(12), child: Text("Product", style: TextStyle(fontWeight: FontWeight.bold))),
+                                  Padding(padding: EdgeInsets.all(12), child: Text("Date", style: TextStyle(fontWeight: FontWeight.bold))),
+                                  Padding(padding: EdgeInsets.all(12), child: Text("Qty Sold", style: TextStyle(fontWeight: FontWeight.bold))),
+                                ],
+                              ),
+                              ..._buildGroupedTableRows(tableData),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      const Text("Forecast Output", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                      const SizedBox(height: 10),
+
+                      // Forecast Cards
+                      ...uiResults.map((item) {
+                        return _buildForecastCard(item['model'], item['trend']);
+                      }),
+
+                      const SizedBox(height: 20),
+                    ],
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 30),
-
-                const Text("Forecast Output", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
-                const SizedBox(height: 10),
-
-                ...uiResults.map((item) {
-                  return _buildForecastCard(item['model'], item['trend']);
-                }),
-
-                const SizedBox(height: 20),
-
-                Align(
+              // 2. FIXED BOTTOM AREA (This sits right above the footer/navbar)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  // Optional: Add a subtle shadow so it looks separated from the list
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -4),
+                    )
+                  ],
+                ),
+                child: Align(
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Risk Scoring Coming Soon")));
+                      final List<Map<String, dynamic>> uiResults = snapshot.data!['uiResults'] as List<Map<String, dynamic>>;
+                      List<ForecastModel> forecastsToSend = uiResults.map((item) => item['model'] as ForecastModel).toList();
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RiskScoringPage(forecasts: forecastsToSend),
+                        ),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF233E99),
@@ -216,8 +249,8 @@ class _ResultPageState extends State<ResultPage> {
                     child: const Text("Risk Scoring", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),
@@ -259,7 +292,7 @@ class _ResultPageState extends State<ResultPage> {
     }
 
     for (var sale in data) {
-      String productName = _getProductName(sale.productId);
+      String productName = sale.productName.isNotEmpty ? sale.productName : _getProductName(sale.productId);
       String displayProduct = (sale.productId == previousProductId) ? "" : productName;
 
       rows.add(TableRow(
