@@ -13,6 +13,8 @@ class AdminDashboardPage extends StatelessWidget {
 
   const AdminDashboardPage({super.key, required this.loggedInUsername, required this.userId});
 
+  final Color primaryBlue = const Color(0xFF233E99);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,16 +31,12 @@ class AdminDashboardPage extends StatelessWidget {
                 children: [
                   const SizedBox(height: 10),
 
-                  // --- TOP SUMMARY (STAY CLEAN) ---
+                  // --- TOP SUMMARY ---
                   Row(
                     children: [
-                      Expanded(
-                        child: _buildLowStockCard(),
-                      ),
+                      Expanded(child: _buildLowStockCard()),
                       const SizedBox(width: 15),
-                      Expanded(
-                        child: _buildExpiringSoonCard(),
-                      ),
+                      Expanded(child: _buildExpiringSoonCard()),
                     ],
                   ),
 
@@ -74,9 +72,9 @@ class AdminDashboardPage extends StatelessWidget {
                   const Text("System Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 15),
 
-                  _buildActivityTile("Total Registered Users", "users", Icons.person_search_rounded, Colors.blue),
-                  _buildActivityTile("Total System Products", "products", Icons.inventory_rounded, Colors.orange),
-                  _buildActivityTile("Total Active Suppliers", "supplier", Icons.store_rounded, Colors.green),
+                  _buildActivityTile("Total Users", "users", Icons.person_search_rounded, Colors.blue),
+                  _buildActivityTile("Total Products", "products", Icons.inventory_rounded, Colors.orange),
+                  _buildActivityTile("Total Suppliers", "supplier", Icons.store_rounded, Colors.green),
 
                   const SizedBox(height: 120),
                 ],
@@ -93,28 +91,20 @@ class AdminDashboardPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('products').snapshots(),
       builder: (context, snapshot) {
-        int lowStockCount = 0;
+        if (snapshot.hasError) return _buildErrorCard("Low Stock");
+        int count = 0;
         if (snapshot.hasData) {
-          // Kita filter secara manual sebab Firestore tak boleh compare 2 field dlm 1 query
-          lowStockCount = snapshot.data!.docs.where((doc) {
-            Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-            int current = data['currentStock'] ?? 0;
-            int reorder = data['reorderLevel'] ?? 0;
-            return current <= reorder;
+          count = snapshot.data!.docs.where((doc) {
+            var d = doc.data() as Map<String, dynamic>;
+            return (d['currentStock'] ?? 0) <= (d['reorderLevel'] ?? 0);
           }).length;
         }
-
-        return _buildBaseSummaryCard(
-          label: "Low Stock",
-          count: lowStockCount,
-          icon: Icons.arrow_downward_rounded,
-          color: Colors.orange,
-        );
+        return _buildBaseSummaryCard(label: "Low Stock", count: count, icon: Icons.arrow_downward_rounded, color: Colors.orange);
       },
     );
   }
 
-  // --- LOGIC 2: EXPIRING SOON (NEXT 30 DAYS) ---
+  // --- LOGIC 2: EXPIRING SOON ---
   Widget _buildExpiringSoonCard() {
     DateTime now = DateTime.now();
     DateTime nextMonth = now.add(const Duration(days: 30));
@@ -126,24 +116,19 @@ class AdminDashboardPage extends StatelessWidget {
           .where('expiryDate', isLessThan: nextMonth)
           .snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) return _buildErrorCard("Expiring");
         int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-        return _buildBaseSummaryCard(
-          label: "Expiring Soon",
-          count: count,
-          icon: Icons.access_time_rounded,
-          color: Colors.redAccent,
-        );
+        return _buildBaseSummaryCard(label: "Expiring Soon", count: count, icon: Icons.access_time_rounded, color: Colors.redAccent);
       },
     );
   }
 
-  // --- UI BASE CARD ---
+  // --- UI COMPONENTS ---
   Widget _buildBaseSummaryCard({required String label, required int count, required IconData icon, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 22),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(25),
+        color: Colors.white, borderRadius: BorderRadius.circular(25),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(
@@ -157,7 +142,14 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  // --- HEADER & OTHER WIDGETS ---
+  Widget _buildErrorCard(String title) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 22),
+      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(25)),
+      child: Column(children: [const Icon(Icons.error_outline, color: Colors.red), const SizedBox(height: 8), Text(title, style: const TextStyle(fontSize: 12, color: Colors.red))]),
+    );
+  }
+
   Widget _buildHeader() {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
@@ -174,11 +166,13 @@ class AdminDashboardPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Colors.white,
-                backgroundImage: img != null && img.isNotEmpty ? CachedNetworkImageProvider(img) : null,
-                child: (img == null || img.isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,
+              Container(
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)),
+                child: CircleAvatar(
+                  radius: 24, backgroundColor: Colors.white,
+                  backgroundImage: img != null && img.isNotEmpty ? CachedNetworkImageProvider(img) : null,
+                  child: (img == null || img.isEmpty) ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4)) : null,
+                ),
               ),
               const SizedBox(width: 15),
               Expanded(
@@ -190,11 +184,21 @@ class AdminDashboardPage extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.black87),
+              _buildNotificationBadge(),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildNotificationBadge() {
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.black87),
+        Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+      ],
     );
   }
 
@@ -205,13 +209,12 @@ class AdminDashboardPage extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xFF233E99),
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [BoxShadow(color: const Color(0xFF233E99).withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))],
+          color: primaryBlue, borderRadius: BorderRadius.circular(22),
+          boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))],
         ),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white70, size: 26),
+            Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 26),
             const SizedBox(width: 18),
             Expanded(
               child: Column(
@@ -233,26 +236,19 @@ class AdminDashboardPage extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection(collection).snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) return const SizedBox.shrink();
         int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
         return Container(
           margin: const EdgeInsets.only(bottom: 15),
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: Icon(icon, color: color, size: 18),
-              ),
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
               const SizedBox(width: 15),
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
               const Spacer(),
-              Text("$count Units", style: const TextStyle(color: Color(0xFF233E99), fontWeight: FontWeight.w900)),
+              Text("$count Units", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w900)),
             ],
           ),
         );

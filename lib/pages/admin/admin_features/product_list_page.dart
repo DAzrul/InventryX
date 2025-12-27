@@ -222,9 +222,30 @@ class _ProductItemCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis
         ),
-        subtitle: Text(
-            'RM ${price.toStringAsFixed(2)} | Stock: $stock',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: primaryColor)
+        subtitle: Row(
+          children: [
+            Text(
+                'RM ${price.toStringAsFixed(2)}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[700])
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                // LOGIC: Kalau stok rendah (cth: <= 5), warna merah. Kalau tak, warna biru
+                color: stock <= 5 ? Colors.red.withValues(alpha: 0.1) : primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                  'Stock: $stock',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: stock <= 5 ? Colors.red : primaryColor
+                  )
+              ),
+            ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
