@@ -1,123 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../Features_app/barcode_scanner_page.dart';
+import '../staff/utils/staff_features_modal.dart';
+import '../Profile/User_profile_page.dart';
 
-/// --------------------
-/// Product List Item (Read-only)
-/// --------------------
-class ProductListItemReadOnly extends StatelessWidget {
-  final String productName;
-  final String category;
-  final String subCategory;
-  final String imageUrl;
-  final double price;
-  final int quantity;
-  final String barcodeNo;
-  final VoidCallback onTap;
-
-  const ProductListItemReadOnly({
-    super.key,
-    required this.productName,
-    required this.category,
-    required this.subCategory,
-    required this.price,
-    required this.quantity,
-    required this.barcodeNo,
-    required this.imageUrl,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [
-              BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-            ],
-          ),
-          child: Row(
-            children: [
-              // Product Image
-              Container(
-                width: 70,
-                height: 70,
-                margin: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Colors.grey.shade200,
-                  image: imageUrl.isNotEmpty
-                      ? DecorationImage(
-                    image: NetworkImage(imageUrl),
-                    fit: BoxFit.cover,
-                  )
-                      : null,
-                ),
-                child: imageUrl.isEmpty
-                    ? const Icon(Icons.inventory_2, size: 30, color: Colors.black54)
-                    : null,
-              ),
-              // Product Details
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        productName,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$category • $subCategory',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.qr_code, size: 14, color: Colors.grey.shade600),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: Text(barcodeNo,
-                                style: const TextStyle(fontSize: 12, color: Colors.black87),
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Stock: $quantity | RM ${price.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade700),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// --------------------
-/// Manager/Staff Product List Page (Read-only)
-/// --------------------
 class ProductListViewPage extends StatefulWidget {
   const ProductListViewPage({super.key});
 
@@ -126,279 +15,246 @@ class ProductListViewPage extends StatefulWidget {
 }
 
 class _ProductListViewPageState extends State<ProductListViewPage> {
-  String _selectedCategory = 'ALL';
-  int _currentIndex = 1; // Features index
+  // Kita set default ke 1 sebab skrin ni dibuka dari Features
+  int _selectedIndex = 1;
   String _searchText = '';
+  String _selectedCategory = 'ALL';
   final TextEditingController _searchController = TextEditingController();
 
-  final List<String> _categories = [
-    'ALL',
-    'FOOD',
-    'BEVERAGES',
-    'PERSONAL CARE',
-  ];
+  final Color primaryColor = const Color(0xFF203288);
+  final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
-  Stream<QuerySnapshot> get _productStream {
-    final collection = FirebaseFirestore.instance.collection("products");
-    if (_selectedCategory == 'ALL') {
-      return collection.snapshots();
-    }
-    return collection.where('category', isEqualTo: _selectedCategory).snapshots();
-  }
-
-  void _onBottomNavTap(int index) {
-    setState(() => _currentIndex = index);
-  }
-
-  Future<void> scanBarcode() async {
-    final scanned = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
-    );
-    if (scanned != null) {
+  // --- LOGIC: NAVIGATION TAPPED (REPAIRED) ---
+  void _onItemTapped(int index) {
+    if (index == 0) {
+      // [FIX] KLIK HOME -> BALIK KE STAFF PAGE
+      Navigator.pop(context);
+    } else if (index == 1) {
+      // KLIK FEATURES -> TUNJUK MODAL BALIK
+      StaffFeaturesModal.show(context);
+    } else {
+      // [FIX] KLIK PROFILE -> SWITCH INDEX KE PROFILE
       setState(() {
-        _searchText = scanned.toLowerCase();
-        _searchController.text = scanned;
+        _selectedIndex = index;
       });
     }
   }
 
-  void _showProductDetails(BuildContext context, Map<String, dynamic> data) {
-    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-    String barcodeStr = (data['barcodeNo'] ?? '').toString();
+  @override
+  Widget build(BuildContext context) {
+    String? uid = FirebaseAuth.instance.currentUser?.uid;
 
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        builder: (context, snapshot) {
+          String currentUsername = "User";
+          if (snapshot.hasData && snapshot.data!.exists) {
+            var d = snapshot.data!.data() as Map<String, dynamic>;
+            currentUsername = d['username'] ?? "User";
+          }
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF6F8FB),
+            extendBody: true,
+
+            // --- MAIN CONTENT HANDLER ---
+            body: IndexedStack(
+              // Logic Index:
+              // Jika _selectedIndex == 2, tunjuk Profile (Index 1 dlm children)
+              // Jika _selectedIndex != 2 (Home/Features), tunjuk Inventory (Index 0 dlm children)
+              index: _selectedIndex == 2 ? 1 : 0,
               children: [
-                // Product Image
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade100,
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: (data['imageUrl'] != null && data['imageUrl'].toString().isNotEmpty)
-                        ? Image.network(
-                      data['imageUrl'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _barcodePlaceholder(barcodeStr),
-                    )
-                        : _barcodePlaceholder(barcodeStr),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Product Name
-                Text(
-                  data['productName'] ?? 'Unnamed',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-
-                // Product Details
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _detailRow('Category', data['category']),
-                    _detailRow('Subcategory', data['subCategory']),
-                    _detailRow('Supplier', data['supplier'] ?? data['supplierId']),
-                    _detailRow('Barcode', barcodeStr),
-                    _detailRow('Stock', stock.toString()),
-                    _detailRow('Price', 'RM ${data['price'] ?? 0.0}'),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Close Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF233E99),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      "Close",
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ),
-                ),
+                _buildInventoryHome(),
+                ProfilePage(username: currentUsername),
               ],
             ),
-          ),
-        ),
-      ),
+
+            bottomNavigationBar: _buildFloatingNavBar(),
+          );
+        }
     );
   }
 
-  Widget _detailRow(String title, String? value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              '$title:',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ),
-          Expanded(child: Text(value ?? '-', style: const TextStyle(fontSize: 13))),
-        ],
-      ),
-    );
-  }
-
-  Widget _barcodePlaceholder(String barcodeNo) {
+  // --- UI: FLOATING NAVBAR ---
+  Widget _buildFloatingNavBar() {
     return Container(
-      color: Colors.grey.shade100,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.qr_code, size: 40, color: Colors.black38),
-            if (barcodeNo.isNotEmpty)
-              Text(
-                barcodeNo,
-                style: const TextStyle(fontSize: 12, color: Colors.black38),
-              ),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryColor,
+          unselectedItemColor: Colors.grey.shade400,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
           ],
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text("Products", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 26, color: Colors.black)),
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryColor),
       ),
-      body: Column(
+      label: label,
+    );
+  }
+
+  // --- REPAIRED: WRAP CONTENT UNTUK TAB 0 ---
+  Widget _buildInventoryHome() {
+    return Column(
+      children: [
+        _buildTopHeader(),
+        _buildCategoryFilters(),
+        _buildProductList(),
+      ],
+    );
+  }
+
+  // --- UI: TOP HEADER (SEARCH & SCAN) ---
+  Widget _buildTopHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// Search Bar
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
+          const Text("Products", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(18)),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (v) => setState(() => _searchText = v.trim().toLowerCase()),
                     decoration: InputDecoration(
-                      hintText: "Search name or barcode...",
-                      prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                      hintText: "Search items...",
+                      prefixIcon: Icon(Icons.search_rounded, color: primaryColor),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF233E99)),
-                  onPressed: scanBarcode,
-                ),
-              ],
-            ),
-          ),
-
-          /// Category Filter
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: _categories.map((cat) {
-                  final selected = _selectedCategory == cat;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedCategory = cat),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: selected ? const Color(0xFF233E99) : Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(cat, style: TextStyle(color: selected ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                    ),
-                  );
-                }).toList(),
               ),
-            ),
-          ),
-
-          /// Stream List
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _productStream,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-                final filteredDocs = snapshot.data!.docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final name = (data['productName'] ?? '').toString().toLowerCase();
-                  final barcode = (data['barcodeNo'] ?? '').toString();
-                  return name.contains(_searchText) || barcode.contains(_searchText);
-                }).toList();
-
-                if (filteredDocs.isEmpty) return const Center(child: Text("No products found"));
-
-                return ListView.builder(
-                  itemCount: filteredDocs.length,
-                  itemBuilder: (context, index) {
-                    final doc = filteredDocs[index];
-                    final product = doc.data() as Map<String, dynamic>;
-
-                    double price = double.tryParse(product['price']?.toString() ?? '0') ?? 0.0;
-                    int stock = int.tryParse(product['currentStock']?.toString() ?? '0') ?? 0;
-                    String barcode = (product['barcodeNo'] ?? '').toString();
-
-                    return ProductListItemReadOnly(
-                      productName: product['productName'] ?? 'Unnamed',
-                      category: product['category'] ?? '-',
-                      subCategory: product['subCategory'] ?? '-',
-                      price: price,
-                      quantity: stock,
-                      barcodeNo: barcode,
-                      imageUrl: product['imageUrl'] ?? '',
-                      onTap: () => _showProductDetails(context, product),
-                    );
-                  },
-                );
-              },
-            ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () async {
+                  final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+                  if (scanned != null) setState(() { _searchText = scanned; _searchController.text = scanned; });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(15)),
+                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onBottomNavTap,
-        selectedItemColor: const Color(0xFF233E99),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: 'Features'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+    );
+  }
+
+  // --- THE REST OF YOUR UI (FILTERS & LIST) ---
+  Widget _buildCategoryFilters() {
+    return Container(
+      height: 60,
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _categories.length,
+        itemBuilder: (context, index) {
+          final cat = _categories[index];
+          final isSel = _selectedCategory == cat;
+          return GestureDetector(
+            onTap: () => setState(() => _selectedCategory = cat),
+            child: Container(
+              margin: const EdgeInsets.only(right: 10, top: 10, bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: isSel ? primaryColor : Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: isSel ? Colors.transparent : Colors.grey.shade200),
+              ),
+              child: Center(child: Text(cat, style: TextStyle(color: isSel ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold, fontSize: 12))),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductList() {
+    return Expanded(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: (_selectedCategory == 'ALL')
+            ? FirebaseFirestore.instance.collection("products").snapshots()
+            : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = snapshot.data!.docs.where((d) {
+            final name = d['productName'].toString().toLowerCase();
+            return name.contains(_searchText);
+          }).toList();
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+            physics: const BouncingScrollPhysics(),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              return _buildProductCard(data);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductCard(Map<String, dynamic> data) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      child: Row(
+        children: [
+          Container(
+            width: 70, height: 70,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]),
+            child: (data['imageUrl'] != null && data['imageUrl'] != '')
+                ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover))
+                : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2)),
+          ),
+          const SizedBox(width: 15),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+          ])),
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
         ],
       ),
     );

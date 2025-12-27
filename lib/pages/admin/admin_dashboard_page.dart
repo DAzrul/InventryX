@@ -104,21 +104,38 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  // --- LOGIC 2: EXPIRING SOON ---
+  // --- LOGIC 2: EXPIRING SOON (LINKED TO BATCHES) ---
   Widget _buildExpiringSoonCard() {
-    DateTime now = DateTime.now();
-    DateTime nextMonth = now.add(const Duration(days: 30));
+    final DateTime now = DateTime.now();
+    final DateTime next30Days = now.add(const Duration(days: 30));
 
     return StreamBuilder<QuerySnapshot>(
+      // Kita query koleksi 'batches' yang ada stok sahaja mat!
       stream: FirebaseFirestore.instance
-          .collection('products')
-          .where('expiryDate', isGreaterThan: now)
-          .where('expiryDate', isLessThan: nextMonth)
+          .collection('batches')
+          .where('currentQuantity', isGreaterThan: 0)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) return _buildErrorCard("Expiring");
-        int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-        return _buildBaseSummaryCard(label: "Expiring Soon", count: count, icon: Icons.access_time_rounded, color: Colors.redAccent);
+
+        int count = 0;
+        if (snapshot.hasData) {
+          // Kita tapis batches yang expired dlm julat 30 hari
+          count = snapshot.data!.docs.where((doc) {
+            var d = doc.data() as Map<String, dynamic>;
+            if (d['expiryDate'] == null) return false;
+
+            DateTime exp = (d['expiryDate'] as Timestamp).toDate();
+            return exp.isAfter(now) && exp.isBefore(next30Days);
+          }).length;
+        }
+
+        return _buildBaseSummaryCard(
+            label: "Expiring Soon",
+            count: count,
+            icon: Icons.access_time_rounded,
+            color: Colors.redAccent
+        );
       },
     );
   }

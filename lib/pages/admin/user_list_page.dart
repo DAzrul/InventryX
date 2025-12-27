@@ -6,7 +6,7 @@ import 'widgets/bottom_nav_page.dart';
 import 'user_edit_page.dart';
 import 'user_delete_page.dart';
 import 'admin_features/user_management_page.dart';
-import '../Profile/User_profile_page.dart'; // Import Profile mat
+import '../Profile/User_profile_page.dart';
 
 class UserListPage extends StatefulWidget {
   final String loggedInUsername;
@@ -18,7 +18,6 @@ class UserListPage extends StatefulWidget {
 }
 
 class _UserListPageState extends State<UserListPage> {
-  // [NEW] Index untuk kawal skrin dlm UserListPage jer
   int _localIndex = 0;
   String _selectedRole = 'All';
   final List<String> _roles = ['All', 'Admin', 'Staff', 'Manager'];
@@ -26,38 +25,24 @@ class _UserListPageState extends State<UserListPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Kita guna BottomNavPage dlm skrin ni mat
     return BottomNavPage(
       loggedInUsername: widget.loggedInUsername,
-      // Guna _localIndex supaya nav bar highlight ikon yang betul
       currentIndex: _localIndex,
       onTap: (index) {
-        if (index == 0) {
-          // Kalau klik Home, kita paksa dia tunjuk List User balik
-          setState(() => _localIndex = 0);
-        } else if (index == 2) {
-          // Kalau klik Profile, kita tunjuk skrin Profile
-          setState(() => _localIndex = 2);
-        }
+        if (index == 0) setState(() => _localIndex = 0);
+        else if (index == 2) setState(() => _localIndex = 2);
       },
       child: IndexedStack(
-        // Index 0 tunjuk List, Index 2 tunjuk Profile
         index: _localIndex,
         children: [
-          // SKRIN 0: User Management List mat
           _buildUserManagementUI(),
-
-          // SKRIN 1: (Kosong sebab Features tu Modal mat)
           const SizedBox.shrink(),
-
-          // SKRIN 2: Profile Page dlm UserListPage mat
           ProfilePage(username: widget.loggedInUsername),
         ],
       ),
     );
   }
 
-  // --- UI ASAL USER LIST KAU (KEMASKAN) ---
   Widget _buildUserManagementUI() {
     return Column(
       children: [
@@ -76,7 +61,6 @@ class _UserListPageState extends State<UserListPage> {
       child: Row(
         children: [
           IconButton(
-            // Balik ke AdminDashboard (First Route) mat
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
             onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
@@ -95,7 +79,7 @@ class _UserListPageState extends State<UserListPage> {
         decoration: BoxDecoration(
           color: primaryBlue,
           borderRadius: BorderRadius.circular(25),
-          boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))],
+          boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))],
         ),
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection("users").snapshots(),
@@ -172,8 +156,14 @@ class _UserListPageState extends State<UserListPage> {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) return const Center(child: Text("Error loading users. Check rules!"));
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+        // Filter out current logged in user mat
         final filteredUsers = snapshot.data!.docs.where((doc) => doc['username'] != widget.loggedInUsername).toList();
+
+        if (filteredUsers.isEmpty) return const Center(child: Text("No users found in this category."));
+
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
           itemCount: filteredUsers.length,
@@ -189,6 +179,7 @@ class _UserListPageState extends State<UserListPage> {
   Widget _buildUserCard(Map<String, dynamic> data, String docId) {
     final bool isActive = data['status'] == 'Active';
     final Color statusColor = isActive ? Colors.green.shade600 : Colors.red.shade600;
+    final String? img = data['profilePictureUrl']; // Ambil URL gambar profil
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -196,23 +187,37 @@ class _UserListPageState extends State<UserListPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 25,
-            backgroundColor: Colors.grey.shade100,
-            backgroundImage: (data['profilePictureUrl'] != null && data['profilePictureUrl'].isNotEmpty) ? CachedNetworkImageProvider(data['profilePictureUrl']) : null,
-            child: data['profilePictureUrl'] == null ? const Icon(Icons.person) : null,
+          // --- REPAIRED PROFILE IMAGE SECTION --- sebiji macam AdminDashboard
+          Container(
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)
+            ),
+            child: CircleAvatar(
+              radius: 25,
+              backgroundColor: Colors.white,
+              // Kalau ada URL gambar dlm Firestore, kita display guna CachedNetworkImage
+              backgroundImage: (img != null && img.isNotEmpty)
+                  ? CachedNetworkImageProvider(img) : null,
+              // Kalau imej null atau kosong, kita bagi icon kacak warna biru muda
+              child: (img == null || img.isEmpty)
+                  ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4), size: 30)
+                  : null,
+            ),
           ),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data['username'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                Text(data['role']?.toString().toUpperCase() ?? 'STAFF', style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.w900)),
+                Text(data['username'] ?? 'N/A',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                Text(data['role']?.toString().toUpperCase() ?? 'STAFF',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.w900)),
               ],
             ),
           ),
@@ -221,13 +226,22 @@ class _UserListPageState extends State<UserListPage> {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(isActive ? "ACTIVE" : "INACTIVE", style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9)),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text(isActive ? "ACTIVE" : "INACTIVE",
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9)),
               ),
               Row(
                 children: [
-                  IconButton(icon: Icon(Icons.edit_note_rounded, color: primaryBlue, size: 24), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserEditPage(userId: docId, loggedInUsername: widget.loggedInUsername, username: null, userData: {})))),
-                  IconButton(icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserDeletePage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: {})))),
+                  IconButton(
+                      icon: Icon(Icons.edit_note_rounded, color: primaryBlue, size: 24),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                          UserEditPage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
+                  ),
+                  IconButton(
+                      icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                          UserDeletePage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
+                  ),
                 ],
               ),
             ],

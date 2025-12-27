@@ -19,13 +19,16 @@ class StaffPage extends StatefulWidget {
 }
 
 class _StaffPageState extends State<StaffPage> {
+  // Index 0: Dashboard, Index 1: Features (Modal), Index 2: Profile
   int _selectedIndex = 0;
   final Color primaryColor = const Color(0xFF203288);
 
   void _onItemTapped(int index) {
     if (index == 1) {
+      // Keluar modal features "chaotic" kau tu mat
       StaffFeaturesModal.show(context);
     } else {
+      // Tukar antara Dashboard (0) atau Profile (2)
       setState(() {
         _selectedIndex = index;
       });
@@ -49,14 +52,21 @@ class _StaffPageState extends State<StaffPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
-
-            // [FIX] Matikan amaran kuning RenderFlex overflow
             resizeToAvoidBottomInset: false,
             extendBody: true,
 
-            body: _buildMainContent(currentUsername),
+            // --- MAIN CONTENT HANDLER ---
+            // Kita guna IndexedStack supaya bila kau pusing-pusing skrin,
+            // data kau tak hilang atau kena reload balik. Jimat data babi!
+            body: IndexedStack(
+              index: _selectedIndex == 2 ? 1 : 0,
+              children: [
+                StaffDashboardPage(username: currentUsername),
+                ProfilePage(username: currentUsername),
+              ],
+            ),
 
-            // --- NAVIGATION BAR ---
+            // --- FLOATING NAVIGATION BAR ---
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
@@ -65,9 +75,8 @@ class _StaffPageState extends State<StaffPage> {
 
   Widget _buildFloatingNavBar() {
     return Container(
-      // [FIX] Turunkan margin bawah ke 12 supaya ada ruang
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      height: 62, // [FIX] Kecilkan sikit dari 65 ke 62
+      height: 62,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
@@ -114,16 +123,6 @@ class _StaffPageState extends State<StaffPage> {
         child: Icon(activeIcon, size: 22, color: primaryColor),
       ),
       label: label,
-    );
-  }
-
-  Widget _buildMainContent(String currentUsername) {
-    return IndexedStack(
-      index: _selectedIndex == 2 ? 1 : 0,
-      children: [
-        StaffDashboardPage(username: currentUsername),
-        ProfilePage(username: currentUsername),
-      ],
     );
   }
 }
