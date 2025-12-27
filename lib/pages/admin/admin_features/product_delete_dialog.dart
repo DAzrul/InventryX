@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProductDeleteDialog extends StatefulWidget {
   final String productId;
@@ -17,10 +18,10 @@ class ProductDeleteDialog extends StatefulWidget {
 
 class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
   bool _loading = false;
+  final Color dangerRed = const Color(0xFFE53935);
 
   Future<void> _deleteProduct() async {
     setState(() => _loading = true);
-
     try {
       await FirebaseFirestore.instance
           .collection('products')
@@ -29,10 +30,12 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delete failed: $e')),
-      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fucking delete failed: $e')),
+        );
+      }
     }
   }
 
@@ -40,157 +43,172 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
   Widget build(BuildContext context) {
     final data = widget.productData;
     final imageUrl = data['imageUrl'];
-    final barcodeNo = data['barcodeNo'];
+
+    // Convert data to readable types mat
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Product Image
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                color: Colors.grey.shade100,
-                boxShadow: [
-                  const BoxShadow(
-                      color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // WARNING ICON
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: dangerRed.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.warning_amber_rounded, color: dangerRed, size: 40),
+              ),
+              const SizedBox(height: 16),
+
+              const Text("Confirm Delete", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              const Text(
+                "Verify the details below before permanent deletion.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+
+              // ENHANCED PRODUCT DETAILS CARD
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    // Top Section: Image & Basic Info
+                    Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: SizedBox(
+                            width: 70, height: 70,
+                            child: (imageUrl != null && imageUrl.isNotEmpty)
+                                ? CachedNetworkImage(
+                              imageUrl: imageUrl,
+                              fit: BoxFit.cover,
+                              errorWidget: (context, url, error) => _placeholderIcon(),
+                            )
+                                : _placeholderIcon(),
+                          ),
+                        ),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                data['productName'] ?? 'Unnamed',
+                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                                maxLines: 2, overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text("Barcode: ${data['barcodeNo'] ?? 'N/A'}", style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
+
+                    // Detailed Information Grid
+                    _buildDetailInfo("Category", "${data['category']} / ${data['subCategory']}"),
+                    _buildDetailInfo("Supplier", data['supplier'] ?? 'Unknown'),
+
+                    const SizedBox(height: 12),
+
+                    // Price & Stock Highlight
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
+                        _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ACTION BUTTONS
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                      onPressed: _loading ? null : () => Navigator.pop(context),
+                      child: const Text("Cancel", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: dangerRed,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _loading ? null : _deleteProduct,
+                      child: _loading
+                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Text("Confirm Delete", style: TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                  ),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: AspectRatio(
-                aspectRatio: 1, // default square
-                child: imageUrl != null && imageUrl.isNotEmpty
-                    ? Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _barcodePlaceholder(barcodeNo),
-                )
-                    : _barcodePlaceholder(barcodeNo),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Product Name
-            Text(
-              data['productName'] ?? 'Unnamed Product',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-
-            // Product Details
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _detailRow('Category', data['category']),
-                _detailRow('Subcategory', data['subCategory']),
-                _detailRow('Supplier', data['supplier']),
-                _detailRow('Barcode', barcodeNo?.toString()),
-                _detailRow('Stock', data['quantity']?.toString() ?? '0'),
-                _detailRow('Price', data['price'] != null
-                    ? 'RM ${data['price'].toStringAsFixed(2)}'
-                    : '-'),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Warning Text
-            const Text(
-              'Are you sure you want to delete this product? This action cannot be undone.',
-              style: TextStyle(fontSize: 14, color: Colors.redAccent),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.black87,
-                      side: BorderSide(color: Colors.grey.shade400),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _loading ? null : () => Navigator.pop(context),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _loading ? null : _deleteProduct,
-                    child: _loading
-                        ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : const Text(
-                      'Delete',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // Product detail row
-  Widget _detailRow(String title, String? value) {
+  Widget _buildDetailInfo(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 100, child: Text('$title:', style: const TextStyle(fontWeight: FontWeight.bold))),
-          Expanded(child: Text(value ?? '-', style: const TextStyle(color: Colors.black87))),
+          Text("$label: ", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
         ],
       ),
     );
   }
 
-  // Barcode placeholder
-  Widget _barcodePlaceholder(dynamic barcodeNo) {
-    return Container(
-      color: Colors.grey.shade100,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.qr_code, size: 50, color: Colors.black38),
-            if (barcodeNo != null)
-              Text(
-                barcodeNo.toString(),
-                style: const TextStyle(fontSize: 14, color: Colors.black38),
-              ),
-          ],
+  Widget _buildStatusChip(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)),
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _placeholderIcon() {
+    return Container(
+      color: Colors.grey[200],
+      child: const Icon(Icons.inventory_2_rounded, color: Colors.black26, size: 24),
     );
   }
 }

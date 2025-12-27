@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // --- IMPORT HALAMAN ---
 import 'login_page.dart';
-// Pastikan path import ini betul mengikut folder projek anda
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -15,152 +14,189 @@ class LaunchPage extends StatefulWidget {
   State<LaunchPage> createState() => _LaunchPageState();
 }
 
-class _LaunchPageState extends State<LaunchPage> {
+class _LaunchPageState extends State<LaunchPage> with SingleTickerProviderStateMixin {
   bool _showButton = false;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  final Color primaryBlue = const Color(0xFF233E99);
+  final Color bgSecondary = const Color(0xFFF8FAFF);
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnimation = CurvedAnimation(parent: _animationController, curve: Curves.easeIn);
     _checkSession();
   }
 
-  // --- FUNGSI NAVIGASI ---
-  void _navigateToHomePage(String username, String role, String userId) {
-    if (!mounted) return;
-
-    Widget targetPage;
-
-    if (role == "admin") {
-      // Admin mungkin masih perlukan data manual (bergantung kod admin anda)
-      targetPage = AdminScreen(loggedInUsername: username, userId: userId);
-    } else if (role == "manager") {
-      // MANAGER: Panggil sebagai const kerana ManagerPage baru guna FirebaseAuth dalaman
-      targetPage = ManagerPage(loggedInUsername: username, userId: userId);
-    } else {
-      // STAFF
-      targetPage = StaffPage(loggedInUsername: username, userId: userId);
-    }
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => targetPage),
-    );
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   // --- SEMAK STATUS SESI ---
   Future<void> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Ambil data sesi
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final String? savedUsername = prefs.getString('savedUsername');
     final String? savedRole = prefs.getString('savedRole');
     final String? savedUserId = prefs.getString('savedUserId');
 
-    // Tambah delay sikit untuk nampak logo (opsyenal, 1.5 saat)
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // Nampak logo kejap mat
+    await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted) return;
 
     if (isLoggedIn && savedUsername != null && savedRole != null && savedUserId != null) {
-      // Sesi wujud, terus masuk
       _navigateToHomePage(savedUsername, savedRole, savedUserId);
     } else {
-      // Tiada sesi, tunjuk butang "Get Started"
       setState(() {
         _showButton = true;
       });
+      _animationController.forward(); // Start "fucking" animation
     }
+  }
+
+  void _navigateToHomePage(String username, String role, String userId) {
+    if (!mounted) return;
+    Widget targetPage = (role == "admin") ? AdminPage(loggedInUsername: username, userId: userId) :
+    (role == "manager") ? ManagerPage(loggedInUsername: username, userId: userId) :
+    StaffPage(loggedInUsername: username, userId: userId);
+
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => targetPage));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Latar belakang putih bersih
+      backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          bool isPortrait = constraints.maxHeight > constraints.maxWidth;
-          double horizontalPadding = constraints.maxWidth * 0.08;
+          double logoSize = constraints.maxWidth * 0.65;
 
-          // Jika sesi sedang disemak (belum tunjuk butang), paparkan Loading ringkas
-          if (!_showButton) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: constraints.maxHeight * 0.2,
-                    child: Image.asset("assets/logo.png"), // Pastikan logo wujud
-                  ),
-                  const SizedBox(height: 20),
-                  const CircularProgressIndicator(), // Loading pusing
-                ],
+          return Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white, bgSecondary],
               ),
-            );
-          }
-
-          // UI Utama (Lepas check session gagal)
-          return Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: isPortrait
-                        ? constraints.maxHeight * 0.23
-                        : constraints.maxHeight * 0.35,
-                    child: Image.asset("assets/logo.png"),
-                  ),
-                  SizedBox(height: constraints.maxHeight * 0.03),
-                  Text(
-                    "InventryX",
-                    style: TextStyle(
-                      fontSize: isPortrait
-                          ? constraints.maxWidth * 0.085
-                          : constraints.maxHeight * 0.07,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF233E99),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // --- LOGO SECTION WITH SHADOW ---
+                Hero(
+                  tag: 'logo',
+                  child: Container(
+                    height: logoSize,
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryBlue.withValues(alpha: 0.1),
+                          blurRadius: 50,
+                          offset: const Offset(0, 20),
+                        )
+                      ],
                     ),
+                    child: Image.asset("assets/logo.png", fit: BoxFit.contain),
                   ),
-                  SizedBox(height: constraints.maxHeight * 0.08),
+                ),
 
-                  // Butang "LET'S GET STARTED!"
-                  SizedBox(
-                    width: double.infinity,
-                    height: constraints.maxHeight * 0.07,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF233E99),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 5,
-                      ),
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginPage()),
-                        );
-                      },
-                      child: Text(
-                        "LET'S GET STARTED!",
-                        style: TextStyle(
-                          fontSize: isPortrait
-                              ? constraints.maxWidth * 0.05
-                              : constraints.maxHeight * 0.04,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                const SizedBox(height: 20),
+
+                // --- BRAND NAME ---
+                Text(
+                  "InventryX",
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                    color: primaryBlue,
                   ),
-                ],
-              ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  "Smart Inventory Management",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+
+                const SizedBox(height: 60),
+
+                // --- LOADING OR BUTTON ---
+                SizedBox(
+                  height: 100,
+                  child: !_showButton
+                      ? CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryBlue),
+                    strokeWidth: 3,
+                  )
+                      : FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: _buildGetStartedButton(constraints),
+                  ),
+                ),
+              ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildGetStartedButton(BoxConstraints constraints) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Container(
+        width: double.infinity,
+        height: 60,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: primaryBlue.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            )
+          ],
+        ),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryBlue,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            elevation: 0,
+          ),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+            );
+          },
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "GET STARTED",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+              ),
+              SizedBox(width: 10),
+              Icon(Icons.arrow_forward_rounded, size: 20),
+            ],
+          ),
+        ),
       ),
     );
   }

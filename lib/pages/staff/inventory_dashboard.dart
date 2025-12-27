@@ -192,7 +192,7 @@ class _InventoryDashboardState extends State<InventoryDashboard> {
           Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (context) => AddIncomingStockPage()),
+                builder: (context) => AddIncomingStockPage(username: '',)),
           );
         }),
 

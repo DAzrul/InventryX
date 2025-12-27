@@ -1,5 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart'; // Pastikan anda tambah fl_chart di pubspec.yaml
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:excel/excel.dart' as ex;
 
 class ReportPage extends StatefulWidget {
   const ReportPage({super.key});
@@ -10,11 +17,11 @@ class ReportPage extends StatefulWidget {
 
 class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
-    // 3 Tab utama berdasarkan Proposal (Inventory, Forecast, Risk)
     _tabController = TabController(length: 3, vsync: this);
   }
 
@@ -27,276 +34,264 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFC),
+      backgroundColor: const Color(0xFFF8FAFF), // Background lebih soft
       appBar: AppBar(
-        title: const Text("Reports & Analytics", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        title: const Text("Reports & Analytics",
+            style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E), fontSize: 18)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black87, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          // Butang Export PDF/Excel (Keperluan Proposal)
-          IconButton(
-            icon: const Icon(Icons.download_rounded, color: Color(0xFF233E99)),
-            tooltip: "Export Report",
-            onPressed: () {
-              // Logik Export PDF/Excel akan diletakkan di sini
-              _showExportDialog(context);
-            },
+          // Butang Export yang lebih cantik
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF233E99).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.file_download_outlined, color: Color(0xFF233E99), size: 22),
+              ),
+              onPressed: () => _showExportOptions(context),
+            ),
           ),
-          const SizedBox(width: 10),
         ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: const Color(0xFF233E99),
-          unselectedLabelColor: Colors.grey,
+          indicatorSize: TabBarIndicatorSize.label,
+          indicatorWeight: 3,
           indicatorColor: const Color(0xFF233E99),
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          tabs: const [
-            Tab(text: "Inventory"),
-            Tab(text: "Forecast"),
-            Tab(text: "Risk"),
-          ],
+          labelColor: const Color(0xFF233E99),
+          unselectedLabelColor: Colors.grey.shade400,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          tabs: const [Tab(text: "Inventory"), Tab(text: "Forecast"), Tab(text: "Risk")],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _InventoryReportTab(),
-          _ForecastReportTab(),
-          _RiskReportTab(),
+        children: [
+          _InventoryReportTab(db: _db),
+          _buildPlaceholderTab("Forecast Analysis Coming Soon"),
+          _buildPlaceholderTab("Risk Assessment Coming Soon"),
         ],
       ),
     );
   }
 
-  void _showExportDialog(BuildContext context) {
-    showDialog(
+  Widget _buildPlaceholderTab(String text) {
+    return Center(child: Text(text, style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w500)));
+  }
+
+  void _showExportOptions(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Export Report"),
-        content: const Text("Choose format to export:"),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
-            label: const Text("PDF"),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-          TextButton.icon(
-            icon: const Icon(Icons.table_chart, color: Colors.green),
-            label: const Text("Excel"),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- TAB 1: INVENTORY REPORT ---
-class _InventoryReportTab extends StatelessWidget {
-  const _InventoryReportTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSummaryCard("Total Stock Value", "RM 45,230.00", Colors.blue),
-          const SizedBox(height: 20),
-
-          const Text("Stock Level by Category", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
-
-          // Carta Bar Mudah (Contoh)
-          Container(
-            height: 200,
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
-            child: BarChart(
-              BarChartData(
-                borderData: FlBorderData(show: false),
-                gridData: FlGridData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (val, meta) {
-                        switch(val.toInt()) {
-                          case 0: return const Text("Drink", style: TextStyle(fontSize: 10));
-                          case 1: return const Text("Food", style: TextStyle(fontSize: 10));
-                          case 2: return const Text("Snack", style: TextStyle(fontSize: 10));
-                        }
-                        return const Text("");
-                      },
-                    ),
-                  ),
-                ),
-                barGroups: [
-                  BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 80, color: Colors.blue, width: 20, borderRadius: BorderRadius.circular(4))]),
-                  BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 50, color: Colors.orange, width: 20, borderRadius: BorderRadius.circular(4))]),
-                  BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 65, color: Colors.green, width: 20, borderRadius: BorderRadius.circular(4))]),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-          const Text("Low Stock Alert", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          _buildListItem("Coca Cola 1.5L", "5 units left", Colors.red),
-          _buildListItem("Gardenia Bread", "2 units left", Colors.red),
-        ],
-      ),
-    );
-  }
-}
-
-// --- TAB 2: FORECAST REPORT ---
-class _ForecastReportTab extends StatelessWidget {
-  const _ForecastReportTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSummaryCard("Predicted Demand (Next Month)", "1,200 Units", Colors.purple),
-          const SizedBox(height: 20),
-
-          const Text("Demand Trend (SMA Analysis)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
-
-          // Line Chart Placeholder
-          Container(
-            height: 200,
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(show: false),
-                titlesData: FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: const [FlSpot(0, 1), FlSpot(1, 3), FlSpot(2, 2), FlSpot(3, 5), FlSpot(4, 4)],
-                    isCurved: true,
-                    color: Colors.purple,
-                    barWidth: 3,
-                    dotData: FlDotData(show: false),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-          const Text("Top Predicted Items", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          _buildListItem("Mineral Water 500ml", "High Demand (+15%)", Colors.green),
-          _buildListItem("Instant Noodle", "Stable", Colors.blue),
-        ],
-      ),
-    );
-  }
-}
-
-// --- TAB 3: RISK REPORT ---
-class _RiskReportTab extends StatelessWidget {
-  const _RiskReportTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: _buildSummaryCard("High Risk Items", "12 SKUs", Colors.redAccent)),
-              const SizedBox(width: 15),
-              Expanded(child: _buildSummaryCard("Potential Loss", "RM 450", Colors.orange)),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          const Text("Expiry Risk Analysis", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          _buildRiskItem("Fresh Milk", "Expiring in 2 days", "Critical", Colors.red),
-          _buildRiskItem("Sandwich Tuna", "Expiring in 3 days", "High", Colors.orange),
-          _buildRiskItem("Yogurt Drink", "Expiring in 5 days", "Medium", Colors.yellow[800]!),
-        ],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 20),
+            const Text("Export Inventory Report", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 25),
+            _exportTile(Icons.picture_as_pdf_rounded, "Export as PDF", Colors.red, () { Navigator.pop(ctx); }),
+            const SizedBox(height: 12),
+            _exportTile(Icons.table_chart_rounded, "Export as Excel", Colors.green, () { Navigator.pop(ctx); }),
+            const SizedBox(height: 15),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildRiskItem(String title, String subtitle, String riskLevel, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border(left: BorderSide(color: color, width: 5)),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 5)],
-      ),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(riskLevel, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+  Widget _exportTile(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(width: 15),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
         ),
       ),
     );
   }
 }
 
-// --- SHARED WIDGETS ---
-Widget _buildSummaryCard(String title, String value, Color color) {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(15),
-      boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-        const SizedBox(height: 5),
-        Text(title, style: const TextStyle(fontSize: 14, color: Colors.white70)),
-      ],
-    ),
-  );
-}
+// ======================== TAB: INVENTORY (KEMAS UI) ========================
+class _InventoryReportTab extends StatelessWidget {
+  final FirebaseFirestore db;
+  const _InventoryReportTab({required this.db});
 
-Widget _buildListItem(String title, String subtitle, Color color) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 5)],
-    ),
-    child: ListTile(
-      leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(Icons.circle, color: color, size: 12)),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: TextStyle(color: color)),
-    ),
-  );
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: db.collection('products').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+        double totalValue = 0;
+        Map<String, double> catData = {};
+        final docs = snapshot.data!.docs;
+
+        for (var doc in docs) {
+          double p = double.tryParse(doc['price']?.toString() ?? '0') ?? 0;
+          int s = int.tryParse(doc['currentStock']?.toString() ?? '0') ?? 0;
+          totalValue += (p * s);
+          catData[doc['category'] ?? 'Others'] = (catData[doc['category']] ?? 0) + s.toDouble();
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          physics: const BouncingScrollPhysics(),
+          children: [
+            // Summary Card dengan Gradient
+            _buildPremiumStatCard("Total Inventory Value", "RM ${totalValue.toStringAsFixed(2)}"),
+
+            const SizedBox(height: 30),
+            _sectionHeader("Stock Distribution"),
+            const SizedBox(height: 15),
+            _buildCleanBarChart(catData),
+
+            const SizedBox(height: 30),
+            _sectionHeader("Critical Low Stock"),
+            const SizedBox(height: 12),
+            ...docs.where((d) => (d['currentStock'] ?? 0) <= 10).map((d) =>
+                _buildModernAlertTile(d['productName'], "${d['currentStock']} units remaining")
+            ),
+            const SizedBox(height: 80),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.5));
+  }
+
+  Widget _buildPremiumStatCard(String title, String val) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF233E99), Color(0xFF1E3A8A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF233E99).withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          Text(val, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCleanBarChart(Map<String, double> data) {
+    return Container(
+      height: 240,
+      padding: const EdgeInsets.fromLTRB(15, 25, 15, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: BarChart(
+        BarChartData(
+          maxY: data.values.isEmpty ? 10 : data.values.reduce((a, b) => a > b ? a : b) * 1.2,
+          barGroups: data.entries.map((e) => BarChartGroupData(
+            x: data.keys.toList().indexOf(e.key),
+            barRods: [
+              BarChartRodData(
+                toY: e.value,
+                color: const Color(0xFF233E99),
+                width: 18,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                backDrawRodData: BackgroundBarChartRodData(show: true, toY: 100, color: Colors.grey.shade50),
+              )
+            ],
+          )).toList(),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (v, m) => Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(data.keys.elementAt(v.toInt()), style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: Colors.grey.shade300))),
+            ),
+          ),
+          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade50, strokeWidth: 1)),
+          borderData: FlBorderData(show: false),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernAlertTile(String name, String subtitle) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.05), shape: BoxShape.circle),
+            child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

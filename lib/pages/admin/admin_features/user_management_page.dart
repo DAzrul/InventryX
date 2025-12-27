@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:connectivity_plus/connectivity_plus.dart'; // [BARU] Import untuk semakan rangkaian
+import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Import untuk navigasi Features
-import '../admin_page.dart';
-import '../user_list_page.dart'; // Pastikan laluan import ini betul
-
+import '../user_list_page.dart';
 
 class UserManagementPage extends StatefulWidget {
   final String username;
@@ -22,13 +19,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneNoController = TextEditingController();
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String? selectedRole;
   String? selectedDefaultPassword;
   bool loading = false;
-
   String? adminProfilePictureUrl;
 
   final List<String> roles = ['admin', 'manager', 'staff'];
@@ -40,9 +35,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     _loadAdminProfilePicture();
   }
 
-  // --- FUNGSI BARU: Muatkan Gambar Profil Admin ---
   Future<void> _loadAdminProfilePicture() async {
-    // Fungsi ini tidak diubah dan berfungsi walaupun offline (cache)
     try {
       QuerySnapshot adminSnap = await FirebaseFirestore.instance
           .collection("users")
@@ -57,17 +50,16 @@ class _UserManagementPageState extends State<UserManagementPage> {
         });
       }
     } catch (e) {
-      print("Error loading admin profile picture: $e");
+      debugPrint("Error loading admin profile: $e");
     }
   }
 
-
-  // --- FUNGSI POPUP MESSAGE ---
   void showPopupMessage(String title, {String? message}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         content: message != null ? Text(message) : null,
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
@@ -76,14 +68,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
-  // --- [BARU] FUNGSI SEMAK RANGKAIAN ---
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
     return connectivityResult != ConnectivityResult.none;
   }
 
-
-  // --- Fungsi Logik Pendaftaran Pengguna DENGAN FIREBASE AUTH (DIPERBAIKI) ---
   Future<void> registerUser() async {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
@@ -91,62 +80,27 @@ class _UserManagementPageState extends State<UserManagementPage> {
     String role = selectedRole ?? '';
     String password = selectedDefaultPassword ?? '';
 
-    // 1. Validation
-    if (role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty ||  password.isEmpty) {
-      showPopupMessage("Error", message: "Please fill all required fields.");
-      return;
-    }
-    if (password.length < 6) {
-      showPopupMessage("Error", message: "Password must be at least 6 characters.");
+    if (role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty || password.isEmpty) {
+      showPopupMessage("Missing Info", message: "Fill in all fields to register the new user.");
       return;
     }
 
-    String username;
-    if (email.contains('@')) {
-      username = email.substring(0, email.indexOf('@'));
-    } else {
-      showPopupMessage("Error", message: "Invalid email format.");
-      return;
-    }
-
-    // [LANGKAH 0: SEMAK RANGKAIAN]
     if (!await _isNetworkAvailable()) {
-      showPopupMessage("Offline Mode", message: "User registration requires an active internet connection.");
+      showPopupMessage("Offline Mode", message: "Internet connection is required for cloud registration.");
       return;
     }
 
     setState(() => loading = true);
-    UserCredential? userCredential;
-
     try {
-      // 2. Semak jika Username sudah wujud dalam Firestore
-      QuerySnapshot existingUsernameSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .where("username", isEqualTo: username)
-          .limit(1)
-          .get();
+      String username = email.split('@')[0];
 
-      if (existingUsernameSnap.docs.isNotEmpty) {
-        showPopupMessage("Registration Failed", message: "Username ($username) already taken. Please use a different email.");
-        setState(() => loading = false);
-        return;
-      }
-
-      // 3. REGISTER PENGGUNA KE FIREBASE AUTHENTICATION
-      userCredential = await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final User? newUser = userCredential.user;
+      final String userUid = userCredential.user!.uid;
 
-      if (newUser == null) {
-        throw Exception("Failed to get new user data after registration.");
-      }
-
-      final String userUid = newUser.uid; // Dapatkan UID
-
-      // 4. Tambah butiran tambahan ke Firestore menggunakan UID sebagai ID Dokumen
       await FirebaseFirestore.instance.collection("users").doc(userUid).set({
         "username": username,
         "email": email,
@@ -159,190 +113,147 @@ class _UserManagementPageState extends State<UserManagementPage> {
         "profilePictureUrl": "",
       });
 
-      // 5. Tunjukkan mesej kejayaan
       if (!mounted) return;
+      showPopupMessage("Success", message: "User $name (ID: $username) registered successfully.");
 
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("Success"),
-          content: Text("User $name registered successfully as $role. Username: $username\n\n(Password: $password)"),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Tutup dialog
-
-                // Navigasi ke UserListPage
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => UserListPage(loggedInUsername: widget.username),
-                  ),
-                );
-              },
-              child: const Text("OK"),
-            )
-          ],
-        ),
+      Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => UserListPage(loggedInUsername: widget.username))
       );
-
-      // 6. Kosongkan medan
-      emailController.clear();
-      nameController.clear();
-      phoneNoController.clear();
-      setState(() {
-        selectedRole = null;
-        selectedDefaultPassword = null;
-      });
-
-    } on FirebaseAuthException catch (e) {
-      String errorMessage;
-      if (e.code == 'email-already-in-use') {
-        errorMessage = "Email is already in use by another account.";
-      } else if (e.code == 'network-request-failed') {
-        errorMessage = "Network connection failed. Please check your internet.";
-      } else {
-        errorMessage = "Auth Error: ${e.message}";
-      }
-      showPopupMessage("Registration Failed", message: errorMessage);
-
     } catch (e) {
-      if (userCredential != null) {
-        userCredential.user?.delete();
-      }
-      showPopupMessage("Registration Error", message: "Failed to register user: ${e.toString()}");
+      showPopupMessage("Registration Failed", message: e.toString());
     } finally {
-      if(mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // Tentukan Image Provider berdasarkan URL gambar Admin
-    ImageProvider adminAvatarImage = adminProfilePictureUrl != null && adminProfilePictureUrl!.isNotEmpty
-        ? CachedNetworkImageProvider(adminProfilePictureUrl!) as ImageProvider
-        : const AssetImage('assets/profile.png');
+    const Color primaryBlue = Color(0xFF233E99);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        automaticallyImplyLeading: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("Register User", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Administrator
-            Padding(
-              padding: const EdgeInsets.only(bottom: 20),
+            // --- HEADER INFO ---
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
+              ),
               child: Row(
                 children: [
-                  // Menggunakan URL gambar Admin
-                  CircleAvatar(radius: 18, backgroundImage: adminAvatarImage),
-                  const SizedBox(width: 10),
-                  Text(widget.username, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Spacer(),
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundImage: (adminProfilePictureUrl != null) ? CachedNetworkImageProvider(adminProfilePictureUrl!) : null,
+                    child: adminProfilePictureUrl == null ? const Icon(Icons.person) : null,
+                  ),
+                  const SizedBox(width: 15),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Authorized Admin", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                      Text(widget.username, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    ],
+                  ),
                 ],
               ),
             ),
-
-            const Text("User Registration", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-
-            // --- 1. Choose Role (Dropdown) ---
-            DropdownButtonFormField<String>(
-              decoration: _dropdownDecoration("Choose Role"),
-              value: selectedRole,
-              items: roles.map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value.toUpperCase()),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() { selectedRole = newValue; });
-              },
-            ),
-            const SizedBox(height: 20),
-
-            // --- 2. Email ---
-            TextField(controller: emailController, keyboardType: TextInputType.emailAddress, decoration: _inputDecoration("Email", Icons.email_outlined)),
-            const SizedBox(height: 15),
-
-            // --- 3. Name ---
-            TextField(controller: nameController, decoration: _inputDecoration("Name", Icons.person_outline)),
-            const SizedBox(height: 15),
-
-            // --- 4. Phone Number ---
-            TextField(controller: phoneNoController, keyboardType: TextInputType.phone, decoration: _inputDecoration("Phone number", Icons.phone_outlined)),
-            const SizedBox(height: 15),
-
-            // --- 5. Choose Password Default (Dropdown) ---
-            DropdownButtonFormField<String>(
-              decoration: _dropdownDecoration("Choose Password Default (Min 6 chars)"),
-              value: selectedDefaultPassword,
-              items: defaultPasswords.map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text("Set: $value"),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() { selectedDefaultPassword = newValue; });
-              },
-            ),
             const SizedBox(height: 30),
 
-            // --- Register Button ---
+            const Text("User Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 20),
+
+            // --- INPUT FIELDS ---
+            _buildDropdown(hint: "Choose User Role", value: selectedRole, items: roles, icon: Icons.admin_panel_settings_rounded, onChanged: (v) => setState(() => selectedRole = v)),
+            const SizedBox(height: 15),
+            _buildTextField(controller: emailController, hint: "Email Address", icon: Icons.email_rounded, type: TextInputType.emailAddress),
+            const SizedBox(height: 15),
+            _buildTextField(controller: nameController, hint: "Full Name", icon: Icons.person_rounded),
+            const SizedBox(height: 15),
+            _buildTextField(controller: phoneNoController, hint: "Phone Number", icon: Icons.phone_rounded, type: TextInputType.phone),
+            const SizedBox(height: 15),
+            _buildDropdown(hint: "Default Password", value: selectedDefaultPassword, items: defaultPasswords, icon: Icons.lock_rounded, isPassword: true, onChanged: (v) => setState(() => selectedDefaultPassword = v)),
+
+            const SizedBox(height: 40),
+
+            // --- REGISTER BUTTON ---
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 60,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF233E99),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  backgroundColor: primaryBlue,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation: 8,
+                  shadowColor: primaryBlue.withOpacity(0.4),
                 ),
                 onPressed: loading ? null : registerUser,
                 child: loading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Register", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                    : const Text("Create New User", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w900)),
               ),
             ),
-            const SizedBox(height: 50),
           ],
         ),
       ),
     );
   }
 
-  // Widget Pembantu untuk InputDecoration
-  InputDecoration _inputDecoration(String hint, IconData icon) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: Icon(icon, size: 20, color: Colors.grey[600]),
-      filled: true,
-      fillColor: Colors.grey[100],
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
+  // --- UI HELPERS ---
+  Widget _buildTextField({required TextEditingController controller, required String hint, required IconData icon, TextInputType type = TextInputType.text}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: type,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(fontSize: 14, color: Colors.grey),
+          prefixIcon: Icon(icon, color: const Color(0xFF233E99), size: 20),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+          contentPadding: const EdgeInsets.all(20),
+        ),
       ),
     );
   }
 
-  // Widget Pembantu untuk Dropdown Decoration
-  InputDecoration _dropdownDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.grey[100],
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
+  Widget _buildDropdown({required String hint, required String? value, required List<String> items, required IconData icon, bool isPassword = false, required Function(String?) onChanged}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: DropdownButtonFormField<String>(
+        value: value,
+        items: items.map((s) => DropdownMenuItem(value: s, child: Text(isPassword ? "Set: $s" : s.toUpperCase(), style: const TextStyle(fontSize: 14)))).toList(),
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: Icon(icon, color: const Color(0xFF233E99), size: 20),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        ),
+      ),
     );
   }
 }
