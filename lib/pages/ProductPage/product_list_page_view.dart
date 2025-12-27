@@ -27,16 +27,12 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   // --- LOGIC: NAVIGATION TAPPED (REPAIRED) ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // [FIX] KLIK HOME -> BALIK KE STAFF PAGE
-      Navigator.pop(context);
+      // [FIX] BALIK TERUS KE DASHBOARD UTAMA, BUANG SEMUA LAYER LAIN!
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
-      // KLIK FEATURES -> TUNJUK MODAL BALIK
       StaffFeaturesModal.show(context);
-    } else {
-      // [FIX] KLIK PROFILE -> SWITCH INDEX KE PROFILE
-      setState(() {
-        _selectedIndex = index;
-      });
+    } else if (index == 2) {
+      setState(() => _selectedIndex = index);
     }
   }
 

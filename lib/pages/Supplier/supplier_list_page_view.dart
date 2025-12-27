@@ -25,16 +25,12 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
   // --- LOGIC: NAVIGATION TAPPED ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // SITUASI 1: CLICK HOME -> BACK TO STAFF DASHBOARD
-      Navigator.pop(context);
+      // [FIX] CUCI SEMUA STACK, BALIK KE RUMAH ASAL (STAFF DASHBOARD)
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
-      // CLICK FEATURES -> TUNJUK MODAL BALIK
       StaffFeaturesModal.show(context);
-    } else {
-      // SITUASI 2: CLICK PROFILE -> SWITCH INDEX KE PROFILE PAGE
-      setState(() {
-        _selectedIndex = index;
-      });
+    } else if (index == 2) {
+      setState(() => _selectedIndex = index);
     }
   }
 
