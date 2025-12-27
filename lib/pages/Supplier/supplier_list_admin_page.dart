@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-//
-import '../staff/utils/staff_features_modal.dart';
+// [FIX] Import modal admin kau mat!
+import '../admin/utils/features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
 class SupplierListPageView extends StatefulWidget {
@@ -14,7 +14,7 @@ class SupplierListPageView extends StatefulWidget {
 }
 
 class _SupplierListPageViewState extends State<SupplierListPageView> {
-  // Kita set default ke 1 (Features) sbb skrin ni biasanya dibuka dari modal features
+  // Index 1 dlm modal features biasanya default, tapi kita set sini mat
   int _selectedIndex = 1;
   final TextEditingController _searchController = TextEditingController();
   String _searchText = '';
@@ -22,16 +22,15 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
   final Color primaryBlue = const Color(0xFF233E99);
   final Color bgGray = const Color(0xFFF8F9FD);
 
-  // --- LOGIC: NAVIGATION TAPPED ---
-  void _onItemTapped(int index) {
+  // --- LOGIC: NAVIGATION (SAME AS ADMIN DASHBOARD) ---
+  void _onItemTapped(int index, String username) {
     if (index == 0) {
-      // SITUASI 1: CLICK HOME -> BACK TO STAFF DASHBOARD
-      Navigator.pop(context);
+      // BALIK TERUS DASHBOARD UTAMA, CUCI SEMUA STACK!
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
-      // CLICK FEATURES -> TUNJUK MODAL BALIK
-      StaffFeaturesModal.show(context);
+      // [FIX] Panggil modal Admin dengan hantar username mat!
+      FeaturesModal.show(context, username);
     } else {
-      // SITUASI 2: CLICK PROFILE -> SWITCH INDEX KE PROFILE PAGE
       setState(() {
         _selectedIndex = index;
       });
@@ -56,19 +55,19 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
 
           return Scaffold(
             backgroundColor: bgGray,
-            extendBody: true, // Biar floating nav nampak premium
+            resizeToAvoidBottomInset: false, // [FIX] Elak overflow bila keyboard keluar mat!
+            extendBody: true,
 
             // --- MAIN CONTENT HANDLER (INDEXED STACK) ---
             body: IndexedStack(
-              // index 0 dlm children adalah Supplier List, index 1 adalah Profile
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSupplierHome(),
-                ProfilePage(username: currentUsername, userId: '',), // Profile Page kau mat!
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
 
-            bottomNavigationBar: _buildFloatingNavBar(),
+            bottomNavigationBar: _buildFloatingNavBar(currentUsername),
           );
         }
     );
@@ -86,20 +85,20 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
   }
 
   // --- UI: FLOATING NAVIGATION BAR ---
-  Widget _buildFloatingNavBar() {
+  Widget _buildFloatingNavBar(String username) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
       height: 62,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          onTap: (index) => _onItemTapped(index, username), // Hantar username sini mat!
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
@@ -121,7 +120,7 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
       icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(activeIcon, size: 22, color: primaryBlue),
       ),
       label: label,
@@ -132,10 +131,9 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,15 +169,15 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]),
+            gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.8)]),
             borderRadius: BorderRadius.circular(25),
-            boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
+            boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                 child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 28),
               ),
               const SizedBox(width: 20),
@@ -215,7 +213,8 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
           if (docs.isEmpty) return _buildEmptyState();
 
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+            // [FIX] Padding bawah 120 supaya list tak sangkut kat NavBar mat!
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
             physics: const BouncingScrollPhysics(),
             itemCount: docs.length,
             itemBuilder: (context, index) {
@@ -237,7 +236,7 @@ class _SupplierListPageViewState extends State<SupplierListPageView> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(25),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 15, offset: const Offset(0, 8))],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 8))],
         ),
         child: Row(
           children: [
