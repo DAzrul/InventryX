@@ -41,7 +41,7 @@ class _AdminPageState extends State<AdminPage> {
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 AdminDashboardPage(loggedInUsername: currentUsername, userId: widget.userId),
-                ProfilePage(username: currentUsername),
+                ProfilePage(username: currentUsername, userId: widget.userId),
               ],
             ),
           );

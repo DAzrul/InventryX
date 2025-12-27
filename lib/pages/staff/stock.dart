@@ -77,7 +77,7 @@ class _StockPageState extends State<StockPage> {
             index: _selectedIndex == 2 ? 1 : 0,
             children: [
               _buildStockHome(),
-              ProfilePage(username: currentUsername),
+              ProfilePage(username: currentUsername, userId: '',),
             ],
           ),
           bottomNavigationBar: _buildFloatingNavBar(),

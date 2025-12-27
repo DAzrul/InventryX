@@ -75,7 +75,7 @@ class _SalesPageState extends State<SalesPage> {
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSalesHome(),
-                ProfilePage(username: currentUsername),
+                ProfilePage(username: currentUsername, userId: '',),
               ],
             ),
 

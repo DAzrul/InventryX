@@ -116,7 +116,7 @@ class _ManagerPageState extends State<ManagerPage> {
       index: _selectedIndex == 2 ? 1 : 0,
       children: [
         const ManagerDashboardPage(),
-        ProfilePage(username: currentUsername),
+        ProfilePage(username: currentUsername, userId: '',),
       ],
     );
   }

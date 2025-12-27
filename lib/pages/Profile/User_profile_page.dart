@@ -10,7 +10,7 @@ import 'edit_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final String username;
-  const ProfilePage({super.key, required this.username});
+  const ProfilePage({super.key, required this.username, required String userId});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();

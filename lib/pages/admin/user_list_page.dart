@@ -37,7 +37,7 @@ class _UserListPageState extends State<UserListPage> {
         children: [
           _buildUserManagementUI(),
           const SizedBox.shrink(),
-          ProfilePage(username: widget.loggedInUsername),
+          ProfilePage(username: widget.loggedInUsername, userId: '',),
         ],
       ),
     );
