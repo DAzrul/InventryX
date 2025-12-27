@@ -4,14 +4,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
-// Import path pastikan ngam mat
-import '../../../pages/login_page.dart';
+import '../login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final String username;
-  const ProfilePage({super.key, required this.username});
+  const ProfilePage({super.key, required this.username, required String userId});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -21,52 +20,14 @@ class _ProfilePageState extends State<ProfilePage> {
   final Color primaryColor = const Color(0xFF233E99);
   String? currentUserId;
   String userRole = '';
-  bool isLoading = true;
   String? profilePictureUrl;
   Map<String, String> userData = {};
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserProfile();
-  }
-
-  // --- LOGIC 1: FETCH DATA USER ---
-  Future<void> _loadUserProfile() async {
-    try {
-      QuerySnapshot userSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .where("username", isEqualTo: widget.username)
-          .limit(1)
-          .get();
-
-      if (userSnap.docs.isNotEmpty) {
-        var data = userSnap.docs.first.data() as Map<String, dynamic>;
-        if (mounted) {
-          setState(() {
-            currentUserId = userSnap.docs.first.id;
-            userData = {
-              'username': data['username'] ?? 'N/A',
-              'name': data['name'] ?? 'N/A',
-              'email': data['email'] ?? 'N/A',
-              'phoneNo': data['phoneNo'] ?? 'N/A',
-            };
-            userRole = data['role'] ?? 'STAFF';
-            profilePictureUrl = data['profilePictureUrl'];
-            isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() => isLoading = false);
-    }
-  }
-
-  // --- LOGIC 2: STREAM UNTUK LATEST ACTIVITY ---
-  Stream<QuerySnapshot> _activityStream() {
+  // --- LOGIC: STREAM FOR LATEST ACTIVITY ---
+  Stream<QuerySnapshot> _activityStream(String uid) {
     return FirebaseFirestore.instance
         .collection("users")
-        .doc(currentUserId)
+        .doc(uid)
         .collection("activities")
         .orderBy('timestamp', descending: true)
         .limit(5)
@@ -80,120 +41,101 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    // REAL-TIME STREAM: No more manual refresh lag mat!
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .where("username", isEqualTo: widget.username)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return const Scaffold(body: Center(child: Text("Connection Error!")));
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text("Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        // [FIX] Scroll sentiasa reset ke atas (Gambar 1)
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            _buildProfileHeader(),
-            const SizedBox(height: 25),
+        // Auto-update variables whenever database changes
+        var doc = snapshot.data!.docs.first;
+        var data = doc.data() as Map<String, dynamic>;
+        currentUserId = doc.id;
+        profilePictureUrl = data['profilePictureUrl'];
+        userRole = data['role'] ?? 'STAFF';
+        userData = {
+          'username': data['username'] ?? 'N/A',
+          'name': data['name'] ?? 'N/A',
+          'email': data['email'] ?? 'N/A',
+          'phoneNo': data['phoneNo'] ?? 'N/A',
+        };
 
-            _buildSectionTitle("Contact Information"),
-            _buildInfoCard(),
-
-            const SizedBox(height: 25),
-            _buildSectionTitle("Account Settings"),
-
-            // SECURITY: Default Tertutup
-            _buildSettingsTile(
-              title: "Security & Safety",
-              icon: Icons.security_rounded,
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8F9FD),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            title: const Text("User Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
+            centerTitle: true,
+          ),
+          body: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
               children: [
-                _buildSubTile("Change Password", Icons.key_rounded, _showChangePasswordModal),
-                _buildSubTile("Two-Factor Auth", Icons.vibration_rounded, null),
-              ],
-            ),
+                const SizedBox(height: 10),
+                _buildProfileHeader(),
+                const SizedBox(height: 25),
 
-            // ACTIVITY: Default Tertutup (Tutup baris initiallyExpanded kat function bawah)
-            _buildSettingsTile(
-              title: "Latest Activity",
-              icon: Icons.history_rounded,
-              children: [
-                StreamBuilder<QuerySnapshot>(
-                  stream: _activityStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) return const Text("Error loading data.");
-                    if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Padding(padding: EdgeInsets.all(20), child: Text("No recent activity.", style: TextStyle(color: Colors.grey)));
-                    }
+                _buildSectionTitle("Contact Information"),
+                _buildInfoCard(),
 
-                    return Column(
-                      children: snapshot.data!.docs.map((doc) {
-                        var d = doc.data() as Map<String, dynamic>;
-                        return _buildActivityTile({
-                          'icon': IconData(d['iconCode'] ?? Icons.info_outline.codePoint, fontFamily: 'MaterialIcons'),
-                          'description': d['description'] ?? 'Activity recorded.',
-                          'time': _formatTimestamp(d['timestamp'] as Timestamp?),
-                        });
-                      }).toList(),
-                    );
-                  },
+                const SizedBox(height: 25),
+                _buildSectionTitle("Account Settings"),
+
+                _buildSettingsTile(
+                  title: "Security & Safety",
+                  icon: Icons.security_rounded,
+                  children: [
+                    _buildSubTile("Change Password", Icons.key_rounded, _showChangePasswordModal),
+                    _buildSubTile("Two-Factor Authentication", Icons.vibration_rounded, null),
+                  ],
                 ),
+
+                _buildSettingsTile(
+                  title: "Latest Activity Logs",
+                  icon: Icons.history_rounded,
+                  children: [
+                    StreamBuilder<QuerySnapshot>(
+                      stream: _activityStream(currentUserId!),
+                      builder: (context, activitySnap) {
+                        if (!activitySnap.hasData || activitySnap.data!.docs.isEmpty) {
+                          return const Padding(padding: EdgeInsets.all(20), child: Text("No recent activity.", style: TextStyle(color: Colors.grey)));
+                        }
+                        return Column(
+                          children: activitySnap.data!.docs.map((doc) {
+                            var d = doc.data() as Map<String, dynamic>;
+                            return _buildActivityTile({
+                              'icon': Icons.info_outline_rounded,
+                              'description': d['description'] ?? 'Activity recorded.',
+                              'time': _formatTimestamp(d['timestamp'] as Timestamp?),
+                            });
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 30),
+                _buildLogoutButton(),
+                const SizedBox(height: 120),
               ],
             ),
-
-            const SizedBox(height: 30),
-            _buildLogoutButton(),
-            const SizedBox(height: 120),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  // --- UI COMPONENTS ---
-
-  Widget _buildSettingsTile({required String title, required IconData icon, required List<Widget> children}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          // [FIX] initiallyExpanded dibuang supaya sentiasa tutup bila balik semula
-          leading: Icon(icon, color: primaryColor, size: 22),
-          title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          children: children,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLogoutButton() {
-    return Container(
-      width: double.infinity,
-      height: 55,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
-      ),
-      child: ElevatedButton.icon(
-        onPressed: _logout,
-        icon: const Icon(Icons.logout_rounded, size: 20),
-        label: const Text("Log Out Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.red[50], foregroundColor: Colors.red, elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        ),
-      ),
-    );
-  }
+  // --- UI COMPONENTS (Kekal Consistent & Modern) ---
 
   Widget _buildProfileHeader() {
     return Column(
@@ -203,25 +145,28 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Container(
               padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor, width: 2)),
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: primaryColor.withValues(alpha: 0.1), width: 4)
+              ),
               child: CircleAvatar(
-                radius: 50, backgroundColor: Colors.grey[200],
+                radius: 50, backgroundColor: Colors.white,
                 backgroundImage: (profilePictureUrl != null && profilePictureUrl!.isNotEmpty)
                     ? CachedNetworkImageProvider(profilePictureUrl!) : null,
                 child: (profilePictureUrl == null || profilePictureUrl!.isEmpty)
-                    ? Icon(Icons.person, size: 50, color: Colors.grey[400]) : null,
+                    ? Icon(Icons.person_rounded, size: 55, color: primaryColor.withValues(alpha: 0.4)) : null,
               ),
             ),
             GestureDetector(
               onTap: _editProfile,
-              child: CircleAvatar(radius: 16, backgroundColor: primaryColor, child: const Icon(Icons.edit, size: 16, color: Colors.white)),
+              child: CircleAvatar(radius: 18, backgroundColor: primaryColor, child: const Icon(Icons.edit_rounded, size: 16, color: Colors.white)),
             ),
           ],
         ),
         const SizedBox(height: 15),
-        Text(userData['name'] ?? 'N/A', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(userData['name'] ?? 'N/A', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
         const SizedBox(height: 4),
-        Text(userRole.toUpperCase(), style: TextStyle(fontSize: 14, color: Colors.grey[600], letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+        Text(userRole.toUpperCase(), style: TextStyle(fontSize: 12, color: Colors.grey[500], letterSpacing: 1.5, fontWeight: FontWeight.w800)),
       ],
     );
   }
@@ -233,9 +178,24 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Column(
         children: [
           _buildInfoRow(Icons.alternate_email_rounded, "Username", userData['username'] ?? 'N/A'),
-          _buildInfoRow(Icons.email_outlined, "Email", userData['email'] ?? 'N/A'),
-          _buildInfoRow(Icons.phone_android_rounded, "Phone", userData['phoneNo'] ?? 'N/A'),
+          _buildInfoRow(Icons.email_outlined, "Email Address", userData['email'] ?? 'N/A'),
+          _buildInfoRow(Icons.phone_android_rounded, "Phone Number", userData['phoneNo'] ?? 'N/A'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile({required String title, required IconData icon, required List<Widget> children}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Icon(icon, color: primaryColor, size: 22),
+          title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          children: children,
+        ),
       ),
     );
   }
@@ -253,10 +213,23 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Widget _buildLogoutButton() {
+    return Container(
+      width: double.infinity, height: 55,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))]),
+      child: ElevatedButton.icon(
+        onPressed: _logout,
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        label: const Text("Sign Out Account", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.red[50], foregroundColor: Colors.red, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 10),
-      child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[800]))),
+      child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.grey[800]))),
     );
   }
 
@@ -269,8 +242,8 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(width: 15),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.bold)),
+              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
             ]),
           ),
         ],
@@ -281,17 +254,17 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildSubTile(String title, IconData icon, VoidCallback? onTap) {
     return ListTile(
       leading: Icon(icon, size: 18, color: Colors.grey[700]),
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      trailing: const Icon(Icons.chevron_right, size: 18),
+      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+      trailing: const Icon(Icons.chevron_right_rounded, size: 18),
       onTap: onTap,
     );
   }
 
   // --- FUNCTIONS ---
 
-  void _editProfile() async {
+  void _editProfile() {
     final Map<String, String> dataToEdit = {...userData, 'role': userRole, 'profilePictureUrl': profilePictureUrl ?? ''};
-    await showModalBottomSheet(
+    showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.9,
@@ -299,52 +272,31 @@ class _ProfilePageState extends State<ProfilePage> {
         child: EditProfilePage(userId: currentUserId!, username: widget.username, initialData: dataToEdit),
       ),
     );
-    _loadUserProfile();
   }
 
   void _showChangePasswordModal() {
     showModalBottomSheet(
       context: context, isScrollControlled: true,
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: ChangePasswordProfilePage(username: widget.username, userId: currentUserId!),
-      ),
+      builder: (context) => SizedBox(height: MediaQuery.of(context).size.height * 0.7, child: ChangePasswordProfilePage(username: widget.username, userId: currentUserId!)),
     );
   }
 
   void _logout() async {
-    setState(() => isLoading = true);
     try {
-      // 1. Rekod aktiviti logout (Dah ada dlm kod kau)
       if (currentUserId != null) {
-        await FirebaseFirestore.instance
-            .collection("users").doc(currentUserId)
-            .collection("activities").add({
-          'description': 'Logged out from account.',
+        await FirebaseFirestore.instance.collection("users").doc(currentUserId).collection("activities").add({
+          'description': 'User signed out.',
           'iconCode': Icons.logout.codePoint,
           'timestamp': FieldValue.serverTimestamp(),
+          'action': 'Sign Out',
         });
       }
-
-      // 2. Clear Session dlm SharedPreferences
-      // Ini fungsi static dlm LoginPage yang kau dah buat sebelum ni
       await LoginPage.clearLoginState(context);
-
       if (!mounted) return;
-
-      // 3. Destinasi: Sentiasa LoginPage (Paling 'educated' UX)
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-            (route) => false,
-      );
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
     } catch (e) {
       await FirebaseAuth.instance.signOut();
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-              (route) => false,
-        );
-      }
+      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
     }
   }
 }

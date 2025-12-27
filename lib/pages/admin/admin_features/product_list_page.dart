@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Import komponen kau mat
 import 'product_add_page.dart';
 import 'product_edit_page.dart';
 import 'product_delete_dialog.dart';
 import '../../Features_app/barcode_scanner_page.dart';
+import '../../Profile/User_profile_page.dart';
+import '../widgets/bottom_nav_page.dart';
 
 class ProductListPage extends StatefulWidget {
   final String? loggedInUsername;
@@ -19,12 +20,22 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
+  int _selectedIndex = 1;
   String _selectedCategory = 'ALL';
   String _searchText = '';
   final TextEditingController _searchController = TextEditingController();
   final Color primaryBlue = const Color(0xFF233E99);
 
-  // Fungsi Scan Barcode mat
+  void _onItemTapped(int index) {
+    if (index == 0) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
+  }
+
   Future<void> _scanBarcode() async {
     final scanned = await Navigator.push<String>(
         context,
@@ -40,7 +51,23 @@ class _ProductListPageState extends State<ProductListPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Dah tak ada BottomNavPage & IndexedStack mat. Terus Scaffold!
+    String currentUsername = widget.loggedInUsername ?? "Admin";
+
+    return BottomNavPage(
+      loggedInUsername: currentUsername,
+      currentIndex: _selectedIndex,
+      onTap: _onItemTapped,
+      child: IndexedStack(
+        index: _selectedIndex == 2 ? 1 : 0,
+        children: [
+          _buildInventoryHome(),
+          ProfilePage(username: currentUsername, userId: '',),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInventoryHome() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       body: Column(
@@ -51,11 +78,13 @@ class _ProductListPageState extends State<ProductListPage> {
           Expanded(child: _buildProductListStream()),
         ],
       ),
-      // FAB untuk tambah produk mat
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: primaryBlue,
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 80),
+        child: FloatingActionButton(
+          backgroundColor: primaryBlue,
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+        ),
       ),
     );
   }
@@ -77,7 +106,7 @@ class _ProductListPageState extends State<ProductListPage> {
                 style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)
             ),
           ),
-          const SizedBox(width: 40), // Spacer biar title center
+          const SizedBox(width: 40),
         ],
       ),
     );
@@ -93,7 +122,7 @@ class _ProductListPageState extends State<ProductListPage> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
               ),
               child: TextField(
                 controller: _searchController,
@@ -115,7 +144,6 @@ class _ProductListPageState extends State<ProductListPage> {
               decoration: BoxDecoration(
                 color: primaryBlue,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 8)],
               ),
               child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 24),
             ),
@@ -146,14 +174,7 @@ class _ProductListPageState extends State<ProductListPage> {
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(color: isSelected ? primaryBlue : Colors.grey.shade200),
                 ),
-                child: Text(
-                    cat,
-                    style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey.shade600,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12
-                    )
-                ),
+                child: Text(cat, style: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade600, fontWeight: FontWeight.w800, fontSize: 12)),
               ),
             );
           }).toList(),
@@ -167,7 +188,6 @@ class _ProductListPageState extends State<ProductListPage> {
       stream: FirebaseFirestore.instance.collection("products").snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
         final docs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           if (_selectedCategory != 'ALL' && data['category'] != _selectedCategory) return false;
@@ -176,14 +196,13 @@ class _ProductListPageState extends State<ProductListPage> {
           return name.contains(_searchText) || barcode.contains(_searchText);
         }).toList();
 
-        if (docs.isEmpty) return Center(child: Text("No products found", style: TextStyle(color: Colors.grey.shade400)));
-
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            return _ProductItemCard(data: data, docId: docs[index].id, primaryColor: primaryBlue);
+            // [FIX] Kita guna class kat bawah ni mat!
+            return ProductItemCard(data: data, docId: docs[index].id, primaryColor: primaryBlue);
           },
         );
       },
@@ -191,11 +210,12 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-class _ProductItemCard extends StatelessWidget {
+// --- [FIX] INI CLASS YANG HILANG TADI MAT! ---
+class ProductItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
   final Color primaryColor;
-  const _ProductItemCard({required this.data, required this.docId, required this.primaryColor});
+  const ProductItemCard({super.key, required this.data, required this.docId, required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
@@ -207,13 +227,13 @@ class _ProductItemCard extends StatelessWidget {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
       ),
       child: ListTile(
         leading: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
-                ? CachedNetworkImage(imageUrl: data['imageUrl'], width: 60, height: 60, fit: BoxFit.cover)
+                ? CachedNetworkImage(imageUrl: data['imageUrl'], width: 60, height: 60, fit: BoxFit.cover, placeholder: (context, url) => Container(color: Colors.grey[100], child: const Icon(Icons.image)))
                 : Container(width: 60, height: 60, color: Colors.grey.shade100, child: const Icon(Icons.inventory_2_rounded))
         ),
         title: Text(
@@ -224,26 +244,15 @@ class _ProductItemCard extends StatelessWidget {
         ),
         subtitle: Row(
           children: [
-            Text(
-                'RM ${price.toStringAsFixed(2)}',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[700])
-            ),
+            Text('RM ${price.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
             const SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                // LOGIC: Kalau stok rendah (cth: <= 5), warna merah. Kalau tak, warna biru
-                color: stock <= 5 ? Colors.red.withValues(alpha: 0.1) : primaryColor.withValues(alpha: 0.1),
+                color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(
-                  'Stock: $stock',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: stock <= 5 ? Colors.red : primaryColor
-                  )
-              ),
+              child: Text('Stock: $stock', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
             ),
           ],
         ),

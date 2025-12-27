@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -78,6 +79,8 @@ class _HeaderSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
+    // Guna warna dari Admin design mat
+    final Color primaryBlue = const Color(0xFF233E99);
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
@@ -93,28 +96,37 @@ class _HeaderSection extends StatelessWidget {
 
         return Row(
           children: [
+            // [FIX] Design Profile Ikut Admin Dashboard Mat!
             Container(
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+                  shape: BoxShape.circle,
+                  border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)
               ),
               child: CircleAvatar(
                 radius: 24,
-                backgroundColor: Colors.indigo.shade100,
-                backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null,
-                child: img == null ? const Icon(Icons.person, color: Colors.indigo) : null,
+                backgroundColor: Colors.white, // Ikut design admin mat
+                // Pakai CachedNetworkImageProvider mat supaya smooth giler
+                backgroundImage: (img != null && img.isNotEmpty) ? CachedNetworkImageProvider(img) : null,
+                // [FIX] Kalau takda imej, tunjuk icon person ikut design kacak admin!
+                child: (img == null || img.isEmpty)
+                    ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4))
+                    : null,
               ),
             ),
             const SizedBox(width: 15),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Welcome back,", style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-                Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tambah date format macam dlm admin tu mat
+                  Text(DateFormat('EEEE, d MMM').format(DateTime.now()),
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                  Text("Hi, $name",
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-            const Spacer(),
             _NotificationButton(),
           ],
         );

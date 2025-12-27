@@ -4,18 +4,19 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../Features_app/barcode_scanner_page.dart';
-import '../staff/utils/staff_features_modal.dart';
+// [FIX] Ganti import staff ke admin version mat!
+import '../admin/utils/features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
-class ProductListViewPage extends StatefulWidget {
-  const ProductListViewPage({super.key});
+class ProductListAdminPage extends StatefulWidget {
+  const ProductListAdminPage({super.key});
 
   @override
-  State<ProductListViewPage> createState() => _ProductListViewPageState();
+  State<ProductListAdminPage> createState() => _ProductListAdminPageState();
 }
 
-class _ProductListViewPageState extends State<ProductListViewPage> {
-  // Kita set default ke 1 sebab skrin ni dibuka dari Features
+class _ProductListAdminPageState extends State<ProductListAdminPage> {
+  // Index 1 dlm modal features biasanya default, kita set sini mat
   int _selectedIndex = 1;
   String _searchText = '';
   String _selectedCategory = 'ALL';
@@ -24,13 +25,14 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   final Color primaryColor = const Color(0xFF203288);
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
-  // --- LOGIC: NAVIGATION TAPPED (REPAIRED) ---
-  void _onItemTapped(int index) {
+  // --- LOGIC: NAVIGATION TAPPED (GOD MODE) ---
+  void _onItemTapped(int index, String username) {
     if (index == 0) {
-      // [FIX] BALIK TERUS KE DASHBOARD UTAMA, BUANG SEMUA LAYER LAIN!
+      // BALIK TERUS KE DASHBOARD UTAMA, CUCI SEMUA STACK!
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
-      StaffFeaturesModal.show(context);
+      // [FIX] Panggil modal Admin dengan hantar username mat!
+      FeaturesModal.show(context, username);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
     }
@@ -51,41 +53,39 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
+            // [FIX] Elak amaran kuning bila keyboard keluar mat!
+            resizeToAvoidBottomInset: false,
             extendBody: true,
 
-            // --- MAIN CONTENT HANDLER ---
             body: IndexedStack(
-              // Logic Index:
-              // Jika _selectedIndex == 2, tunjuk Profile (Index 1 dlm children)
-              // Jika _selectedIndex != 2 (Home/Features), tunjuk Inventory (Index 0 dlm children)
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildInventoryHome(),
-                ProfilePage(username: currentUsername, userId: '',),
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
 
-            bottomNavigationBar: _buildFloatingNavBar(),
+            bottomNavigationBar: _buildFloatingNavBar(currentUsername),
           );
         }
     );
   }
 
   // --- UI: FLOATING NAVBAR ---
-  Widget _buildFloatingNavBar() {
+  Widget _buildFloatingNavBar(String username) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
       height: 62,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          onTap: (index) => _onItemTapped(index, username), // Hantar username sini mat!
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -107,14 +107,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(activeIcon, size: 22, color: primaryColor),
       ),
       label: label,
     );
   }
 
-  // --- REPAIRED: WRAP CONTENT UNTUK TAB 0 ---
   Widget _buildInventoryHome() {
     return Column(
       children: [
@@ -125,14 +124,12 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- UI: TOP HEADER (SEARCH & SCAN) ---
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,11 +172,9 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- THE REST OF YOUR UI (FILTERS & LIST) ---
   Widget _buildCategoryFilters() {
-    return Container(
+    return SizedBox(
       height: 60,
-      margin: const EdgeInsets.symmetric(vertical: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -195,7 +190,6 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
               decoration: BoxDecoration(
                 color: isSel ? primaryColor : Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: isSel ? Colors.transparent : Colors.grey.shade200),
               ),
               child: Center(child: Text(cat, style: TextStyle(color: isSel ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold, fontSize: 12))),
             ),
@@ -218,7 +212,8 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             return name.contains(_searchText);
           }).toList();
           return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+            // [FIX] Padding bawah 120 supaya item tak kena "makan" dek navbar babi!
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
             physics: const BouncingScrollPhysics(),
             itemCount: docs.length,
             itemBuilder: (context, index) {
@@ -235,7 +230,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
       child: Row(
         children: [
           Container(
@@ -243,7 +238,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]),
             child: (data['imageUrl'] != null && data['imageUrl'] != '')
                 ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover))
-                : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2)),
+                : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2)),
           ),
           const SizedBox(width: 15),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

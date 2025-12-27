@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -50,37 +51,41 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   }
 
   void sendResetLink() async {
-    String email = emailController.text.trim();
+    String input = emailController.text.trim(); // User taip username/email dlm field ni
 
-    if (email.isEmpty) {
-      _showPopup("Oops!", "Please enter your email address first, mat!");
-      return;
-    }
-
-    if (!email.contains("@") || !email.contains(".")) {
-      _showPopup("Invalid Email", "That doesn't look like a real email. Try again.");
-      return;
-    }
-
-    if (!await _isNetworkAvailable()) {
-      _showPopup("No Connection", "Offline Mode: You must be online to request a password reset.");
+    if (input.isEmpty) {
+      _showPopup("Oops!", "Enter your username or email, mat!");
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      await _auth.sendPasswordResetEmail(email: email);
-      if (!mounted) return;
-      _showPopup("Link Sent!", "A password reset link has been sent to $email. Go check it out!", isSuccess: true);
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = "Failed to send link. Please check the email or contact support.";
-      if (e.code == 'user-not-found') {
-        errorMessage = "Email is not registered. Double check your address.";
+      String targetEmail = input;
+
+      // 1. Logic: Kalau user taip username (tak ada '@'), cari email dlm Firestore
+      if (!input.contains("@")) {
+        // Cari dlm Firestore (INGAT: Cek case-sensitive ikut logic baru kau!)
+        final userDoc = await FirebaseFirestore.instance
+            .collection("users")
+            .where("username", isEqualTo: input) // Guna input raw kalau kau buang .toLowerCase()
+            .limit(1)
+            .get();
+
+        if (userDoc.docs.isEmpty) {
+          _showPopup("Not Found", "Username '$input' tak wujud dlm sistem babi.");
+          setState(() => _isLoading = false);
+          return;
+        }
+        targetEmail = userDoc.docs.first['email'];
       }
-      _showPopup("Auth Error", errorMessage);
+
+      // 2. Kirim link reset ke email yang dijumpai
+      await _auth.sendPasswordResetEmail(email: targetEmail);
+      _showPopup("Link Sent!", "Recovery link sent to $targetEmail", isSuccess: true);
+
     } catch (e) {
-      _showPopup("System Error", e.toString());
+      _showPopup("Error", e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

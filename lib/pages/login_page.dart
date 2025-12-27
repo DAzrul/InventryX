@@ -1,11 +1,11 @@
-import 'dart:io'; // Mandatory for platform checking
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Destination Imports
+// Destination Imports (Make sure these paths are correct, mat!)
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -15,7 +15,6 @@ class LoginPage extends StatefulWidget {
   final String? autoLoginUsername;
   const LoginPage({super.key, this.autoLoginUsername});
 
-  // Updated to log sign-out activity before clearing state
   static Future<void> clearLoginState(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final String? userId = prefs.getString('savedUserId');
@@ -31,7 +30,6 @@ class LoginPage extends StatefulWidget {
     await FirebaseAuth.instance.signOut();
   }
 
-  // Global helper to record activity into the user's sub-collection
   static Future<void> _recordActivity(String userId, String action, String details) async {
     try {
       await FirebaseFirestore.instance
@@ -70,11 +68,9 @@ class _LoginPageState extends State<LoginPage> {
     _checkLoginStatus();
   }
 
-  // --- REPAIRED AUTO LOGIN LOGIC ---
   Future<void> _checkLoginStatus() async {
     if (widget.autoLoginUsername != null) {
       usernameController.text = widget.autoLoginUsername!;
-      setState(() => loading = false);
       return;
     }
 
@@ -102,10 +98,7 @@ class _LoginPageState extends State<LoginPage> {
           if (userData['status'] == 'Active') {
             await prefs.setString('savedUsername', freshUsername);
             await prefs.setString('savedRole', freshRole);
-
-            // Record Auto-Login Activity
             await LoginPage._recordActivity(savedUserId, "Auto Login", "Session restored via auto-login.");
-
             _navigateToHomePage(freshUsername, freshRole, savedUserId);
           } else {
             await LoginPage.clearLoginState(context);
@@ -119,18 +112,18 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // --- MANUAL LOGIN LOGIC ---
   Future<void> loginUser() async {
+    // FORCE LOWERCASE mat, biar match dengan pendaftaran!
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
 
     if (input.isEmpty || password.isEmpty) {
-      _showSnack("Enter your credentials, mat!");
+      _showSnack("Please enter your credentials.");
       return;
     }
 
     if (!await _isNetworkAvailable()) {
-      _showSnack("No internet? Fucking connect first.");
+      _showSnack("No internet connection. Please connect first.");
       return;
     }
 
@@ -145,7 +138,7 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (userSnap.docs.isEmpty) {
-        _showSnack("User not found dlm system!");
+        _showSnack("User not found in the system.");
         setState(() => loading = false);
         return;
       }
@@ -157,14 +150,12 @@ class _LoginPageState extends State<LoginPage> {
       String userId = userSnap.docs.first.id;
 
       if (userData['status'] != 'Active') {
-        _showSnack("Account disabled. Go talk to admin.");
+        _showSnack("Account disabled. Please contact your administrator.");
         setState(() => loading = false);
         return;
       }
 
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-
-      // Record Manual Login Activity
       await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
 
       if (rememberMe) {
@@ -177,15 +168,15 @@ class _LoginPageState extends State<LoginPage> {
 
       _navigateToHomePage(username, role, userId);
     } on FirebaseAuthException catch (e) {
-      _showSnack("Auth Failed: ${e.message}");
+      String errorMsg = "Login Failed: ${e.message}";
+      if (e.code == 'wrong-password') errorMsg = "Incorrect password.";
+      _showSnack(errorMsg);
     } catch (e) {
       _showSnack("System Error: $e");
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
-
-  // ... (Keep the rest of your UI building blocks from previous turn) ...
 
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
@@ -194,10 +185,14 @@ class _LoginPageState extends State<LoginPage> {
 
   void _navigateToHomePage(String username, String role, String userId) {
     if (!mounted) return;
-    Widget target = (role == "admin") ? AdminPage(loggedInUsername: username, userId: userId) :
-    (role == "manager") ? ManagerPage(loggedInUsername: username, userId: userId) :
-    StaffPage(loggedInUsername: username, userId: userId);
-
+    Widget target;
+    if (role == "admin") {
+      target = AdminPage(loggedInUsername: username, userId: userId);
+    } else if (role == "manager") {
+      target = ManagerPage(loggedInUsername: username, userId: userId);
+    } else {
+      target = StaffPage(loggedInUsername: username, userId: userId);
+    }
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
   }
 
@@ -207,7 +202,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // UI logic from previous turn mat...
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -219,7 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 60),
-                  Center(child: Image.asset("assets/logo.png", height: 100)),
+                  Center(child: Image.asset("assets/logo.png", height: 100)), // Updated path mat
                   const SizedBox(height: 50),
                   const Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
                   const SizedBox(height: 40),
@@ -274,14 +268,18 @@ class _LoginPageState extends State<LoginPage> {
           onTap: () => setState(() => rememberMe = !rememberMe),
           child: Row(
             children: [
-              Checkbox(value: rememberMe, onChanged: (v) => setState(() => rememberMe = v!)),
+              Checkbox(
+                value: rememberMe,
+                onChanged: (v) => setState(() => rememberMe = v!),
+                activeColor: primaryBlue,
+              ),
               const Text("Stay Signed In", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ],
           ),
         ),
         TextButton(
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
-          child: Text("Forgot?", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w800, fontSize: 13)),
+          child: Text("Forgot Password?", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w800, fontSize: 13)),
         ),
       ],
     );
@@ -293,7 +291,7 @@ class _LoginPageState extends State<LoginPage> {
       height: 65,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]),
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]), // Modern syntax!
         boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
       ),
       child: ElevatedButton(
@@ -304,5 +302,8 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildBlurLoading() => Container(color: Colors.white.withValues(alpha: 0.7), child: Center(child: CircularProgressIndicator(color: primaryBlue)));
+  Widget _buildBlurLoading() => Container(
+      color: Colors.white.withValues(alpha: 0.7),
+      child: Center(child: CircularProgressIndicator(color: primaryBlue))
+  );
 }
