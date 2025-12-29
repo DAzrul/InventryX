@@ -15,19 +15,15 @@ class ProductListViewPage extends StatefulWidget {
 }
 
 class _ProductListViewPageState extends State<ProductListViewPage> {
-  // Kita set default ke 1 sebab skrin ni dibuka dari Features
   int _selectedIndex = 1;
   String _searchText = '';
   String _selectedCategory = 'ALL';
   final TextEditingController _searchController = TextEditingController();
-
   final Color primaryColor = const Color(0xFF203288);
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
-  // --- LOGIC: NAVIGATION TAPPED (REPAIRED) ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // [FIX] BALIK TERUS KE DASHBOARD UTAMA, BUANG SEMUA LAYER LAIN!
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
       StaffFeaturesModal.show(context);
@@ -52,26 +48,19 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
             extendBody: true,
-
-            // --- MAIN CONTENT HANDLER ---
             body: IndexedStack(
-              // Logic Index:
-              // Jika _selectedIndex == 2, tunjuk Profile (Index 1 dlm children)
-              // Jika _selectedIndex != 2 (Home/Features), tunjuk Inventory (Index 0 dlm children)
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildInventoryHome(),
                 ProfilePage(username: currentUsername, userId: '',),
               ],
             ),
-
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
     );
   }
 
-  // --- UI: FLOATING NAVBAR ---
   Widget _buildFloatingNavBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
@@ -79,7 +68,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(25),
@@ -107,14 +96,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(activeIcon, size: 22, color: primaryColor),
       ),
       label: label,
     );
   }
 
-  // --- REPAIRED: WRAP CONTENT UNTUK TAB 0 ---
   Widget _buildInventoryHome() {
     return Column(
       children: [
@@ -125,14 +113,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- UI: TOP HEADER (SEARCH & SCAN) ---
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,7 +162,6 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- THE REST OF YOUR UI (FILTERS & LIST) ---
   Widget _buildCategoryFilters() {
     return Container(
       height: 60,
@@ -223,7 +209,10 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             itemCount: docs.length,
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
-              return _buildProductCard(data);
+              return GestureDetector(
+                onTap: () => _showProductDetailDialog(data),
+                child: _buildProductCard(data),
+              );
             },
           );
         },
@@ -235,7 +224,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
       child: Row(
         children: [
           Container(
@@ -243,7 +232,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]),
             child: (data['imageUrl'] != null && data['imageUrl'] != '')
                 ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover))
-                : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2)),
+                : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2)),
           ),
           const SizedBox(width: 15),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -253,6 +242,132 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
           const Icon(Icons.chevron_right_rounded, color: Colors.grey),
         ],
       ),
+    );
+  }
+
+  void _showProductDetailDialog(Map<String, dynamic> data) {
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.info_outline_rounded, color: primaryColor, size: 40),
+                ),
+                const SizedBox(height: 16),
+                const Text("Product Details", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text("View the details of the selected product.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(15),
+                            child: SizedBox(
+                              width: 70, height: 70,
+                              child: (data['imageUrl'] != null && data['imageUrl'] != '')
+                                  ? CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)
+                                  : Container(color: Colors.grey[200], child: Icon(Icons.inventory_2_rounded, color: Colors.black26)),
+                            ),
+                          ),
+                          const SizedBox(width: 15),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(data['productName'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Text("Barcode: ${data['barcodeNo'] ?? 'N/A'}", style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
+                      _buildDetailRow("Category", data['category'] ?? '-'),
+                      _buildDetailRow("Supplier", data['supplier'] ?? '-'),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
+                          _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor, // Blue background
+                      foregroundColor: Colors.white,  // White text
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$label: ", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)),
+        ),
+      ],
     );
   }
 }

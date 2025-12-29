@@ -400,7 +400,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Success", style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text("Product data has been fucking updated!"),
+        content: const Text("Product data has been updated!"),
         actions: [TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context, true); }, child: const Text("Awesome!"))],
       ),
     );
