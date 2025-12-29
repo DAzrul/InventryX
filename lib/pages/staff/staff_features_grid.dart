@@ -1,23 +1,68 @@
 import 'package:flutter/material.dart';
-import 'package:inventryx/pages/Supplier/supplier_list_page_view.dart';
-
+// Import page kau
 import '../ProductPage/product_list_page_view.dart';
-import '../staff/add_incoming_stock.dart';
+import '../Supplier/supplier_list_page_view.dart';
 import '../staff/sales.dart';
 import '../staff/stock.dart';
-import '../Supplier/supplier_list_page_view.dart';
 
-// Import halaman-halaman destinasi Staff (pastikan fail ini wujud)
-// import 'staff_features/scan_page.dart';
-// import 'staff_features/stock_in_page.dart';
-// dll...
+class StaffFeaturesGrid extends StatelessWidget {
+  // [REVERT] Tak payah constructor pelik-pelik
+  const StaffFeaturesGrid({super.key});
 
-class _StaffFeatureIcon extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _FeatureIcon(
+              icon: Icons.inventory_2_outlined,
+              label: "Product",
+              onTap: () {
+                Navigator.pop(context); // Tutup modal
+                // Push page product biasa je
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListViewPage()));
+              },
+            ),
+            _FeatureIcon(
+              icon: Icons.local_shipping_outlined,
+              label: "Supplier",
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierListPageView()));
+              },
+            ),
+            _FeatureIcon(
+              icon: Icons.store_mall_directory_outlined,
+              label: "Stock",
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => StockPage(username: '')));
+              },
+            ),
+            _FeatureIcon(
+              icon: Icons.bar_chart_outlined,
+              label: "Sales",
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SalesPage()));
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FeatureIcon extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _StaffFeatureIcon({required this.icon, required this.label, required this.onTap});
+  const _FeatureIcon({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -26,76 +71,11 @@ class _StaffFeatureIcon extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Ikon warna kelabu gelap ikut design gambar
           Icon(icon, color: const Color(0xFF233E99), size: 30),
           const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF233E99)),
-          ),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF233E99))),
         ],
       ),
-    );
-  }
-}
-
-class StaffFeaturesGrid extends StatelessWidget {
-  const StaffFeaturesGrid({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min, // Penting: Hanya ambil ruang yang perlu
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
-          children: [
-            _StaffFeatureIcon(
-              icon: Icons.inventory_2_outlined,
-              label: "Product",
-              onTap: () {
-                Navigator.pop(context); // Tutup modal dulu
-                Navigator.push(context, MaterialPageRoute(builder: (_) => ProductListViewPage()));
-              },
-            ),
-            _StaffFeatureIcon(
-              icon: Icons.local_shipping_outlined,
-              label: "Supplier",
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierListPageView()));
-              },
-            ),
-            _StaffFeatureIcon(
-              icon: Icons.store_mall_directory_outlined,
-              label: "Stock",
-              onTap: () {
-                Navigator.pop(context); // close bottom sheet / modal
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => StockPage(username: '',),
-                  ),
-                );
-              },
-            ),
-            _StaffFeatureIcon(
-              icon: Icons.bar_chart_outlined,
-              label: "Sales",
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SalesPage(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

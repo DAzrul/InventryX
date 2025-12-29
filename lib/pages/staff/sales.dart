@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-// Import path mat, pastikan betul!
+// [PENTING] Import StaffPage (Bapak Page) untuk reset
+import 'staff_page.dart';
+
+// Import page lain
 import 'daily_sales.dart';
 import 'history_sales.dart';
-import '../staff/utils/staff_features_modal.dart';
+import 'utils/staff_features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
 class SalesPage extends StatefulWidget {
@@ -17,16 +20,27 @@ class SalesPage extends StatefulWidget {
 
 class _SalesPageState extends State<SalesPage> {
   // Index 0: Sales Home, Index 1: Features (Modal), Index 2: Profile
-  int _selectedIndex = 1; // Default kat tengah sebab kita masuk dari Features
+  int _selectedIndex = 1; // Default kat Features (Index 1)
   int? selectedOptionIndex;
 
   final Color primaryColor = const Color(0xFF203288);
 
-  // --- LOGIC: NAVIGATION TAPPED (GOD MODE) ---
+  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // [FIX] CLICK HOME -> CUCI SEMUA STACK, BALIK DASHBOARD ASAL!
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // 1. Dapatkan user semasa
+      final user = FirebaseAuth.instance.currentUser;
+
+      // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => StaffPage(
+            loggedInUsername: "Staff", // Placeholder, stream akan handle
+            userId: user?.uid ?? '',
+          ),
+        ),
+            (Route<dynamic> route) => false, // False = Matikan jalan balik!
+      );
     } else if (index == 1) {
       // CLICK FEATURES -> TUNJUK MODAL BALIK
       StaffFeaturesModal.show(context);
@@ -68,24 +82,74 @@ class _SalesPageState extends State<SalesPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF8FAFF),
-            extendBody: true, // Biar floating nav nampak kacak babi
+            extendBody: true, // Biar floating nav nampak kacak
 
             // --- MAIN CONTENT (SALES HOME VS PROFILE) ---
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSalesHome(),
-                ProfilePage(username: currentUsername, userId: '',),
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
 
+            // Panggil Nav Bar yg dah di-repair design dia
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
     );
   }
 
-  // --- UI: SALES MAIN SELECTION (TAB 0) ---
+  // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
+  Widget _buildFloatingNavBar() {
+    return Container(
+      // [FIX] Margin 12 bottom supaya sama dengan Dashboard
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryColor,
+          unselectedItemColor: Colors.grey.shade400,
+
+          // [FIX PENTING] Property ni wajib ada baru design sama dengan Dashboard!
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
+          ],
+        ),
+      ),
+    );
+  }
+
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryColor),
+      ),
+      label: label,
+    );
+  }
+
+  // --- UI Components Lain (Kekal Sama) ---
   Widget _buildSalesHome() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
@@ -108,10 +172,7 @@ class _SalesPageState extends State<SalesPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Choose Action",
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-            ),
+            const Text("Choose Action", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
             const SizedBox(height: 20),
             _SalesOptionCard(
               title: "Daily Sales Input",
@@ -138,74 +199,22 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
-  // --- UI: FLOATING NAVIGATION BAR (STAFF SIGNATURE) ---
-  Widget _buildFloatingNavBar() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
-      height: 62,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(25),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          backgroundColor: Colors.white,
-          selectedItemColor: primaryColor,
-          unselectedItemColor: Colors.grey.shade400,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
-          items: [
-            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
-            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
-            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
-          ],
-        ),
-      ),
-    );
-  }
-
-  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
-    return BottomNavigationBarItem(
-      icon: Icon(inactiveIcon, size: 22),
-      activeIcon: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
-        child: Icon(activeIcon, size: 22, color: primaryColor),
-      ),
-      label: label,
-    );
-  }
-
   Widget _buildInfoBox() {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF233E99).withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF233E99).withValues(alpha: 0.1)),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFF233E99).withValues(alpha: 0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF233E99).withValues(alpha: 0.1))),
       child: Row(
         children: [
           const Icon(Icons.lightbulb_outline_rounded, color: Color(0xFF233E99)),
           const SizedBox(width: 15),
-          Expanded(
-            child: Text(
-              "Keep your sales record updated daily for more accurate stock forecasting.",
-              style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, height: 1.4),
-            ),
-          ),
+          Expanded(child: Text("Keep your sales record updated daily for more accurate stock forecasting.", style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, height: 1.4))),
         ],
       ),
     );
   }
 }
 
-// --- OPTION CARD CLASS ---
+// --- OPTION CARD CLASS (Tak Berubah) ---
 class _SalesOptionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -214,14 +223,7 @@ class _SalesOptionCard extends StatelessWidget {
   final Color primaryColor;
   final VoidCallback onTap;
 
-  const _SalesOptionCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.isActive,
-    required this.primaryColor,
-    required this.onTap,
-  });
+  const _SalesOptionCard({required this.title, required this.subtitle, required this.icon, required this.isActive, required this.primaryColor, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -229,24 +231,10 @@ class _SalesOptionCard extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        gradient: isActive
-            ? LinearGradient(
-          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        )
-            : null,
+        gradient: isActive ? LinearGradient(colors: [primaryColor, primaryColor.withValues(alpha: 0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
         color: isActive ? null : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: isActive
-                ? primaryColor.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
+        boxShadow: [BoxShadow(color: isActive ? primaryColor.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Material(
         color: Colors.transparent,
@@ -259,42 +247,16 @@ class _SalesOptionCard extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: isActive ? Colors.white24 : primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  decoration: BoxDecoration(color: isActive ? Colors.white24 : primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
                   child: Icon(icon, color: isActive ? Colors.white : primaryColor, size: 28),
                 ),
                 const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: isActive ? Colors.white : const Color(0xFF1A1C1E),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: isActive ? Colors.white70 : Colors.grey.shade500,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: isActive ? Colors.white54 : Colors.grey.shade300,
-                  size: 14,
-                ),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(color: isActive ? Colors.white : const Color(0xFF1A1C1E), fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(color: isActive ? Colors.white70 : Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w500)),
+                ])),
+                Icon(Icons.arrow_forward_ios_rounded, color: isActive ? Colors.white54 : Colors.grey.shade300, size: 14),
               ],
             ),
           ),
