@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+// Pastikan import ni betul ikut folder kau
 import 'notifications/manager_notification_page.dart';
 
 class ManagerDashboardPage extends StatelessWidget {
@@ -16,7 +17,7 @@ class ManagerDashboardPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: bgBlue,
       body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(), // Effect melantun mat
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 22.0, vertical: 20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -27,7 +28,7 @@ class ManagerDashboardPage extends StatelessWidget {
             // --- QUICK STATS ROW ---
             _buildSectionTitle("Business Overview"),
             const SizedBox(height: 12),
-            const _QuickStatsRow(), // Modul RM & Stock Alert
+            const _QuickStatsRow(),
 
             const SizedBox(height: 30),
 
@@ -48,7 +49,7 @@ class ManagerDashboardPage extends StatelessWidget {
             // --- TOP SELLING PRODUCTS ---
             _buildSectionTitle("Hot Items Today"),
             const SizedBox(height: 12),
-            const _TopProductsList(), // Modul list produk laku
+            const _TopProductsList(), // Modul yang kita dah repair
 
             const SizedBox(height: 120), // Spacing extra bawah
           ],
@@ -79,7 +80,6 @@ class _HeaderSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
-    // Guna warna dari Admin design mat
     final Color primaryBlue = const Color(0xFF233E99);
 
     return StreamBuilder<DocumentSnapshot>(
@@ -96,7 +96,6 @@ class _HeaderSection extends StatelessWidget {
 
         return Row(
           children: [
-            // [FIX] Design Profile Ikut Admin Dashboard Mat!
             Container(
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -104,10 +103,8 @@ class _HeaderSection extends StatelessWidget {
               ),
               child: CircleAvatar(
                 radius: 24,
-                backgroundColor: Colors.white, // Ikut design admin mat
-                // Pakai CachedNetworkImageProvider mat supaya smooth giler
+                backgroundColor: Colors.white,
                 backgroundImage: (img != null && img.isNotEmpty) ? CachedNetworkImageProvider(img) : null,
-                // [FIX] Kalau takda imej, tunjuk icon person ikut design kacak admin!
                 child: (img == null || img.isEmpty)
                     ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4))
                     : null,
@@ -118,7 +115,6 @@ class _HeaderSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Tambah date format macam dlm admin tu mat
                   Text(DateFormat('EEEE, d MMM').format(DateTime.now()),
                       style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
                   Text("Hi, $name",
@@ -136,7 +132,7 @@ class _HeaderSection extends StatelessWidget {
 }
 
 // ==========================================================
-// 2. QUICK STATS ROW (REAL DATA FROM FIRESTORE)
+// 2. QUICK STATS ROW
 // ==========================================================
 class _QuickStatsRow extends StatelessWidget {
   const _QuickStatsRow();
@@ -217,7 +213,7 @@ class _StatItem extends StatelessWidget {
 }
 
 // ==========================================================
-// 3. PIE CHART CARD (INVENTORY)
+// 3. PIE CHART CARD
 // ==========================================================
 class _TotalProductsCard extends StatelessWidget {
   const _TotalProductsCard();
@@ -280,7 +276,7 @@ class _TotalProductsCard extends StatelessWidget {
 }
 
 // ==========================================================
-// 4. BAR CHART CARD (REVENUE)
+// 4. BAR CHART CARD
 // ==========================================================
 class _TotalSalesCard extends StatelessWidget {
   const _TotalSalesCard();
@@ -355,6 +351,9 @@ class _TotalSalesCard extends StatelessWidget {
 }
 
 // ==========================================================
+// 5. TOP SELLING PRODUCTS (HOT ITEMS) - REPAIRED LOGIC
+// ==========================================================
+// ==========================================================
 // 5. TOP SELLING PRODUCTS (HOT ITEMS)
 // ==========================================================
 class _TopProductsList extends StatelessWidget {
@@ -362,32 +361,111 @@ class _TopProductsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    DateTime now = DateTime.now();
+    DateTime startOfDay = DateTime(now.year, now.month, now.day);
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.indigo.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.indigo.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
       ),
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('sales')
-            .orderBy('quantitySold', descending: true)
-            .limit(3)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No trending items today."));
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Trending Now",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  "Today",
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            ],
+          ),
+          const SizedBox(height: 15),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('sales')
+                .where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          return Column(
-            children: snapshot.data!.docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return _ProductListRow(
-                name: data['productName'] ?? "Unknown",
-                count: "${data['quantitySold'] ?? 0} Sold",
-                color: Colors.indigo.shade400,
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      "No sales recorded today.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                );
+              }
+
+              // Aggregation Logic: Summing up quantities by product name
+              Map<String, int> productSales = {};
+
+              for (var doc in snapshot.data!.docs) {
+                Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+                // [FIXED] Using 'snapshotName' from the database screenshot
+                String pName = data['snapshotName'] ?? 'Unknown Item';
+                int qty = (data['quantitySold'] ?? 0) as int;
+
+                if (productSales.containsKey(pName)) {
+                  productSales[pName] = productSales[pName]! + qty;
+                } else {
+                  productSales[pName] = qty;
+                }
+              }
+
+              // Sorting: Highest quantity first
+              var sortedKeys = productSales.keys.toList(growable: false)
+                ..sort((k1, k2) => productSales[k2]!.compareTo(productSales[k1]!));
+
+              // Take top 3 items
+              var top3 = sortedKeys.take(3).toList();
+
+              return Column(
+                children: top3.map((key) {
+                  return _ProductListRow(
+                    name: key,
+                    count: "${productSales[key]} Sold",
+                    // Highlight the top item with a distinct color
+                    color: key == top3.first
+                        ? const Color(0xFFFF5B5B)
+                        : Colors.indigo.shade400,
+                  );
+                }).toList(),
               );
-            }).toList(),
-          );
-        },
+            },
+          ),
+        ],
       ),
     );
   }
