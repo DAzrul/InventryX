@@ -4,8 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import path utk navigation
 import '../../Profile/User_profile_page.dart';
-import '..//admin_page.dart';
-import '../utils/features_modal.dart';
+import '../admin_page.dart';
+import '../utils/features_modal.dart'; // Modal Admin
 
 // Import komponen reusable kau
 import 'supplier_add_page.dart';
@@ -24,30 +24,24 @@ class _SupplierListPageState extends State<SupplierListPage> {
   String _searchText = '';
   final Color primaryBlue = const Color(0xFF233E99);
 
-  // Default Index = 1 (Features)
   int _selectedIndex = 1;
 
   // --- LOGIC NAVIGATION ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // 1. HOME: Nuclear Reset ke Admin Dashboard
       final user = FirebaseAuth.instance.currentUser;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => AdminPage(
-            username: "Admin", // Placeholder
+            username: "Admin",
             userId: user?.uid ?? '', loggedInUsername: '',
           ),
         ),
             (Route<dynamic> route) => false,
       );
-
     } else if (index == 1) {
-      // 2. FEATURES: Buka Modal Admin
       FeaturesModal.show(context, "Admin");
-
     } else {
-      // 3. PROFILE: Tukar tab ke profile
       setState(() => _selectedIndex = index);
     }
   }
@@ -80,7 +74,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
               ],
             ),
 
-            // [UPDATE] BUANG FAB SEBAB DAH PINDAH KE HEADER
+            // [OPTION] FAB DIBUANG UTK KEKALKAN CONSISTENCY DGN PRODUCT PAGE
             floatingActionButton: null,
 
             // --- FLOATING NAVBAR ---
@@ -161,7 +155,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Colors.black),
           ),
 
-          // 2. Button ADD NEW (Top Right)
+          // 2. Button ADD NEW (Top Right - Konsisten dgn Product List)
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierAddPage())),
             child: Container(
@@ -175,7 +169,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
               ),
               child: Row(
                 children: const [
-                  Icon(Icons.add_business_rounded, color: Colors.white, size: 18), // Icon business
+                  Icon(Icons.add_rounded, color: Colors.white, size: 18),
                   SizedBox(width: 4),
                   Text("Add New", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                 ],
@@ -189,7 +183,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
 
   Widget _buildSearchSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 5), // Adjust padding sikit
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 5),
       child: Container(
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
         child: TextField(
