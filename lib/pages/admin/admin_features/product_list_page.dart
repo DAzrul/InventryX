@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+// [PENTING] Import navigation admin
+import '../admin_page.dart';
+import '../utils/features_modal.dart';
+import '../../Profile/User_profile_page.dart';
 
 import 'product_add_page.dart';
 import 'product_edit_page.dart';
 import 'product_delete_dialog.dart';
 import '../../Features_app/barcode_scanner_page.dart';
-import '../../Profile/User_profile_page.dart';
-import '../widgets/bottom_nav_page.dart';
 
 class ProductListPage extends StatefulWidget {
   final String? loggedInUsername;
@@ -26,9 +30,21 @@ class _ProductListPageState extends State<ProductListPage> {
   final TextEditingController _searchController = TextEditingController();
   final Color primaryBlue = const Color(0xFF233E99);
 
+  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      final user = FirebaseAuth.instance.currentUser;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => AdminPage(
+            username: widget.loggedInUsername ?? "Admin",
+            userId: user?.uid ?? '', loggedInUsername: '',
+          ),
+        ),
+            (Route<dynamic> route) => false,
+      );
+    } else if (index == 1) {
+      FeaturesModal.show(context, widget.loggedInUsername ?? "Admin");
     } else {
       setState(() {
         _selectedIndex = index;
@@ -52,61 +68,121 @@ class _ProductListPageState extends State<ProductListPage> {
   @override
   Widget build(BuildContext context) {
     String currentUsername = widget.loggedInUsername ?? "Admin";
+    String? uid = FirebaseAuth.instance.currentUser?.uid;
 
-    return BottomNavPage(
-      loggedInUsername: currentUsername,
-      currentIndex: _selectedIndex,
-      onTap: _onItemTapped,
-      child: IndexedStack(
-        index: _selectedIndex == 2 ? 1 : 0,
-        children: [
-          _buildInventoryHome(),
-          ProfilePage(username: currentUsername, userId: '',),
-        ],
-      ),
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data!.exists) {
+            var d = snapshot.data!.data() as Map<String, dynamic>;
+            currentUsername = d['username'] ?? currentUsername;
+          }
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8FAFF),
+            body: IndexedStack(
+              index: _selectedIndex == 2 ? 1 : 0,
+              children: [
+                _buildProductContent(),
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
+              ],
+            ),
+            floatingActionButton: null, // FAB DAH PINDAH KE HEADER
+            bottomNavigationBar: _buildFloatingNavBar(),
+          );
+        }
     );
   }
 
-  Widget _buildInventoryHome() {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
-      body: Column(
-        children: [
-          _buildCustomAppBar(),
-          _buildSearchAndScanSection(),
-          _buildCategoryFilter(),
-          Expanded(child: _buildProductListStream()),
-        ],
+  // --- UI: NAVBAR ---
+  Widget _buildFloatingNavBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80),
-        child: FloatingActionButton(
-          backgroundColor: primaryBlue,
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
-          child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryBlue,
+          unselectedItemColor: Colors.grey.shade400,
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
+          ],
         ),
       ),
     );
   }
 
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryBlue),
+      ),
+      label: label,
+    );
+  }
+
+  // --- CONTENT PRODUK ---
+  Widget _buildProductContent() {
+    return Column(
+      children: [
+        _buildCustomAppBar(),
+        _buildSearchAndScanSection(),
+        _buildCategoryFilter(),
+        Expanded(child: _buildProductListStream()),
+      ],
+    );
+  }
+
+  // --- HEADER DENGAN BUTTON ADD KAT KANAN ---
   Widget _buildCustomAppBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(10, 55, 10, 10),
+      padding: const EdgeInsets.fromLTRB(20, 55, 20, 15),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
+          const Text(
+            "Inventory",
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: Colors.black),
           ),
-          const Expanded(
-            child: Text(
-                "Inventory Management",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: primaryBlue,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 4),
+                  Text("Add New", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 40),
         ],
       ),
     );
@@ -114,7 +190,7 @@ class _ProductListPageState extends State<ProductListPage> {
 
   Widget _buildSearchAndScanSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 15, 20, 5),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 5),
       child: Row(
         children: [
           Expanded(
@@ -201,8 +277,11 @@ class _ProductListPageState extends State<ProductListPage> {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            // [FIX] Kita guna class kat bawah ni mat!
-            return ProductItemCard(data: data, docId: docs[index].id, primaryColor: primaryBlue);
+            return ProductItemCard(
+              data: data,
+              docId: docs[index].id,
+              primaryColor: primaryBlue,
+            );
           },
         );
       },
@@ -210,66 +289,282 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-// --- [FIX] INI CLASS YANG HILANG TADI MAT! ---
+// ------------------- [UPDATE] PRODUCT CARD DENGAN PLACEHOLDER CANTIK -------------------
 class ProductItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
   final Color primaryColor;
+
   const ProductItemCard({super.key, required this.data, required this.docId, required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: () => _showProductDetailDialog(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
-      ),
-      child: ListTile(
-        leading: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
-                ? CachedNetworkImage(imageUrl: data['imageUrl'], width: 60, height: 60, fit: BoxFit.cover, placeholder: (context, url) => Container(color: Colors.grey[100], child: const Icon(Icons.image)))
-                : Container(width: 60, height: 60, color: Colors.grey.shade100, child: const Icon(Icons.inventory_2_rounded))
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
         ),
-        title: Text(
-            data['productName'] ?? 'Unnamed',
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis
-        ),
-        subtitle: Row(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text('RM ${price.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
-            const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
+            // --- [UPDATE DI SINI] LOGIC GAMBAR VS PLACEHOLDER CANTIK ---
+            ClipRRect(
+              borderRadius: BorderRadius.circular(15), // Bucu lebih bulat sikit
+              child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                  ? CachedNetworkImage(
+                imageUrl: data['imageUrl'],
+                width: isTablet ? 70 : isSmall ? 45 : 55,
+                height: isTablet ? 70 : isSmall ? 45 : 55,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => _buildPlaceholder(isTablet, isSmall),
+                errorWidget: (_, __, ___) => _buildPlaceholder(isTablet, isSmall),
+              )
+                  : _buildPlaceholder(isTablet, isSmall),
+            ),
+
+            const SizedBox(width: 12),
+
+            // TEXT
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['productName'] ?? 'Unnamed',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text('RM ${price.toStringAsFixed(2)}',
+                          style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('Stock: $stock',
+                            style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              child: Text('Stock: $stock', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
             ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit_note_rounded, color: Colors.blueGrey, size: 26),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductEditPage(productId: docId, productData: data))),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.red, size: 24),
-              onPressed: () => showDialog(context: context, builder: (_) => ProductDeleteDialog(productId: docId, productData: data)),
-            ),
+
+            // ACTION BUTTONS
+            if (!isSmall)
+              Row(children: _actionButtons(context))
+            else
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ProductEditPage(productId: docId, productData: data)));
+                  } else {
+                    showDialog(context: context, builder: (_) => ProductDeleteDialog(productId: docId, productData: data));
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  // --- [UPDATE] WIDGET PLACEHOLDER IKUT STYLE GAMBAR ---
+  Widget _buildPlaceholder(bool isTablet, bool isSmall) {
+    return Container(
+      width: isTablet ? 70 : isSmall ? 45 : 55,
+      height: isTablet ? 70 : isSmall ? 45 : 55,
+      decoration: BoxDecoration(
+        color: Colors.white, // Background putih
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryColor.withOpacity(0.1), // Border pudar biru/kelabu
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryColor.withOpacity(0.3), // Icon warna pudar
+          size: isTablet ? 30 : 24,
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _actionButtons(BuildContext context) => [
+    IconButton(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      icon: const Icon(Icons.edit_note_rounded, size: 22, color: Colors.blueGrey),
+      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductEditPage(productId: docId, productData: data))),
+    ),
+    IconButton(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      icon: const Icon(Icons.delete_sweep_rounded, size: 20, color: Colors.red),
+      onPressed: () => showDialog(context: context, builder: (_) => ProductDeleteDialog(productId: docId, productData: data)),
+    ),
+  ];
+
+  void _showProductDetailDialog(BuildContext context) {
+    final dataMap = data;
+    double price = double.tryParse(dataMap['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(dataMap['currentStock']?.toString() ?? '0') ?? 0;
+    final primaryBlue = const Color(0xFF233E99);
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryBlue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.info_outline_rounded, color: primaryBlue, size: 40),
+                ),
+                const SizedBox(height: 16),
+                const Text("Product Details", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text("View the details of the selected product.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 20),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          // --- PLACEHOLDER JUGA DI DETAILS ---
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(15),
+                            child: SizedBox(
+                              width: 70,
+                              height: 70,
+                              child: (dataMap['imageUrl'] != null && dataMap['imageUrl'].isNotEmpty)
+                                  ? CachedNetworkImage(imageUrl: dataMap['imageUrl'], fit: BoxFit.cover)
+                                  : Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5),
+                                ),
+                                child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: 30),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 15),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(dataMap['productName'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Text("Barcode: ${dataMap['barcodeNo'] ?? 'N/A'}", style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
+                      _buildDetailRow("Category", dataMap['category'] ?? '-'),
+                      _buildDetailRow("Supplier", dataMap['supplier'] ?? '-'),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
+                          _buildStatusChip("In Stock", "$stock ${dataMap['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$label: ", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)),
+        ),
+      ],
     );
   }
 }

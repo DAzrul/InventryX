@@ -1,98 +1,91 @@
 import 'package:flutter/material.dart';
+import 'package:inventryx/pages/admin/user_list_page.dart';
 
 // [NOTE] Pastikan path import ni betul mat ikut folder kau!
+// Ini page-page untuk ADMIN
 import '../Features_app/report_page.dart';
-import '../ProductPage/product_list_admin_page.dart';
-import '../Supplier/supplier_list_admin_page.dart';
-
-class _FeatureIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Widget page;
-
-  const _FeatureIcon({required this.icon, required this.label, required this.page});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        // Tutup modal dlu baru push page baru mat!
-        Navigator.pop(context);
-        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
-      },
-      child: Column(
-        children: [
-          Icon(icon, color: const Color(0xFF233E99), size: 28),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF233E99))),
-        ],
-      ),
-    );
-  }
-}
+import 'admin_features/product_list_page.dart';
+import 'admin_features/supplier_list_page.dart';
 
 class FeaturesGrid extends StatelessWidget {
   final String loggedInUsername;
 
   const FeaturesGrid({super.key, required this.loggedInUsername});
 
-  // --- REPAIR: STATIC SHOW METHOD ---
-  static void show(BuildContext context, String username) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 35, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text("Quick Features", style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A))),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 25),
-              child: FeaturesGrid(loggedInUsername: username),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            // [FIX] Panggil Page/Skrin, bukan widget item babi!
-            const _FeatureIcon(
+            // --- USER ADMIN ---
+            _FeatureIcon(
+              icon: Icons.supervised_user_circle_outlined,
+              label: "User",
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const UserListPage(loggedInUsername: '',)));
+              },
+            ),
+
+            // --- PRODUCT ADMIN ---
+            _FeatureIcon(
               icon: Icons.inventory_2_outlined,
               label: "Product",
-              page: ProductListAdminPage(),
+              onTap: () {
+                Navigator.pop(context); // 1. Tutup modal
+                // 2. Push page biasa je. Page tu nanti yang bertanggungjawab buat Reset Home.
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListPage()));
+              },
             ),
-            const _FeatureIcon(
+
+            // --- SUPPLIER ADMIN ---
+            _FeatureIcon(
               icon: Icons.local_shipping_outlined,
               label: "Supplier",
-              page: SupplierListPageView(),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierListPage()));
+              },
             ),
+
+            // --- REPORT ---
             _FeatureIcon(
-              icon: Icons.bar_chart,
+              icon: Icons.bar_chart_outlined,
               label: "Report",
-              page: ReportPage(),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportPage()));
+              },
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+// Widget Icon Kecil (Internal use only)
+class _FeatureIcon extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _FeatureIcon({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF233E99), size: 30), // Size 30 biar sama standard
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF233E99))),
+        ],
+      ),
     );
   }
 }

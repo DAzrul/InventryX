@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+
+// [PENTING] Pastikan import ni betul
 import '../user_list_page.dart';
 
 class UserManagementPage extends StatefulWidget {
@@ -47,32 +49,32 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   // --- LOGIC: USERNAME VALIDATOR ---
   bool isValidUsername(String username) {
-    // Standard: Lowercase, numbers, dots, and underscores only. No spaces!
     final RegExp usernameRegExp = RegExp(r'^[a-z0-9._]+$');
     return usernameRegExp.hasMatch(username);
   }
 
+  // --- LOGIC REGISTER DENGAN PREMIUM MESSAGE ---
   Future<void> registerUser() async {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
     String phoneNo = phoneNoController.text.trim();
-    String username = usernameController.text.trim().toLowerCase(); // Force lowercase
+    String username = usernameController.text.trim().toLowerCase();
     String role = selectedRole ?? '';
     String password = selectedDefaultPassword ?? '';
 
     // 1. Validation Check
     if (username.isEmpty || role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty || password.isEmpty) {
-      _showPopup("Missing Information", "Please fill in all fields to proceed with registration.");
+      _showStyledSnackBar("Please fill in all fields to proceed.", isError: true);
       return;
     }
 
     if (!isValidUsername(username)) {
-      _showPopup("Invalid Username", "Username must contain only lowercase letters, numbers, dots, or underscores. No spaces allowed!");
+      _showStyledSnackBar("Invalid Username! Lowercase, numbers, dots only.", isError: true);
       return;
     }
 
     if (!await _isNetworkAvailable()) {
-      _showPopup("Network Error", "No internet connection detected. Cloud registration requires an active network.");
+      _showStyledSnackBar("No internet connection detected.", isError: true);
       return;
     }
 
@@ -84,12 +86,12 @@ class _UserManagementPageState extends State<UserManagementPage> {
           .collection("users").where("username", isEqualTo: username).get();
 
       if (checkUser.docs.isNotEmpty) {
-        _showPopup("Username Taken", "This username is already registered. Please choose a different one.");
+        _showStyledSnackBar("Username is already taken!", isError: true);
         setState(() => loading = false);
         return;
       }
 
-      // 3. Register using Secondary Instance to prevent Admin Logout
+      // 3. Register using Secondary Instance
       FirebaseApp secondaryApp = await Firebase.initializeApp(
         name: 'SecondaryApp',
         options: Firebase.app().options,
@@ -117,13 +119,112 @@ class _UserManagementPageState extends State<UserManagementPage> {
       await secondaryApp.delete();
 
       if (!mounted) return;
-      _showPopup("Success", "Account for $name has been registered successfully.", isSuccess: true);
+
+      // [FIX] Panggil Success Dialog Baru
+      _showSuccessDialog(name);
 
     } catch (e) {
-      _showPopup("Registration Failed", e.toString());
+      // [FIX] System Error Message
+      _showStyledSnackBar("Registration Failed: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  // --- [UPDATE 1] WIDGET SNACKBAR PREMIUM ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Oh Snap!" : "Success!",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
+        behavior: SnackBarBehavior.floating, // Terapung
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // --- [UPDATE 2] DIALOG SUCCESS PREMIUM ---
+  void _showSuccessDialog(String createdName) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.green, size: 50),
+              ),
+              const SizedBox(height: 20),
+              const Text("Account Created!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              Text(
+                "User account for $createdName has been successfully registered.",
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 25),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Tutup dialog
+                    // Redirect ke User List
+                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UserListPage(loggedInUsername: widget.username)));
+                  },
+                  child: const Text("Awesome!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // --- UI COMPONENTS ---
@@ -135,6 +236,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
         backgroundColor: Colors.white, elevation: 0, foregroundColor: Colors.black,
         title: const Text("Register New User", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: loading
           ? Center(child: CircularProgressIndicator(color: primaryBlue))
@@ -228,17 +333,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
         child: loading ? const CircularProgressIndicator(color: Colors.white) : const Text("CREATE USER ACCOUNT", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.2)),
       ),
     );
-  }
-
-  void _showPopup(String title, String msg, {bool isSuccess = false}) {
-    showDialog(context: context, builder: (_) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), content: Text(msg),
-      actions: [TextButton(onPressed: () {
-        Navigator.pop(context);
-        if(isSuccess) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UserListPage(loggedInUsername: widget.username)));
-      }, child: const Text("OK"))],
-    ));
   }
 
   Future<bool> _isNetworkAvailable() async {

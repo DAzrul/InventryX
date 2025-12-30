@@ -16,22 +16,17 @@ class ProductListAdminPage extends StatefulWidget {
 }
 
 class _ProductListAdminPageState extends State<ProductListAdminPage> {
-  // Index 1 dlm modal features biasanya default, kita set sini mat
   int _selectedIndex = 1;
   String _searchText = '';
   String _selectedCategory = 'ALL';
   final TextEditingController _searchController = TextEditingController();
-
   final Color primaryColor = const Color(0xFF203288);
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
-  // --- LOGIC: NAVIGATION TAPPED (GOD MODE) ---
   void _onItemTapped(int index, String username) {
     if (index == 0) {
-      // BALIK TERUS KE DASHBOARD UTAMA, CUCI SEMUA STACK!
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else if (index == 1) {
-      // [FIX] Panggil modal Admin dengan hantar username mat!
       FeaturesModal.show(context, username);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
@@ -53,10 +48,8 @@ class _ProductListAdminPageState extends State<ProductListAdminPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
-            // [FIX] Elak amaran kuning bila keyboard keluar mat!
             resizeToAvoidBottomInset: false,
             extendBody: true,
-
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
@@ -64,14 +57,12 @@ class _ProductListAdminPageState extends State<ProductListAdminPage> {
                 ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
-
             bottomNavigationBar: _buildFloatingNavBar(currentUsername),
           );
         }
     );
   }
 
-  // --- UI: FLOATING NAVBAR ---
   Widget _buildFloatingNavBar(String username) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
@@ -85,7 +76,7 @@ class _ProductListAdminPageState extends State<ProductListAdminPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: (index) => _onItemTapped(index, username), // Hantar username sini mat!
+          onTap: (index) => _onItemTapped(index, username),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -212,7 +203,6 @@ class _ProductListAdminPageState extends State<ProductListAdminPage> {
             return name.contains(_searchText);
           }).toList();
           return ListView.builder(
-            // [FIX] Padding bawah 120 supaya item tak kena "makan" dek navbar babi!
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
             physics: const BouncingScrollPhysics(),
             itemCount: docs.length,
@@ -227,27 +217,156 @@ class _ProductListAdminPageState extends State<ProductListAdminPage> {
   }
 
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        children: [
-          Container(
-            width: 70, height: 70,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]),
-            child: (data['imageUrl'] != null && data['imageUrl'] != '')
-                ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover))
-                : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2)),
+    return GestureDetector(
+      onTap: () => _showProductDetailDialog(data),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          children: [
+            Container(
+              width: 70, height: 70,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]),
+              child: (data['imageUrl'] != null && data['imageUrl'] != '')
+                  ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover))
+                  : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2)),
+            ),
+            const SizedBox(width: 15),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            ])),
+            const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showProductDetailDialog(Map<String, dynamic> data) {
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.info_outline_rounded, color: primaryColor, size: 40),
+                ),
+                const SizedBox(height: 16),
+                const Text("Product Details", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text("View the details of the selected product.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(15),
+                            child: SizedBox(
+                              width: 70, height: 70,
+                              child: (data['imageUrl'] != null && data['imageUrl'] != '')
+                                  ? CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)
+                                  : Container(color: Colors.grey[200], child: Icon(Icons.inventory_2_rounded, color: Colors.black26)),
+                            ),
+                          ),
+                          const SizedBox(width: 15),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(data['productName'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Text("Barcode: ${data['barcodeNo'] ?? 'N/A'}", style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
+                      _buildDetailRow("Category", data['category'] ?? '-'),
+                      _buildDetailRow("Supplier", data['supplier'] ?? '-'),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
+                          _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor, // Blue background
+                      foregroundColor: Colors.white,  // White text
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 15),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-          ])),
-          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$label: ", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatusChip(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)),
+        ),
+      ],
     );
   }
 }

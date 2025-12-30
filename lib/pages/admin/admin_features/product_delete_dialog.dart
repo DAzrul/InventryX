@@ -20,6 +20,7 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
   bool _loading = false;
   final Color dangerRed = const Color(0xFFE53935);
 
+  // --- [UPDATE 1] LOGIC DELETE DENGAN PREMIUM MESSAGE ---
   Future<void> _deleteProduct() async {
     setState(() => _loading = true);
     try {
@@ -28,15 +29,68 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
           .doc(widget.productId)
           .delete();
 
+      if (!mounted) return;
+
+      // 1. Show Success SnackBar (Hijau)
+      _showStyledSnackBar("Product deleted successfully!");
+
+      // 2. Tunggu sekejap bagi user nampak message
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 3. Tutup Dialog & hantar signal 'true'
       if (mounted) Navigator.pop(context, true);
+
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fucking delete failed: $e')),
-        );
+        // 4. Show Error SnackBar (Merah) & JANGAN TUTUP DIALOG
+        _showStyledSnackBar("Failed to delete product: $e", isError: true);
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM (REUSABLE) ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Error" : "Success",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? dangerRed : const Color(0xFF43A047), // Merah vs Hijau
+        behavior: SnackBarBehavior.floating, // Terapung
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -44,7 +98,7 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
     final data = widget.productData;
     final imageUrl = data['imageUrl'];
 
-    // Convert data to readable types mat
+    // Convert data to readable types
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 

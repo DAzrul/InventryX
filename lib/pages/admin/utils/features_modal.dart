@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../features_grid.dart';
+import '../features_grid.dart'; // Pastikan path ni betul ke grid kau
 
 class FeaturesModal {
-  // Fungsi ni perlukan 2 benda mat: context & username
+  // Kita cuma perlukan username je untuk pass ke page seterusnya
   static void show(BuildContext context, String loggedInUsername) {
     final double bottomMargin = MediaQuery.of(context).padding.bottom + 22.0;
 
@@ -10,7 +10,7 @@ class FeaturesModal {
       context: context,
       isScrollControlled: true,
       enableDrag: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.transparent, // [PENTING] Biar shadow nampak lawa
       builder: (BuildContext context) {
         return Container(
           margin: EdgeInsets.fromLTRB(16, 0, 16, bottomMargin),
@@ -19,7 +19,7 @@ class FeaturesModal {
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -51,11 +51,13 @@ class FeaturesModal {
                     ),
                   ),
                 ),
+
+                // Panggil Grid, pass username sahaja.
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  // [FIX] Hantar loggedInUsername yang betul ke Grid mat!
                   child: FeaturesGrid(loggedInUsername: loggedInUsername),
                 ),
+
                 const SizedBox(height: 10),
               ],
             ),

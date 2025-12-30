@@ -4,11 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// [NOTE] Pastikan path import ni betul ikut struktur folder kau mat!
+// [PENTING] Import StaffPage (Bapak Page) untuk reset
+import 'staff_page.dart';
+
 import 'add_incoming_stock.dart';
 import 'stock_out.dart';
 import '../Features_app/barcode_scanner_page.dart';
-import '../staff/utils/staff_features_modal.dart';
+import 'utils/staff_features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
 class StockPage extends StatefulWidget {
@@ -33,11 +35,22 @@ class _StockPageState extends State<StockPage> {
     super.dispose();
   }
 
-  // --- LOGIC: NAVIGATION (HOME BACK TO DASHBOARD) ---
+  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // BALIK TERUS KE DASHBOARD UTAMA
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // 1. Dapatkan user semasa
+      final user = FirebaseAuth.instance.currentUser;
+
+      // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => StaffPage(
+            loggedInUsername: widget.username, // Guna username yg ada
+            userId: user?.uid ?? '',
+          ),
+        ),
+            (Route<dynamic> route) => false, // False = Matikan jalan balik!
+      );
     } else if (index == 1) {
       StaffFeaturesModal.show(context);
     } else {
@@ -70,19 +83,71 @@ class _StockPageState extends State<StockPage> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFF),
-          // [FIX] Kalau kau nak content tolak ke atas bila keyboard keluar, set ni TRUE
           resizeToAvoidBottomInset: true,
           extendBody: true,
+
+          // --- MAIN CONTENT HANDLER ---
           body: IndexedStack(
             index: _selectedIndex == 2 ? 1 : 0,
             children: [
               _buildStockHome(),
-              ProfilePage(username: currentUsername, userId: '',),
+              ProfilePage(username: currentUsername, userId: uid ?? ''),
             ],
           ),
+
+          // Panggil Nav Bar yg dah di-repair design dia
           bottomNavigationBar: _buildFloatingNavBar(),
         );
       },
+    );
+  }
+
+  // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
+  Widget _buildFloatingNavBar() {
+    return Container(
+      // [FIX] Margin 12 bottom supaya sama dengan Dashboard
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryBlue,
+          unselectedItemColor: Colors.grey.shade400,
+
+          // [FIX PENTING] Property ni wajib ada baru design sama dengan Dashboard!
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
+          ],
+        ),
+      ),
+    );
+  }
+
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryBlue),
+      ),
+      label: label,
     );
   }
 
@@ -109,49 +174,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI: FLOATING NAVBAR ---
-  Widget _buildFloatingNavBar() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
-      height: 62,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(25),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          backgroundColor: Colors.white,
-          selectedItemColor: primaryBlue,
-          unselectedItemColor: Colors.grey.shade400,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          items: [
-            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
-            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
-            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
-          ],
-        ),
-      ),
-    );
-  }
-
-  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
-    return BottomNavigationBarItem(
-      icon: Icon(inactiveIcon, size: 22),
-      activeIcon: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
-        child: Icon(activeIcon, size: 22, color: primaryBlue),
-      ),
-      label: label,
-    );
-  }
-
-  // --- UI: CUSTOM APP BAR ---
+  // --- UI Components Lain (Kekal Sama) ---
   Widget _buildStockHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
@@ -167,7 +190,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI: SUMMARY CARD ---
   Widget _buildCombinedSummary() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -271,7 +293,6 @@ class _StockPageState extends State<StockPage> {
         }).toList();
 
         return ListView.builder(
-          // [FIX] Tambah padding bawah sekurang-kurangnya 100-120 mat!
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
           physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
@@ -302,7 +323,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- REPAIRED MODAL DETAILS ---
   void _showProductDetails(Map<String, dynamic> data, String productId) {
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
     showModalBottomSheet(
@@ -351,14 +371,7 @@ class _StockPageState extends State<StockPage> {
   }
 
   Widget _infoBox(String t, String v, Color c) {
-    return Expanded(child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: c.withOpacity(0.05), borderRadius: BorderRadius.circular(18), border: Border.all(color: c.withOpacity(0.1))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(t, style: TextStyle(fontSize: 10, color: c.withOpacity(0.6), fontWeight: FontWeight.w800)),
-        Text(v, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c)),
-      ]),
-    ));
+    return Expanded(child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: c.withOpacity(0.05), borderRadius: BorderRadius.circular(18), border: Border.all(color: c.withOpacity(0.1))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: TextStyle(fontSize: 10, color: c.withOpacity(0.6), fontWeight: FontWeight.w800)), Text(v, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c))])));
   }
 
   Widget _buildBatchStream(String pid, String unit) {
