@@ -4,13 +4,17 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+// Import pages lain
 import '../login_page.dart';
 import 'change_password_profile.dart';
 import 'edit_profile_page.dart';
+import 'two_factor_auth_page.dart'; // [PENTING] Import page 2FA baru
 
 class ProfilePage extends StatefulWidget {
   final String username;
-  const ProfilePage({super.key, required this.username, required String userId});
+  final String userId; // Tambah userId kalau perlu pass dari luar, tapi kita fetch dalam pun ok
+
+  const ProfilePage({super.key, required this.username, required this.userId});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -41,7 +45,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    // REAL-TIME STREAM: No more manual refresh lag mat!
+    // REAL-TIME STREAM: Data sentiasa fresh
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection("users")
@@ -54,7 +58,7 @@ class _ProfilePageState extends State<ProfilePage> {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Auto-update variables whenever database changes
+        // Auto-update variables
         var doc = snapshot.data!.docs.first;
         var data = doc.data() as Map<String, dynamic>;
         currentUserId = doc.id;
@@ -67,6 +71,9 @@ class _ProfilePageState extends State<ProfilePage> {
           'phoneNo': data['phoneNo'] ?? 'N/A',
         };
 
+        // Ambil status 2FA semasa (utk dihantar ke page sebelah)
+        bool is2FAEnabled = data['is2FAEnabled'] ?? false;
+
         return Scaffold(
           backgroundColor: const Color(0xFFF8F9FD),
           appBar: AppBar(
@@ -74,6 +81,7 @@ class _ProfilePageState extends State<ProfilePage> {
             elevation: 0,
             title: const Text("User Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
             centerTitle: true,
+            automaticallyImplyLeading: false, // Buang back button kalau dalam tab
           ),
           body: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -95,7 +103,23 @@ class _ProfilePageState extends State<ProfilePage> {
                   icon: Icons.security_rounded,
                   children: [
                     _buildSubTile("Change Password", Icons.key_rounded, _showChangePasswordModal),
-                    _buildSubTile("Two-Factor Authentication", Icons.vibration_rounded, null),
+
+                    // [UPDATED] Navigate ke Page 2FA
+                    _buildSubTile(
+                        "Two-Factor Authentication",
+                        Icons.vibration_rounded,
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TwoFactorAuthPage(
+                                userId: currentUserId!,
+                                initialStatus: is2FAEnabled,
+                              ),
+                            ),
+                          );
+                        }
+                    ),
                   ],
                 ),
 
@@ -135,7 +159,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- UI COMPONENTS (Kekal Consistent & Modern) ---
+  // --- UI COMPONENTS ---
 
   Widget _buildProfileHeader() {
     return Column(
@@ -147,14 +171,14 @@ class _ProfilePageState extends State<ProfilePage> {
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: primaryColor.withValues(alpha: 0.1), width: 4)
+                  border: Border.all(color: primaryColor.withOpacity(0.1), width: 4)
               ),
               child: CircleAvatar(
                 radius: 50, backgroundColor: Colors.white,
                 backgroundImage: (profilePictureUrl != null && profilePictureUrl!.isNotEmpty)
                     ? CachedNetworkImageProvider(profilePictureUrl!) : null,
                 child: (profilePictureUrl == null || profilePictureUrl!.isEmpty)
-                    ? Icon(Icons.person_rounded, size: 55, color: primaryColor.withValues(alpha: 0.4)) : null,
+                    ? Icon(Icons.person_rounded, size: 55, color: primaryColor.withOpacity(0.4)) : null,
               ),
             ),
             GestureDetector(
@@ -174,7 +198,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildInfoCard() {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)]),
       child: Column(
         children: [
           _buildInfoRow(Icons.alternate_email_rounded, "Username", userData['username'] ?? 'N/A'),
@@ -188,7 +212,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildSettingsTile({required String title, required IconData icon, required List<Widget> children}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -203,7 +227,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildActivityTile(Map<String, dynamic> act) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(border: Border(left: BorderSide(color: primaryColor.withValues(alpha: 0.2), width: 2.5))),
+      decoration: BoxDecoration(border: Border(left: BorderSide(color: primaryColor.withOpacity(0.2), width: 2.5))),
       child: ListTile(
         dense: true,
         leading: Icon(act['icon'], size: 16, color: primaryColor),
@@ -216,7 +240,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildLogoutButton() {
     return Container(
       width: double.infinity, height: 55,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))]),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]),
       child: ElevatedButton.icon(
         onPressed: _logout,
         icon: const Icon(Icons.logout_rounded, size: 20),

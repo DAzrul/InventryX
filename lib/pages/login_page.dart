@@ -5,11 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Destination Imports (Make sure these paths are correct, mat!)
+// Destination Imports
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
+import 'verify_2fa_page.dart'; // [NEW] Import this page!
 
 class LoginPage extends StatefulWidget {
   final String? autoLoginUsername;
@@ -95,7 +96,12 @@ class _LoginPageState extends State<LoginPage> {
           Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
           String freshUsername = userData['username'];
           String freshRole = userData['role'];
+
           if (userData['status'] == 'Active') {
+            // [UPDATE] Check for 2FA on Auto Login?
+            // Usually Auto Login skips 2FA if device is trusted, but for high security you might want to re-verify.
+            // For now, let's assume if "Stay Signed In" is checked, we bypass 2FA on app restart.
+
             await prefs.setString('savedUsername', freshUsername);
             await prefs.setString('savedRole', freshRole);
             await LoginPage._recordActivity(savedUserId, "Auto Login", "Session restored via auto-login.");
@@ -113,7 +119,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> loginUser() async {
-    // FORCE LOWERCASE mat, biar match dengan pendaftaran!
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
 
@@ -148,6 +153,8 @@ class _LoginPageState extends State<LoginPage> {
       String username = userData['username'];
       String role = userData['role'];
       String userId = userSnap.docs.first.id;
+      // [NEW] Get 2FA Status
+      bool is2FAEnabled = userData['is2FAEnabled'] ?? false;
 
       if (userData['status'] != 'Active') {
         _showSnack("Account disabled. Please contact your administrator.");
@@ -155,18 +162,40 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
+      // 1. Authenticate with Firebase
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
 
-      if (rememberMe) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isLoggedIn', true);
-        await prefs.setString('savedUsername', username);
-        await prefs.setString('savedRole', role);
-        await prefs.setString('savedUserId', userId);
+      // 2. [NEW] Check Logic 2FA
+      if (is2FAEnabled) {
+        // STOP! Don't go to Home. Go to Verify Page.
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Verify2FAPage(
+              userId: userId,
+              username: username,
+              role: role,
+              email: email,
+              rememberMe: rememberMe, // Pass this preference
+            ),
+          ),
+        );
+      } else {
+        // NORMAL LOGIN FLOW
+        await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
+
+        if (rememberMe) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('savedUsername', username);
+          await prefs.setString('savedRole', role);
+          await prefs.setString('savedUserId', userId);
+        }
+
+        _navigateToHomePage(username, role, userId);
       }
 
-      _navigateToHomePage(username, role, userId);
     } on FirebaseAuthException catch (e) {
       String errorMsg = "Login Failed: ${e.message}";
       if (e.code == 'wrong-password') errorMsg = "Incorrect password.";
@@ -213,7 +242,7 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 60),
-                  Center(child: Image.asset("assets/logo.png", height: 100)), // Updated path mat
+                  Center(child: Image.asset("assets/logo.png", height: 100)),
                   const SizedBox(height: 50),
                   const Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
                   const SizedBox(height: 40),
@@ -291,8 +320,8 @@ class _LoginPageState extends State<LoginPage> {
       height: 65,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]), // Modern syntax!
-        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.85)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22))),
@@ -303,7 +332,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildBlurLoading() => Container(
-      color: Colors.white.withValues(alpha: 0.7),
+      color: Colors.white.withOpacity(0.7),
       child: Center(child: CircularProgressIndicator(color: primaryBlue))
   );
 }

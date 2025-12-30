@@ -40,8 +40,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void initState() {
     super.initState();
+    // Initialize controllers dengan data sedia ada
     nameController = TextEditingController(text: widget.initialData['name']);
-    // Kita pamerkan username asal (mungkin ada huruf besar/kecil)
     usernameController = TextEditingController(text: widget.username);
     emailController = TextEditingController(text: widget.initialData['email']);
     phoneNoController = TextEditingController(text: widget.initialData['phoneNo']);
@@ -59,26 +59,34 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
-  // --- LOGIC: VALIDATION (Lowercase, Numbers, Dot, Underscore) ---
+  // --- VALIDATION LOGIC ---
   bool isValidUsername(String username) {
-    // Benarkan huruf, nombor, titik, dan underscore. No spaces!
+    // Hanya benarkan huruf, nombor, titik, dan underscore
     final RegExp usernameRegExp = RegExp(r'^[a-zA-Z0-9._]+$');
     return usernameRegExp.hasMatch(username);
   }
 
+  // --- IMAGE PICKER ---
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
   }
 
+  // --- UPLOAD IMAGE KE FIREBASE STORAGE ---
   Future<String?> _uploadImageAndGetUrl() async {
     if (_imageFile == null) return _currentImageUrl;
     setState(() => _isUploading = true);
     try {
+      // Delete gambar lama kalau ada (untuk jimat storage)
       if (_currentImageUrl != null && _currentImageUrl!.contains('firebasestorage')) {
-        await FirebaseStorage.instance.refFromURL(_currentImageUrl!).delete();
+        try {
+          await FirebaseStorage.instance.refFromURL(_currentImageUrl!).delete();
+        } catch (e) {
+          // Ignore error kalau file lama tak jumpa
+        }
       }
+
       String fileName = 'profile_pictures/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       Reference ref = FirebaseStorage.instance.ref().child(fileName);
       await ref.putFile(_imageFile!);
@@ -90,74 +98,71 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // --- THE CORE LOGIC: UPDATE PROFILE ---
+  // --- UPDATE PROFILE LOGIC ---
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // Kita ambil input SEBIJI macam user taip mat!
       String inputUsername = usernameController.text.trim();
       String oldUsername = widget.username;
 
-      // 1. Cek kalau username berubah dlm bentuk asal (Case-Sensitive)
+      // 1. Check Username Uniqueness (Kalau berubah)
       if (inputUsername != oldUsername) {
-
-        // Cek format dlu mat
         if (!isValidUsername(inputUsername)) {
           _showSnack("Invalid format! Use letters, numbers, dots, or underscores only.", isError: true);
           setState(() => _isLoading = false);
           return;
         }
 
-        // Cek dlm Firestore sebiji macam input asal mat!
         final checkUser = await FirebaseFirestore.instance
             .collection("users")
             .where("username", isEqualTo: inputUsername)
             .get();
 
         if (checkUser.docs.isNotEmpty) {
-          _showSnack("Username '$inputUsername' is already taken by another user.", isError: true);
+          _showSnack("Username '$inputUsername' is already taken.", isError: true);
           setState(() => _isLoading = false);
           return;
         }
       }
 
-      // 2. Proceed to upload image
+      // 2. Upload Image (kalau ada baru)
       String? finalImageUrl = await _uploadImageAndGetUrl();
 
-      // 3. Update Master Data (Simpan sebiji input asal mat!)
+      // 3. Update Firestore Document
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'name': nameController.text.trim(),
-        'username': inputUsername, // SIMPAN RAW INPUT KAU MAT!
+        'username': inputUsername,
         'email': emailController.text.trim(),
         'phoneNo': phoneNoController.text.trim(),
         'profilePictureUrl': finalImageUrl,
       });
 
-      // 4. Record Activity
+      // 4. Log Activity
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('activities')
           .add({
         'timestamp': FieldValue.serverTimestamp(),
-        'description': "Profile details updated with username: $inputUsername",
+        'description': "Profile updated. Username: $inputUsername",
         'iconCode': Icons.manage_accounts_rounded.codePoint,
         'action': 'Profile Update',
       });
 
+      // 5. Update Local Cache
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('savedUsername', inputUsername);
 
       if (mounted) {
         _showSnack("Profile updated successfully!");
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); // Balik ke page sebelum dgn signal success
       }
 
     } catch (e) {
-      _showSnack("System Error: $e", isError: true);
+      _showSnack("Update failed: $e", isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -173,6 +178,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -187,32 +193,39 @@ class _EditProfilePageState extends State<EditProfilePage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  _buildAvatarSection(),
-                  const SizedBox(height: 35),
-                  _buildTextField(label: "Current Role", controller: roleController, icon: Icons.verified_user_rounded, readOnly: true),
-                  _buildTextField(label: "Username", controller: usernameController, icon: Icons.alternate_email_rounded, validator: (v) => (v == null || v.isEmpty) ? "Username required" : null),
-                  _buildTextField(label: "Full Name", controller: nameController, icon: Icons.person_rounded, validator: (v) => (v == null || v.isEmpty) ? "Name required" : null),
-                  _buildTextField(label: "Email Address", controller: emailController, icon: Icons.email_rounded, keyboardType: TextInputType.emailAddress, validator: (v) => (v == null || !v.contains('@')) ? "Invalid email" : null),
-                  _buildTextField(label: "Phone Number", controller: phoneNoController, icon: Icons.phone_android_rounded, keyboardType: TextInputType.phone),
-                  const SizedBox(height: 100),
-                ],
-              ),
-            ),
+      // [KEY CHANGE]: Guna SingleChildScrollView terus sebagai body
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _buildAvatarSection(),
+
+              const SizedBox(height: 35),
+
+              // Form Fields
+              _buildTextField(label: "Current Role", controller: roleController, icon: Icons.verified_user_rounded, readOnly: true),
+              _buildTextField(label: "Username", controller: usernameController, icon: Icons.alternate_email_rounded, validator: (v) => (v == null || v.isEmpty) ? "Username required" : null),
+              _buildTextField(label: "Full Name", controller: nameController, icon: Icons.person_rounded, validator: (v) => (v == null || v.isEmpty) ? "Name required" : null),
+              _buildTextField(label: "Email Address", controller: emailController, icon: Icons.email_rounded, keyboardType: TextInputType.emailAddress, validator: (v) => (v == null || !v.contains('@')) ? "Invalid email" : null),
+              _buildTextField(label: "Phone Number", controller: phoneNoController, icon: Icons.phone_android_rounded, keyboardType: TextInputType.phone),
+
+              const SizedBox(height: 40), // Jarak sebelum button
+
+              // [KEY CHANGE]: Button save letak di sini, bukan floating
+              _buildSaveButton(),
+
+              const SizedBox(height: 30), // Extra padding bawah supaya tak rapat sgt bila scroll habis
+            ],
           ),
-          Positioned(bottom: 30, left: 24, right: 24, child: _buildSaveButton()),
-        ],
+        ),
       ),
     );
   }
+
+  // --- WIDGETS ---
 
   Widget _buildAvatarSection() {
     return Center(
@@ -223,8 +236,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 4),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20)],
+              border: Border.all(color: primaryBlue.withOpacity(0.1), width: 4),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)],
             ),
             child: CircleAvatar(
               radius: 55,
@@ -235,7 +248,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ? CachedNetworkImageProvider(_currentImageUrl!)
                   : null),
               child: (_currentImageUrl == null || _currentImageUrl!.isEmpty) && _imageFile == null
-                  ? Icon(Icons.person_rounded, size: 60, color: primaryBlue.withValues(alpha: 0.4))
+                  ? Icon(Icons.person_rounded, size: 60, color: primaryBlue.withOpacity(0.4))
                   : null,
             ),
           ),
@@ -255,12 +268,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget _buildSaveButton() {
     return SizedBox(
       height: 55,
+      width: double.infinity,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryBlue,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           elevation: 8,
-          shadowColor: primaryBlue.withValues(alpha: 0.4),
+          shadowColor: primaryBlue.withOpacity(0.4),
         ),
         onPressed: (_isLoading || _isUploading) ? null : _updateProfile,
         child: _isLoading
@@ -285,7 +299,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             contentPadding: const EdgeInsets.all(18),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade200)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade100)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: primaryBlue.withValues(alpha: 0.5), width: 2)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: primaryBlue.withOpacity(0.5), width: 2)),
           ),
         ),
         const SizedBox(height: 20),
