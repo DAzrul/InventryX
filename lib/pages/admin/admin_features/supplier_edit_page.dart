@@ -35,19 +35,23 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
     addressController = TextEditingController(text: data['address'] ?? '');
   }
 
+  // --- [UPDATE 1] LOGIC UPDATE DENGAN PREMIUM MESSAGE ---
   Future<void> _updateSupplier() async {
+    // 1. Validation
     if (nameController.text.isEmpty ||
         phoneController.text.isEmpty ||
         emailController.text.isEmpty ||
         addressController.text.isEmpty) {
-      _showSnack("Fill in all the fucking fields, mat!");
+
+      // [FIX] Error Message Cantik (Merah)
+      _showStyledSnackBar("Please fill in all fields, don't be lazy!", isError: true);
       return;
     }
 
     setState(() => loading = true);
 
     try {
-      // [FIXED] Changed widget.productId to widget.supplierId
+      // 2. Update Firestore
       await FirebaseFirestore.instance
           .collection("supplier")
           .doc(widget.supplierId)
@@ -60,14 +64,110 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
       });
 
       if (!mounted) return;
+
+      // [FIX] Panggil Dialog Success Baru
       _showSuccessDialog();
+
     } catch (e) {
-      _showSnack("Error: $e");
+      // [FIX] System Error Message
+      _showStyledSnackBar("Update failed: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
+  // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Oh Snap!" : "Success!",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
+        behavior: SnackBarBehavior.floating, // Terapung
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // --- [UPDATE 3] DIALOG SUCCESS PREMIUM ---
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.green, size: 50),
+              ),
+              const SizedBox(height: 20),
+              const Text("Update Successful!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              const Text("Partner details have been updated in the database.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 25),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Tutup dialog
+                    Navigator.pop(context, true); // Balik ke list & refresh
+                  },
+                  child: const Text("Great!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- UI START KAT SINI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,7 +219,6 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        // [FIXED] Use withValues to avoid precision loss warnings
         color: primaryBlue.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
@@ -174,20 +273,6 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
         style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
         onPressed: loading ? null : _updateSupplier,
         child: const Text("UPDATE SUPPLIER", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
-      ),
-    );
-  }
-
-  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Success", style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text("Supplier info updated successfully."),
-        actions: [TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context, true); }, child: const Text("OK"))],
       ),
     );
   }

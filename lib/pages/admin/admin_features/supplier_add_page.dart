@@ -18,18 +18,23 @@ class _SupplierAddPageState extends State<SupplierAddPage> {
   final Color primaryBlue = const Color(0xFF233E99);
   final Color bgSecondary = const Color(0xFFF8FAFF);
 
+  // --- [UPDATE 1] LOGIC SAVE DENGAN PREMIUM MESSAGE ---
   void _saveSupplier() async {
+    // 1. Validation Check
     if (nameController.text.isEmpty ||
         phoneController.text.isEmpty ||
         emailController.text.isEmpty ||
         addressController.text.isEmpty) {
-      _showSnack("Fill in all the fields, don't be a lazy fuck!");
+
+      // [FIX] Error Message Cantik (Merah)
+      _showStyledSnackBar("Please fill in all details, don't be lazy!", isError: true);
       return;
     }
 
     setState(() => loading = true);
 
     try {
+      // 2. Save to Firestore
       await FirebaseFirestore.instance.collection("supplier").add({
         'supplierName': nameController.text.trim(),
         'contactNo': phoneController.text.trim(),
@@ -39,13 +44,63 @@ class _SupplierAddPageState extends State<SupplierAddPage> {
       });
 
       if (!mounted) return;
-      _showSnack("Supplier added successfully!");
-      Navigator.pop(context);
+
+      // [FIX] Success Message Cantik (Hijau)
+      _showStyledSnackBar("New partner added successfully!");
+
+      // 3. Delay sikit baru tutup page (biar user sempat baca)
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) Navigator.pop(context);
+
     } catch (e) {
-      _showSnack("Error: $e");
+      // [FIX] System Error Message
+      _showStyledSnackBar("Failed to save supplier: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Oh Snap!" : "Success!",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
+        behavior: SnackBarBehavior.floating, // Terapung
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -157,6 +212,4 @@ class _SupplierAddPageState extends State<SupplierAddPage> {
       ),
     );
   }
-
-  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
 }

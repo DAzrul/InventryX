@@ -70,7 +70,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _loadSuppliers();
   }
 
-  // --- SEMUA FUNCTION ASAL KAU (JANGAN USIK MAT) ---
   Future<void> _loadSuppliers() async {
     try {
       final snapshot = await FirebaseFirestore.instance.collection('supplier').get();
@@ -98,21 +97,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
   }
 
   Future<String?> _uploadImage(File file) async {
-    // [FIXED] millisecondsSinceEpoch
     final fileName = DateTime.now().millisecondsSinceEpoch.toString();
     final ref = FirebaseStorage.instance.ref().child('products/$fileName');
     await ref.putFile(file);
     return await ref.getDownloadURL();
   }
 
+  // --- [UPDATE 1] LOGIC UPDATE DENGAN PREMIUM MESSAGES ---
   Future<void> _updateProduct() async {
     if (productNameController.text.isEmpty ||
         priceController.text.isEmpty ||
         selectedCategory == null ||
         selectedSubCategory == null ||
         selectedSupplierId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Fill in all the fucking fields, mat!")));
+
+      // [FIX] Error Message Cantik (Merah)
+      _showStyledSnackBar("Please fill in all required fields!", isError: true);
       return;
     }
 
@@ -141,12 +141,107 @@ class _ProductEditPageState extends State<ProductEditPage> {
       });
 
       if (!mounted) return;
+
+      // [FIX] Panggil Dialog Success Baru
       _showSuccessDialog();
+
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      // [FIX] System Error Message
+      _showStyledSnackBar("Update failed: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Oh Snap!" : "Success!",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // --- [UPDATE 3] DIALOG SUCCESS PREMIUM ---
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.green, size: 50),
+              ),
+              const SizedBox(height: 20),
+              const Text("Update Successful!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              const Text("Product details have been updated in the database.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 25),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Tutup dialog
+                    Navigator.pop(context, true); // Balik ke list & refresh
+                  },
+                  child: const Text("Great!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // --- UI START KAT SINI MAT ---
@@ -390,18 +485,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
           const SizedBox(height: 8),
           Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         ],
-      ),
-    );
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Success", style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text("Product data has been updated!"),
-        actions: [TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context, true); }, child: const Text("Awesome!"))],
       ),
     );
   }

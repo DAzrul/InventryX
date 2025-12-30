@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+
+// Pastikan path import ni betul ikut folder kau
 import '../../Features_app/barcode_scanner_page.dart';
-import 'product_list_page.dart';
 
 class ProductAddPage extends StatefulWidget {
   const ProductAddPage({super.key});
@@ -15,17 +16,23 @@ class ProductAddPage extends StatefulWidget {
 
 class _ProductAddPageState extends State<ProductAddPage> {
   final _formKey = GlobalKey<FormState>();
+
+  // --- CONTROLLERS ---
   final TextEditingController productNameController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
   final TextEditingController unitController = TextEditingController(text: "pcs");
   final TextEditingController reorderLevelController = TextEditingController(text: "10");
 
+  // --- STATE VARIABLES ---
   bool loading = false;
   File? pickedImage;
+
+  // --- COLORS ---
   final Color primaryBlue = const Color(0xFF233E99);
   final Color bgSecondary = const Color(0xFFF8FAFF);
 
+  // --- DATA ---
   final Map<String, List<String>> categoryMap = {
     'FOOD': ['Bakery', 'Dairy & Milk', 'Snacks & Chips'],
     'BEVERAGES': ['Soft Drink', 'Coffee & Tea', 'Water'],
@@ -57,15 +64,16 @@ class _ProductAddPageState extends State<ProductAddPage> {
     }
   }
 
-  // --- REPAIRED LOGIC: ADD PRODUCT & GO BACK ---
+  // --- LOGIC ADD PRODUCT (PREMIUM SNACKBAR) ---
   Future<void> addProduct() async {
-    // Basic validation first
+    // 1. Validation Check
     if (productNameController.text.isEmpty ||
         selectedCategory == null ||
         selectedSubCategory == null ||
         selectedSupplierId == null ||
         pickedImage == null) {
-      _showSnack("Fill in all the info, mat!");
+
+      _showStyledSnackBar("Please fill in all required fields & image!", isError: true);
       return;
     }
 
@@ -74,7 +82,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
     try {
       int? barcodeInt = int.tryParse(barcodeController.text.trim());
 
-      // Check for duplicates
+      // 2. Duplicate Check
       if (barcodeInt != null) {
         final check = await FirebaseFirestore.instance
             .collection("products")
@@ -83,19 +91,19 @@ class _ProductAddPageState extends State<ProductAddPage> {
             .get();
 
         if (check.docs.isNotEmpty) {
-          _showSnack("This barcode already exists!");
+          _showStyledSnackBar("Barcode already exists!", isError: true);
           setState(() => loading = false);
           return;
         }
       }
 
-      // Upload Image
+      // 3. Upload Image
       final fileName = DateTime.now().millisecondsSinceEpoch.toString();
       final ref = FirebaseStorage.instance.ref().child('products/$fileName');
       await ref.putFile(pickedImage!);
       final imgUrl = await ref.getDownloadURL();
 
-      // Save to Firestore
+      // 4. Save to Firestore
       DocumentReference newDoc = FirebaseFirestore.instance.collection("products").doc();
       await newDoc.set({
         "productId": newDoc.id,
@@ -116,18 +124,60 @@ class _ProductAddPageState extends State<ProductAddPage> {
       if (!mounted) return;
 
       // SUCCESS MESSAGE
-      _showSnack("Product '${productNameController.text}' added!");
+      _showStyledSnackBar("Product '${productNameController.text}' added successfully!");
 
-      // --- THE REPAIR ---
-      // Instead of pushReplacement, just POP. This takes you back to
-      // the existing ProductListPage without messing up the back stack.
-      Navigator.pop(context);
+      // 5. Go Back
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) Navigator.pop(context);
 
     } catch (e) {
-      _showSnack("Error: $e");
+      _showStyledSnackBar("Error adding product: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  // --- PREMIUM SNACKBAR WIDGET ---
+  void _showStyledSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isError ? "Oh Snap!" : "Success!",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
+        behavior: SnackBarBehavior.floating, // Terapung
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        margin: const EdgeInsets.all(20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -139,9 +189,9 @@ class _ProductAddPageState extends State<ProductAddPage> {
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
+        foregroundColor: Colors.black, // Icon back warna hitam
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
-          // Normal back button
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -369,6 +419,4 @@ class _ProductAddPageState extends State<ProductAddPage> {
       child: Column(children: [CircleAvatar(radius: 30, backgroundColor: bgSecondary, child: Icon(icon, color: primaryBlue)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))]),
     );
   }
-
-  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // [PENTING]
+import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import navigation admin
 import '../admin_page.dart';
@@ -100,7 +100,7 @@ class _ProductListPageState extends State<ProductListPage> {
 
             // FAB Hilang kalau masuk Profile
             floatingActionButton: _selectedIndex == 2 ? null : Padding(
-              padding: const EdgeInsets.only(bottom: 0), // Adjust sikit kalau perlu
+              padding: const EdgeInsets.only(bottom: 0),
               child: FloatingActionButton(
                 backgroundColor: primaryBlue,
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
@@ -507,8 +507,8 @@ class ProductItemCard extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor, // Blue background
-                      foregroundColor: Colors.white,  // White text
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
