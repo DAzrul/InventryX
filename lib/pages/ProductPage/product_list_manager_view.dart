@@ -3,11 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-// [PENTING] Import StaffPage (Bapak Page)
-import '../staff/staff_page.dart';
+// [PENTING] Import manager_page (Bapak Page)
+import '../manager/manager_page.dart';
 
 import '../Features_app/barcode_scanner_page.dart';
-import '../staff/utils/staff_features_modal.dart';
+import '../manager/utils/manager_features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
 class ProductListViewPage extends StatefulWidget {
@@ -34,8 +34,8 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (context) => StaffPage(
-            loggedInUsername: "Staff", // Placeholder, stream akan handle
+          builder: (context) => ManagerPage(
+            loggedInUsername: "Manager", // Placeholder, stream akan handle
             userId: user?.uid ?? '',
           ),
         ),
@@ -43,7 +43,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       );
 
     } else if (index == 1) {
-      StaffFeaturesModal.show(context);
+      ManagerFeaturesModal.show(context);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
     }

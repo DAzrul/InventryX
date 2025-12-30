@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 // Import page kau
-import '../ProductPage/product_list_page_view.dart';
-import '../Supplier/supplier_list_page_view.dart';
+import '../ProductPage/product_list_staff_page.dart';
+import '../Supplier/supplier_list_staff_view.dart';
 import '../staff/sales.dart';
 import '../staff/stock.dart';
 
@@ -23,7 +23,7 @@ class StaffFeaturesGrid extends StatelessWidget {
               onTap: () {
                 Navigator.pop(context); // Tutup modal
                 // Push page product biasa je
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListViewPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListStaffPage()));
               },
             ),
             _FeatureIcon(
@@ -31,7 +31,7 @@ class StaffFeaturesGrid extends StatelessWidget {
               label: "Supplier",
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierListPageView()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierListStaffView()));
               },
             ),
             _FeatureIcon(

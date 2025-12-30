@@ -8,14 +8,14 @@ import '../staff/staff_page.dart';
 import '../staff/utils/staff_features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
-class SupplierListPageView extends StatefulWidget {
-  const SupplierListPageView({super.key});
+class SupplierListStaffView extends StatefulWidget {
+  const SupplierListStaffView({super.key});
 
   @override
-  State<SupplierListPageView> createState() => _SupplierListPageViewState();
+  State<SupplierListStaffView> createState() => _SupplierListPageViewState();
 }
 
-class _SupplierListPageViewState extends State<SupplierListPageView> {
+class _SupplierListPageViewState extends State<SupplierListStaffView> {
   // Kita set default ke 1 (Features) sbb skrin ni dibuka dari modal features
   int _selectedIndex = 1;
   final TextEditingController _searchController = TextEditingController();
