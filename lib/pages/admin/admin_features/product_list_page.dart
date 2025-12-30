@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import navigation admin
 import '../admin_page.dart';
-import '../utils/features_modal.dart'; // Modal Admin
+import '../utils/features_modal.dart';
 import '../../Profile/User_profile_page.dart';
 
 import 'product_add_page.dart';
@@ -24,9 +24,7 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
-  // [FIX] Default Index = 1 (Sebab ni page Features)
   int _selectedIndex = 1;
-
   String _selectedCategory = 'ALL';
   String _searchText = '';
   final TextEditingController _searchController = TextEditingController();
@@ -35,7 +33,6 @@ class _ProductListPageState extends State<ProductListPage> {
   // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // 1. HOME: Nuclear Reset ke Admin Dashboard
       final user = FirebaseAuth.instance.currentUser;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
@@ -47,10 +44,8 @@ class _ProductListPageState extends State<ProductListPage> {
             (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      // 2. FEATURES: Buka Modal Admin
       FeaturesModal.show(context, widget.loggedInUsername ?? "Admin");
     } else {
-      // 3. PROFILE: Tukar tab
       setState(() {
         _selectedIndex = index;
       });
@@ -73,10 +68,8 @@ class _ProductListPageState extends State<ProductListPage> {
   @override
   Widget build(BuildContext context) {
     String currentUsername = widget.loggedInUsername ?? "Admin";
-    // Dapatkan UID sebenar untuk profile
     String? uid = FirebaseAuth.instance.currentUser?.uid;
 
-    // Stream User utk pastikan profile data sentiasa fresh
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
@@ -87,28 +80,14 @@ class _ProductListPageState extends State<ProductListPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF8FAFF),
-
-            // --- MAIN CONTENT HANDLER ---
             body: IndexedStack(
-              // index 0: Product Content, index 1: Profile
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
-                _buildProductContent(), // Content Produk (Function bawah)
-                ProfilePage(username: currentUsername, userId: uid ?? ''), // Content Profile
+                _buildProductContent(),
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
-
-            // FAB Hilang kalau masuk Profile
-            floatingActionButton: _selectedIndex == 2 ? null : Padding(
-              padding: const EdgeInsets.only(bottom: 0),
-              child: FloatingActionButton(
-                backgroundColor: primaryBlue,
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
-                child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-              ),
-            ),
-
-            // --- FLOATING NAVBAR (DESIGN SAMA) ---
+            floatingActionButton: null, // FAB DAH PINDAH KE HEADER
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
@@ -133,7 +112,6 @@ class _ProductListPageState extends State<ProductListPage> {
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
-
           showSelectedLabels: true,
           showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
@@ -161,7 +139,7 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-  // --- CONTENT PRODUK (ASAL DARI _buildInventoryHome) ---
+  // --- CONTENT PRODUK ---
   Widget _buildProductContent() {
     return Column(
       children: [
@@ -173,24 +151,38 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
+  // --- HEADER DENGAN BUTTON ADD KAT KANAN ---
   Widget _buildCustomAppBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(10, 55, 10, 10),
+      padding: const EdgeInsets.fromLTRB(20, 55, 20, 15),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
+          const Text(
+            "Inventory",
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: Colors.black),
           ),
-          const Expanded(
-            child: Text(
-                "Inventory Management",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: primaryBlue,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 4),
+                  Text("Add New", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 40),
         ],
       ),
     );
@@ -198,7 +190,7 @@ class _ProductListPageState extends State<ProductListPage> {
 
   Widget _buildSearchAndScanSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 15, 20, 5),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 5),
       child: Row(
         children: [
           Expanded(
@@ -297,7 +289,7 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-// ------------------- Product Item Card (KEKAL SAMA) -------------------
+// ------------------- [UPDATE] PRODUCT CARD DENGAN PLACEHOLDER CANTIK -------------------
 class ProductItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
@@ -327,26 +319,22 @@ class ProductItemCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // IMAGE
+            // --- [UPDATE DI SINI] LOGIC GAMBAR VS PLACEHOLDER CANTIK ---
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(15), // Bucu lebih bulat sikit
               child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
                   ? CachedNetworkImage(
                 imageUrl: data['imageUrl'],
                 width: isTablet ? 70 : isSmall ? 45 : 55,
                 height: isTablet ? 70 : isSmall ? 45 : 55,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => Container(color: Colors.grey[100], child: const Icon(Icons.image)),
+                placeholder: (_, __) => _buildPlaceholder(isTablet, isSmall),
+                errorWidget: (_, __, ___) => _buildPlaceholder(isTablet, isSmall),
               )
-                  : Container(
-                width: isTablet ? 70 : isSmall ? 45 : 55,
-                height: isTablet ? 70 : isSmall ? 45 : 55,
-                color: Colors.grey.shade100,
-                child: const Icon(Icons.inventory_2_rounded),
-              ),
+                  : _buildPlaceholder(isTablet, isSmall),
             ),
 
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
 
             // TEXT
             Expanded(
@@ -404,6 +392,29 @@ class ProductItemCard extends StatelessWidget {
     );
   }
 
+  // --- [UPDATE] WIDGET PLACEHOLDER IKUT STYLE GAMBAR ---
+  Widget _buildPlaceholder(bool isTablet, bool isSmall) {
+    return Container(
+      width: isTablet ? 70 : isSmall ? 45 : 55,
+      height: isTablet ? 70 : isSmall ? 45 : 55,
+      decoration: BoxDecoration(
+        color: Colors.white, // Background putih
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryColor.withOpacity(0.1), // Border pudar biru/kelabu
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryColor.withOpacity(0.3), // Icon warna pudar
+          size: isTablet ? 30 : 24,
+        ),
+      ),
+    );
+  }
+
   List<Widget> _actionButtons(BuildContext context) => [
     IconButton(
       padding: EdgeInsets.zero,
@@ -436,7 +447,6 @@ class ProductItemCard extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ICON HEADER
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -451,7 +461,6 @@ class ProductItemCard extends StatelessWidget {
                 const Text("View the details of the selected product.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 20),
 
-                // DETAILS CARD
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
@@ -464,6 +473,7 @@ class ProductItemCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
+                          // --- PLACEHOLDER JUGA DI DETAILS ---
                           ClipRRect(
                             borderRadius: BorderRadius.circular(15),
                             child: SizedBox(
@@ -471,7 +481,14 @@ class ProductItemCard extends StatelessWidget {
                               height: 70,
                               child: (dataMap['imageUrl'] != null && dataMap['imageUrl'].isNotEmpty)
                                   ? CachedNetworkImage(imageUrl: dataMap['imageUrl'], fit: BoxFit.cover)
-                                  : Container(color: Colors.grey[200], child: const Icon(Icons.inventory_2_rounded, color: Colors.black26, size: 24)),
+                                  : Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5),
+                                ),
+                                child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: 30),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 15),
@@ -502,7 +519,6 @@ class ProductItemCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // CLOSE BUTTON
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(

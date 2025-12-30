@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // [PENTING]
+import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import navigation admin
 import 'admin_page.dart';
-import 'utils/features_modal.dart'; // Modal Admin
+import 'utils/features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
 import 'user_edit_page.dart';
 import 'user_delete_page.dart';
-import 'admin_features/user_management_page.dart'; // Ini page "Add User" form kau
+import 'admin_features/user_management_page.dart';
 
 class UserListPage extends StatefulWidget {
   final String loggedInUsername;
@@ -22,9 +22,7 @@ class UserListPage extends StatefulWidget {
 }
 
 class _UserListPageState extends State<UserListPage> {
-  // [FIX] Default Index = 1 (Sebab ni page Features)
   int _selectedIndex = 1;
-
   String _selectedRole = 'All';
   final List<String> _roles = ['All', 'Admin', 'Staff', 'Manager'];
   final Color primaryBlue = const Color(0xFF233E99);
@@ -32,22 +30,19 @@ class _UserListPageState extends State<UserListPage> {
   // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      // 1. HOME: Nuclear Reset ke Admin Dashboard
       final user = FirebaseAuth.instance.currentUser;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => AdminPage(
-            username: widget.loggedInUsername, // Maintain username
+            username: widget.loggedInUsername,
             userId: user?.uid ?? '', loggedInUsername: '',
           ),
         ),
             (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      // 2. FEATURES: Buka Modal Admin
       FeaturesModal.show(context, widget.loggedInUsername);
     } else {
-      // 3. PROFILE: Tukar tab
       setState(() {
         _selectedIndex = index;
       });
@@ -72,15 +67,14 @@ class _UserListPageState extends State<UserListPage> {
 
             // --- MAIN CONTENT HANDLER ---
             body: IndexedStack(
-              // index 0: User List Content, index 1: Profile
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
-                _buildUserManagementUI(), // Main Content
-                ProfilePage(username: currentUsername, userId: uid ?? ''), // Profile
+                _buildUserManagementUI(),
+                ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
 
-            // --- FLOATING NAVBAR (DESIGN SAMA) ---
+            // --- FLOATING NAVBAR ---
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
@@ -105,7 +99,6 @@ class _UserListPageState extends State<UserListPage> {
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
-
           showSelectedLabels: true,
           showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
@@ -133,7 +126,7 @@ class _UserListPageState extends State<UserListPage> {
     );
   }
 
-  // --- CONTENT ASAL KAU (DIBUNGKUS DLM WIDGET) ---
+  // --- CONTENT ---
   Widget _buildUserManagementUI() {
     return Column(
       children: [
@@ -148,15 +141,14 @@ class _UserListPageState extends State<UserListPage> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 55, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
       child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
-            onPressed: () => Navigator.pop(context), // Back button manual
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Text(
+            "User Management",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
-          const Text("User Management",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -226,7 +218,6 @@ class _UserListPageState extends State<UserListPage> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
-            // [NOTE] Ini akan buka form Add User (UserManagementPage)
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserManagementPage(username: widget.loggedInUsername))),
             child: Container(
               padding: const EdgeInsets.all(12),
@@ -267,6 +258,7 @@ class _UserListPageState extends State<UserListPage> {
     );
   }
 
+  // --- [FIX] COMPACT USER CARD (SEBIJI MACAM PRODUCT LIST) ---
   Widget _buildUserCard(Map<String, dynamic> data, String docId) {
     final bool isActive = data['status'] == 'Active';
     final Color statusColor = isActive ? Colors.green.shade600 : Colors.red.shade600;
@@ -274,63 +266,83 @@ class _UserListPageState extends State<UserListPage> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12), // [COMPACT] Padding dikurangkan dari 16 ke 12
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        borderRadius: BorderRadius.circular(20), // [COMPACT] Radius sikit
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Row(
         children: [
+          // 1. IMAGE (Compact Size)
           Container(
             decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)
             ),
             child: CircleAvatar(
-              radius: 25,
+              radius: 24, // [COMPACT] Saiz avatar dikecilkan
               backgroundColor: Colors.white,
               backgroundImage: (img != null && img.isNotEmpty)
                   ? CachedNetworkImageProvider(img) : null,
               child: (img == null || img.isEmpty)
-                  ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4), size: 30)
+                  ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4), size: 28)
                   : null,
             ),
           ),
           const SizedBox(width: 15),
+
+          // 2. TEXT & STATUS (Compact Layout)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data['username'] ?? 'N/A',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                Text(data['role']?.toString().toUpperCase() ?? 'STAFF',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.w900)),
+                Text(
+                  data['username'] ?? 'N/A',
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      data['role']?.toString().toUpperCase() ?? 'STAFF',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 8),
+                    // Status Chip Sebelah Role (Jimat Ruang)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                      child: Text(
+                        isActive ? "ACTIVE" : "INACTIVE",
+                        style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 8),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+
+          // 3. ACTIONS (Side-by-side)
+          Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(isActive ? "ACTIVE" : "INACTIVE",
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9)),
+              IconButton(
+                // [COMPACT] Buang padding default button
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  icon: const Icon(Icons.edit_note_rounded, color: Colors.blueGrey, size: 22),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                      UserEditPage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
               ),
-              Row(
-                children: [
-                  IconButton(
-                      icon: Icon(Icons.edit_note_rounded, color: primaryBlue, size: 24),
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
-                          UserEditPage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
-                  ),
-                  IconButton(
-                      icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22),
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
-                          UserDeletePage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
-                  ),
-                ],
+              IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
+                      UserDeletePage(userId: docId, loggedInUsername: widget.loggedInUsername, username: data['username'], userData: data)))
               ),
             ],
           ),

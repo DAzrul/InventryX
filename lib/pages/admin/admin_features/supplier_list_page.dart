@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // [PENTING]
+import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import path utk navigation
 import '../../Profile/User_profile_page.dart';
-import '../admin_page.dart';
-import '../utils/features_modal.dart'; // Modal Admin
+import '..//admin_page.dart';
+import '../utils/features_modal.dart';
 
 // Import komponen reusable kau
 import 'supplier_add_page.dart';
@@ -24,10 +24,10 @@ class _SupplierListPageState extends State<SupplierListPage> {
   String _searchText = '';
   final Color primaryBlue = const Color(0xFF233E99);
 
-  // Default Index = 1 (Features menyala sebab kita dalam page features)
+  // Default Index = 1 (Features)
   int _selectedIndex = 1;
 
-  // --- LOGIC NAVIGATION (YANG KITA BETULKAN) ---
+  // --- LOGIC NAVIGATION ---
   void _onItemTapped(int index) {
     if (index == 0) {
       // 1. HOME: Nuclear Reset ke Admin Dashboard
@@ -43,8 +43,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
       );
 
     } else if (index == 1) {
-      // 2. FEATURES: BUKA MODAL (Product, Supplier, Report)!
-      // Kita panggil modal admin yang kau dah buat tadi.
+      // 2. FEATURES: Buka Modal Admin
       FeaturesModal.show(context, "Admin");
 
     } else {
@@ -74,7 +73,6 @@ class _SupplierListPageState extends State<SupplierListPage> {
 
             // --- MAIN CONTENT HANDLER ---
             body: IndexedStack(
-              // index 0: Supplier Content, index 1: Profile (sebab logic _selectedIndex == 2 map ke 1)
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSupplierContent(), // Page Supplier
@@ -82,16 +80,10 @@ class _SupplierListPageState extends State<SupplierListPage> {
               ],
             ),
 
-            // FAB tambah supplier (Hilang bila masuk Profile)
-            floatingActionButton: _selectedIndex == 2 ? null : FloatingActionButton(
-              backgroundColor: primaryBlue,
-              elevation: 10,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierAddPage())),
-              child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-            ),
+            // [UPDATE] BUANG FAB SEBAB DAH PINDAH KE HEADER
+            floatingActionButton: null,
 
-            // --- FLOATING NAVBAR (DESIGN SAMA) ---
+            // --- FLOATING NAVBAR ---
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
@@ -112,7 +104,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped, // Panggil logic baru tadi
+          onTap: _onItemTapped,
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
@@ -143,7 +135,7 @@ class _SupplierListPageState extends State<SupplierListPage> {
     );
   }
 
-  // --- CONTENT ASAL (Bungkus dlm widget) ---
+  // --- CONTENT ---
   Widget _buildSupplierContent() {
     return Column(
       children: [
@@ -155,36 +147,49 @@ class _SupplierListPageState extends State<SupplierListPage> {
     );
   }
 
+  // --- [UPDATE] HEADER DENGAN BUTTON ADD KAT KANAN ---
   Widget _buildCustomAppBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 55, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 55, 20, 15),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            onPressed: () => Navigator.pop(context),
+          // 1. Tajuk
+          const Text(
+            "Suppliers Directory",
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Colors.black),
           ),
-          const Expanded(
-            child: Text(
-              "Suppliers Directory",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+
+          // 2. Button ADD NEW (Top Right)
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierAddPage())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: primaryBlue,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.add_business_rounded, color: Colors.white, size: 18), // Icon business
+                  SizedBox(width: 4),
+                  Text("Add New", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 40),
         ],
       ),
     );
   }
 
-  // ... (BAHAGIAN SEARCH, CARD, LISTVIEW, DAN SUPPLIER CARD KEKAL SAMA SEPERTI KOD SEBELUM NI) ...
-  // Paste balik kod UI Supplier kau kat bawah ni (Search, TotalCard, ListStream, SupplierCard)
-  // Aku pendekkan message supaya tak potong.
-
   Widget _buildSearchSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 15, 20, 5),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 5), // Adjust padding sikit
       child: Container(
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
         child: TextField(
