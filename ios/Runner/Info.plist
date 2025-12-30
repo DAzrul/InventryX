@@ -52,6 +52,14 @@
 		<key>NSMicrophoneUsageDescription</key>
 		<string>We need access to your microphone to allow recording when using the camera (if needed).</string>
 		<key>UIStatusBarHidden</key>
+
+		<key>UIBackgroundModes</key>
+        <array>
+            <string>remote-notification</string>
+        </array>
+        <key>FirebaseAppDelegateProxyEnabled</key>
+        <true/>
+
 		<false/>
 	</dict>
 </plist>
