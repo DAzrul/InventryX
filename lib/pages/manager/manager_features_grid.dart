@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:inventryx/pages/ProductPage/product_list_page_view.dart';
-import 'package:inventryx/pages/Supplier/supplier_list_page_view.dart';
+import 'package:inventryx/pages/ProductPage/product_list_manager_view.dart';
+import 'package:inventryx/pages/Supplier/supplier_list_staff_view.dart';
 import '../Features_app/report_page.dart';
+import '../Supplier/supplier_list_manager_view.dart';
 import '../manager/forecast/forecast.dart';
 
 class _ManagerFeatureIcon extends StatelessWidget {
@@ -55,7 +56,7 @@ class ManagerFeaturesGrid extends StatelessWidget {
               label: "Supplier",
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierListPageView()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierListManagerView()));
               },
             ),
             _ManagerFeatureIcon(
