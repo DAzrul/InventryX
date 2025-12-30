@@ -36,8 +36,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
 
-    // Auto-create alerts for existing batches
-    _createExpiryAlertForAllBatches();
+
 
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -61,31 +60,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
     });
   }
 
-  Future<void> _sendPushNotificationOnce(String alertId, String productName, String stage) async {
-    final alertRef = FirebaseFirestore.instance.collection('alerts').doc(alertId);
-    final alertSnap = await alertRef.get();
-    final alertData = alertSnap.data() as Map<String, dynamic>;
 
-    // Only send if not already notified
-    if (alertData['isNotified'] == false) {
-      // Get FCM token (optional for testing)
-      String? token = await FirebaseMessaging.instance.getToken();
-      print("FCM Token: $token");
-
-      // Show SnackBar for testing
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Push Notification: $productName expires in $stage days"),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-
-      // Update Firestore so it won't notify again
-      await alertRef.update({'isNotified': true});
-    }
-  }
 
   // ================= FILTER =================
   void _showFilterDialog() async {
@@ -148,85 +123,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
     );
   }
 
-  // ================= EXPIRY ALERT CREATION =================
-  Future<void> _createExpiryAlertForAllBatches() async {
-    final alertsRef = FirebaseFirestore.instance.collection('alerts');
-    final batchesRef = FirebaseFirestore.instance.collection('batches');
 
-    // 1. Get all batches from the database
-    final batchSnapshot = await batchesRef.get();
-
-    for (var batchDoc in batchSnapshot.docs) {
-      final batch = batchDoc.data() as Map<String, dynamic>;
-      final batchId = batchDoc.id;
-      final batchNumber = batch['batchNumber'] ?? '';
-
-      // Convert Firestore Timestamp to DateTime
-      final expiryRaw = (batch['expiryDate'] as Timestamp).toDate();
-      final today = DateTime.now();
-
-      // 2. Normalize dates to ignore time (HH:mm:ss) for accurate day calculation
-      final expiryDate = DateTime(expiryRaw.year, expiryRaw.month, expiryRaw.day);
-      final todayDate = DateTime(today.year, today.month, today.day);
-
-      final daysLeft = expiryDate.difference(todayDate).inDays;
-
-
-      // 3. Determine if the batch hits a specific notification stage
-      String? stage;
-      if (daysLeft == 0) {
-        stage = "expired";
-      } else if (daysLeft == 3) {
-        stage = "3";
-      } else if (daysLeft == 5) {
-        stage = "5";
-      }
-      if (stage == null) continue;
-
-      // 4. Check if we have ALREADY created an alert for THIS batch at THIS stage
-      // This prevents duplicate pushes for the same 5-day or 3-day window.
-      final existing = await alertsRef
-          .where('batchId', isEqualTo: batchId)
-          .where('expiryStage', isEqualTo: stage)
-          .limit(1)
-          .get();
-
-      if (existing.docs.isEmpty) {
-        // Fetch product info to include in the alert document
-        final productId = batch['productId'] ?? '';
-        final productSnap = await FirebaseFirestore.instance
-            .collection('products')
-            .doc(productId)
-            .get();
-
-        if (!productSnap.exists) continue;
-
-        final product = productSnap.data() as Map<String, dynamic>;
-        final productName = product['productName'] ?? 'Unknown Product';
-
-        // 5. Create the alert document.
-        // This addition will trigger your Cloud Function (index.js) via onDocumentCreated.
-        await alertsRef.add({
-          'alertType': 'expiry',
-          'expiryStage': stage, // "5", "3", or "expired"
-          'batchId': batchId,
-          'productId': productId,
-          'productName': productName,
-          'batchNumber': batchNumber,
-          'isRead': false,
-          'isDone': false,
-          'isNotified': false, // Used for local snackbar tracking
-          'notifiedAt': FieldValue.serverTimestamp(),
-        });
-
-        print("New alert document generated for $productName (Stage: $stage)");
-      } else {
-        // Alert already exists for this stage, so we do nothing.
-        // This prevents multiple push notifications for the same stage.
-        print("Alert for $batchId at stage $stage already exists. Skipping.");
-      }
-    }
-  }
 
 // ================= EXPIRY NOTIFICATION =================
   Widget _buildExpiryNotificationList({bool unreadOnly = false}) {
@@ -308,7 +205,7 @@ class _ManagerNotificationPageState extends State<ManagerNotificationPage>
                     final batch = batchSnap.data!.data() as Map<String, dynamic>;
                     final expiryDate = (batch['expiryDate'] as Timestamp).toDate();
 
-                    _sendPushNotificationOnce(alertId, product['productName'], stage);
+
 
                     return GestureDetector(
                       onTap: () {

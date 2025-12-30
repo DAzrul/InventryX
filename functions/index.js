@@ -1,41 +1,107 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
-exports.sendExpiryNotification = onDocumentCreated(
-  "alerts/{alertId}",
+// ------------------- HELPER FUNCTION -------------------
+function getDiffDays(expiryDate) {
+  const today = new Date();
+  const expiry = new Date(expiryDate);
+  expiry.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = expiry.getTime() - today.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
+async function createAlertForBatch(db, batch) {
+  if (!batch.expiryDate || !batch.productId) return;
+
+  const batchId = batch.id || batch.batchId;
+  const diffDays = getDiffDays(batch.expiryDate.toDate ? batch.expiryDate.toDate() : batch.expiryDate);
+
+  let stage = null;
+  if (diffDays === 5) stage = "5";
+  else if (diffDays === 3) stage = "3";
+  else if (diffDays === 0) stage = "expired";
+  else return;
+
+  // Prevent duplicate alerts
+  const exists = await db.collection("alerts")
+    .where("batchId", "==", batchId)
+    .where("expiryStage", "==", stage)
+    .limit(1)
+    .get();
+
+  if (!exists.empty) return;
+
+  // Get product info
+  const productSnap = await db.collection("products").doc(batch.productId).get();
+  if (!productSnap.exists) return;
+
+  const productName = productSnap.data().productName;
+
+  const alertData = {
+    batchId,
+    productId: batch.productId,
+    productName,
+    batchNumber: batch.batchNumber,
+    expiryStage: stage,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Create alert in Firestore
+  const alertRef = await db.collection("alerts").add(alertData);
+  console.log(`✅ Alert created for ${productName} (${stage})`);
+
+  // Send push notification immediately
+  await admin.messaging().send({
+    notification: {
+      title: "⚠️ Expiry Alert",
+      body: stage === "expired"
+        ? `URGENT: ${productName} has expired!`
+        : `${productName} (Batch ${batch.batchNumber}) expires in ${stage} days.`
+    },
+    data: {
+      batchId,
+      productId: batch.productId,
+      click_action: "FLUTTER_NOTIFICATION_CLICK",
+    },
+    topic: "manager_alerts",
+  });
+
+  console.log(`✅ Push notification sent for ${productName} (${stage})`);
+}
+
+// ------------------- TRIGGER ON BATCH CREATE/UPDATE -------------------
+exports.createExpiryAlertOnBatchChange = onDocumentWritten(
+  "batches/{batchId}",
   async (event) => {
-    const data = event.data.data();
+    const batch = event.data?.after?.data();
+    if (!batch) return;
+    batch.id = event.data.after.id; // add id for helper function
 
-    let title = "⚠️ Expiry Alert";
-    let body = "";
+    const db = admin.firestore();
+    await createAlertForBatch(db, batch);
+  }
+);
 
-    // Customize the message based on the stage
-    if (data.expiryStage === "expired") {
-      body = `URGENT: ${data.productName} has expired!`;
-    } else {
-      body = `${data.productName} (Batch ${data.batchNumber}) expires in ${data.expiryStage} days.`;
-    }
+// ------------------- DAILY JOB TO CREATE ALERTS -------------------
+exports.createExpiryAlertsDaily = onSchedule(
+  {
+    schedule: "every day 00:00",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const db = admin.firestore();
+    const batchesSnapshot = await db.collection("batches").get();
 
-    const message = {
-      "notification": {
-          "title": "⚠️ Expiry Alert",
-          "body": "Product X expires in 3 days"
-        },
-        "data": {
-          "batchId": "...",
-          "productId": "...",
-          "click_action": "FLUTTER_NOTIFICATION_CLICK"
-        },
-      topic: "manager_alerts",
-    };
-
-    try {
-      await admin.messaging().send(message);
-      console.log(`Notification sent for ${data.productName} at stage ${data.expiryStage}`);
-    } catch (error) {
-      console.error("Error sending notification:", error);
+    for (const doc of batchesSnapshot.docs) {
+      const batch = doc.data();
+      batch.id = doc.id;
+      await createAlertForBatch(db, batch);
     }
   }
 );
