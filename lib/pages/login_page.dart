@@ -187,7 +187,7 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     Widget target;
     if (role == "admin") {
-      target = AdminPage(loggedInUsername: username, userId: userId);
+      target = AdminPage(loggedInUsername: username, userId: userId, username: '',);
     } else if (role == "manager") {
       target = ManagerPage(loggedInUsername: username, userId: userId);
     } else {

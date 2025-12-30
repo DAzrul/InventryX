@@ -8,7 +8,7 @@ class AdminPage extends StatefulWidget {
   final String loggedInUsername;
   final String userId;
 
-  const AdminPage({super.key, required this.loggedInUsername, required this.userId});
+  const AdminPage({super.key, required this.loggedInUsername, required this.userId, required String username});
 
   @override
   State<AdminPage> createState() => _AdminPageState();

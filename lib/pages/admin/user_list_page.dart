@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // [PENTING]
 
-import 'widgets/bottom_nav_page.dart';
+// [PENTING] Import navigation admin
+import 'admin_page.dart';
+import 'utils/features_modal.dart'; // Modal Admin
+import '../Profile/User_profile_page.dart';
+
 import 'user_edit_page.dart';
 import 'user_delete_page.dart';
-import 'admin_features/user_management_page.dart';
-import '../Profile/User_profile_page.dart';
+import 'admin_features/user_management_page.dart'; // Ini page "Add User" form kau
 
 class UserListPage extends StatefulWidget {
   final String loggedInUsername;
@@ -18,31 +22,118 @@ class UserListPage extends StatefulWidget {
 }
 
 class _UserListPageState extends State<UserListPage> {
-  int _localIndex = 0;
+  // [FIX] Default Index = 1 (Sebab ni page Features)
+  int _selectedIndex = 1;
+
   String _selectedRole = 'All';
   final List<String> _roles = ['All', 'Admin', 'Staff', 'Manager'];
   final Color primaryBlue = const Color(0xFF233E99);
 
+  // --- LOGIC NUCLEAR: RESET APP ---
+  void _onItemTapped(int index) {
+    if (index == 0) {
+      // 1. HOME: Nuclear Reset ke Admin Dashboard
+      final user = FirebaseAuth.instance.currentUser;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => AdminPage(
+            username: widget.loggedInUsername, // Maintain username
+            userId: user?.uid ?? '', loggedInUsername: '',
+          ),
+        ),
+            (Route<dynamic> route) => false,
+      );
+    } else if (index == 1) {
+      // 2. FEATURES: Buka Modal Admin
+      FeaturesModal.show(context, widget.loggedInUsername);
+    } else {
+      // 3. PROFILE: Tukar tab
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BottomNavPage(
-      loggedInUsername: widget.loggedInUsername,
-      currentIndex: _localIndex,
-      onTap: (index) {
-        if (index == 0) setState(() => _localIndex = 0);
-        else if (index == 2) setState(() => _localIndex = 2);
-      },
-      child: IndexedStack(
-        index: _localIndex,
-        children: [
-          _buildUserManagementUI(),
-          const SizedBox.shrink(),
-          ProfilePage(username: widget.loggedInUsername, userId: '',),
-        ],
+    String? uid = FirebaseAuth.instance.currentUser?.uid;
+
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        builder: (context, snapshot) {
+          String currentUsername = widget.loggedInUsername;
+          if (snapshot.hasData && snapshot.data!.exists) {
+            var d = snapshot.data!.data() as Map<String, dynamic>;
+            currentUsername = d['username'] ?? currentUsername;
+          }
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8FAFF),
+
+            // --- MAIN CONTENT HANDLER ---
+            body: IndexedStack(
+              // index 0: User List Content, index 1: Profile
+              index: _selectedIndex == 2 ? 1 : 0,
+              children: [
+                _buildUserManagementUI(), // Main Content
+                ProfilePage(username: currentUsername, userId: uid ?? ''), // Profile
+              ],
+            ),
+
+            // --- FLOATING NAVBAR (DESIGN SAMA) ---
+            bottomNavigationBar: _buildFloatingNavBar(),
+          );
+        }
+    );
+  }
+
+  // --- UI: NAVBAR ---
+  Widget _buildFloatingNavBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryBlue,
+          unselectedItemColor: Colors.grey.shade400,
+
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
+          ],
+        ),
       ),
     );
   }
 
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryBlue),
+      ),
+      label: label,
+    );
+  }
+
+  // --- CONTENT ASAL KAU (DIBUNGKUS DLM WIDGET) ---
   Widget _buildUserManagementUI() {
     return Column(
       children: [
@@ -62,7 +153,7 @@ class _UserListPageState extends State<UserListPage> {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            onPressed: () => Navigator.pop(context), // Back button manual
           ),
           const Text("User Management",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
@@ -135,6 +226,7 @@ class _UserListPageState extends State<UserListPage> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
+            // [NOTE] Ini akan buka form Add User (UserManagementPage)
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserManagementPage(username: widget.loggedInUsername))),
             child: Container(
               padding: const EdgeInsets.all(12),
@@ -159,7 +251,6 @@ class _UserListPageState extends State<UserListPage> {
         if (snapshot.hasError) return const Center(child: Text("Error loading users. Check rules!"));
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-        // Filter out current logged in user mat
         final filteredUsers = snapshot.data!.docs.where((doc) => doc['username'] != widget.loggedInUsername).toList();
 
         if (filteredUsers.isEmpty) return const Center(child: Text("No users found in this category."));
@@ -179,7 +270,7 @@ class _UserListPageState extends State<UserListPage> {
   Widget _buildUserCard(Map<String, dynamic> data, String docId) {
     final bool isActive = data['status'] == 'Active';
     final Color statusColor = isActive ? Colors.green.shade600 : Colors.red.shade600;
-    final String? img = data['profilePictureUrl']; // Ambil URL gambar profil
+    final String? img = data['profilePictureUrl'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -191,7 +282,6 @@ class _UserListPageState extends State<UserListPage> {
       ),
       child: Row(
         children: [
-          // --- REPAIRED PROFILE IMAGE SECTION --- sebiji macam AdminDashboard
           Container(
             decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -200,10 +290,8 @@ class _UserListPageState extends State<UserListPage> {
             child: CircleAvatar(
               radius: 25,
               backgroundColor: Colors.white,
-              // Kalau ada URL gambar dlm Firestore, kita display guna CachedNetworkImage
               backgroundImage: (img != null && img.isNotEmpty)
                   ? CachedNetworkImageProvider(img) : null,
-              // Kalau imej null atau kosong, kita bagi icon kacak warna biru muda
               child: (img == null || img.isEmpty)
                   ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4), size: 30)
                   : null,

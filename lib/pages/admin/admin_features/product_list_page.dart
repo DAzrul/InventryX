@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // [PENTING]
+
+// [PENTING] Import navigation admin
+import '../admin_page.dart';
+import '../utils/features_modal.dart'; // Modal Admin
+import '../../Profile/User_profile_page.dart';
 
 import 'product_add_page.dart';
 import 'product_edit_page.dart';
 import 'product_delete_dialog.dart';
 import '../../Features_app/barcode_scanner_page.dart';
-import '../../Profile/User_profile_page.dart';
-import '../widgets/bottom_nav_page.dart';
 
 class ProductListPage extends StatefulWidget {
   final String? loggedInUsername;
@@ -20,16 +24,33 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
+  // [FIX] Default Index = 1 (Sebab ni page Features)
   int _selectedIndex = 1;
+
   String _selectedCategory = 'ALL';
   String _searchText = '';
   final TextEditingController _searchController = TextEditingController();
   final Color primaryBlue = const Color(0xFF233E99);
 
+  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // 1. HOME: Nuclear Reset ke Admin Dashboard
+      final user = FirebaseAuth.instance.currentUser;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => AdminPage(
+            username: widget.loggedInUsername ?? "Admin",
+            userId: user?.uid ?? '', loggedInUsername: '',
+          ),
+        ),
+            (Route<dynamic> route) => false,
+      );
+    } else if (index == 1) {
+      // 2. FEATURES: Buka Modal Admin
+      FeaturesModal.show(context, widget.loggedInUsername ?? "Admin");
     } else {
+      // 3. PROFILE: Tukar tab
       setState(() {
         _selectedIndex = index;
       });
@@ -52,40 +73,103 @@ class _ProductListPageState extends State<ProductListPage> {
   @override
   Widget build(BuildContext context) {
     String currentUsername = widget.loggedInUsername ?? "Admin";
+    // Dapatkan UID sebenar untuk profile
+    String? uid = FirebaseAuth.instance.currentUser?.uid;
 
-    return BottomNavPage(
-      loggedInUsername: currentUsername,
-      currentIndex: _selectedIndex,
-      onTap: _onItemTapped,
-      child: IndexedStack(
-        index: _selectedIndex == 2 ? 1 : 0,
-        children: [
-          _buildInventoryHome(),
-          ProfilePage(username: currentUsername, userId: '',),
-        ],
+    // Stream User utk pastikan profile data sentiasa fresh
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data!.exists) {
+            var d = snapshot.data!.data() as Map<String, dynamic>;
+            currentUsername = d['username'] ?? currentUsername;
+          }
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8FAFF),
+
+            // --- MAIN CONTENT HANDLER ---
+            body: IndexedStack(
+              // index 0: Product Content, index 1: Profile
+              index: _selectedIndex == 2 ? 1 : 0,
+              children: [
+                _buildProductContent(), // Content Produk (Function bawah)
+                ProfilePage(username: currentUsername, userId: uid ?? ''), // Content Profile
+              ],
+            ),
+
+            // FAB Hilang kalau masuk Profile
+            floatingActionButton: _selectedIndex == 2 ? null : Padding(
+              padding: const EdgeInsets.only(bottom: 0), // Adjust sikit kalau perlu
+              child: FloatingActionButton(
+                backgroundColor: primaryBlue,
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
+                child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+              ),
+            ),
+
+            // --- FLOATING NAVBAR (DESIGN SAMA) ---
+            bottomNavigationBar: _buildFloatingNavBar(),
+          );
+        }
+    );
+  }
+
+  // --- UI: NAVBAR ---
+  Widget _buildFloatingNavBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      height: 62,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryBlue,
+          unselectedItemColor: Colors.grey.shade400,
+
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          items: [
+            _navItem(Icons.home_outlined, Icons.home_rounded, "Home"),
+            _navItem(Icons.grid_view_outlined, Icons.grid_view_rounded, "Features"),
+            _navItem(Icons.person_outline_rounded, Icons.person_rounded, "Profile"),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildInventoryHome() {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
-      body: Column(
-        children: [
-          _buildCustomAppBar(),
-          _buildSearchAndScanSection(),
-          _buildCategoryFilter(),
-          Expanded(child: _buildProductListStream()),
-        ],
+  BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
+    return BottomNavigationBarItem(
+      icon: Icon(inactiveIcon, size: 22),
+      activeIcon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(activeIcon, size: 22, color: primaryBlue),
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80),
-        child: FloatingActionButton(
-          backgroundColor: primaryBlue,
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductAddPage())),
-          child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-        ),
-      ),
+      label: label,
+    );
+  }
+
+  // --- CONTENT PRODUK (ASAL DARI _buildInventoryHome) ---
+  Widget _buildProductContent() {
+    return Column(
+      children: [
+        _buildCustomAppBar(),
+        _buildSearchAndScanSection(),
+        _buildCategoryFilter(),
+        Expanded(child: _buildProductListStream()),
+      ],
     );
   }
 
@@ -213,7 +297,7 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-// ------------------- Product Item Card with Dialog -------------------
+// ------------------- Product Item Card (KEKAL SAMA) -------------------
 class ProductItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
