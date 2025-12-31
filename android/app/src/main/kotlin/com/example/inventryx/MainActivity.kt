@@ -1,5 +1,7 @@
 package com.example.inventryx
 
-import io.flutter.embedding.android.FlutterActivity
+// 1. TUKAR IMPORT NI
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// 2. TUKAR CLASS INHERITANCE NI
+class MainActivity: FlutterFragmentActivity()
