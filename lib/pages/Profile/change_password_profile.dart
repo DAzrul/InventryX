@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
-// [NOTE] Ensure this path is correct based on your folder structure mat!
+// [NOTE] Pastikan path import ini betul ikut folder kau
 import '../forgot_password_page.dart';
 
 class ChangePasswordProfilePage extends StatefulWidget {
@@ -29,13 +30,31 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
   bool loading = false;
   bool showAllPasswords = false;
   User? currentUser;
+  String? userRole;
 
   final Color primaryBlue = const Color(0xFF233E99);
+
+  // List password "Special" untuk Admin sahaja
+  final List<String> adminBypassPasswords = ['adminpassword', 'password123', 'DefaultPass'];
 
   @override
   void initState() {
     super.initState();
     currentUser = _auth.currentUser;
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
+      if (doc.exists) {
+        setState(() {
+          userRole = doc['role'];
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching role: $e");
+    }
   }
 
   @override
@@ -46,10 +65,17 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
     super.dispose();
   }
 
+  // Helper untuk Hash Password
+  String _hashPassword(String password) {
+    var bytes = utf8.encode(password);
+    var digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
   // --- LOGIC: UPDATE PASSWORD ---
   Future<void> _changePassword() async {
     final oldPass = oldPasswordController.text.trim();
-    final newPass = newPasswordController.text.trim(); // No lowercase mat! Case-sensitive is better for security.
+    final newPass = newPasswordController.text.trim();
     final confirmPass = confirmPasswordController.text.trim();
 
     if (currentUser == null) {
@@ -63,75 +89,116 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
       return;
     }
 
-    // 2. Anti-Trash Password Logic
-    if (newPass == "123456" || newPass == "password" || newPass == "12345678") {
-      _showSnackBar("This password is too weak and easy to guess!", Colors.red);
-      return;
+    // --- [LOGIC EXCEPTION ADMIN] ---
+    bool isAdminBypass = false;
+    if (userRole == 'admin' && adminBypassPasswords.contains(newPass)) {
+      isAdminBypass = true;
     }
 
-    // 3. New Password check
-    if (oldPass == newPass) {
-      _showSnackBar("New password cannot be the same as current password.", Colors.red);
-      return;
-    }
+    if (!isAdminBypass) {
+      // A. Anti-Trash Password Logic
+      if (newPass == "123456" || newPass == "password" || newPass == "12345678" || adminBypassPasswords.contains(newPass)) {
+        _showSnackBar("This password is restricted or too weak!", Colors.red);
+        return;
+      }
 
-    if (newPass != confirmPass) {
-      _showSnackBar("New passwords do not match.", Colors.red);
-      return;
-    }
+      // B. Complexity Check
+      final hasLetter = RegExp(r'[a-zA-Z]').hasMatch(newPass);
+      final hasDigit = RegExp(r'[0-9]').hasMatch(newPass);
+      if (newPass.length < 6 || !hasLetter || !hasDigit) {
+        _showSnackBar("Password must be 6+ chars with letters & numbers.", Colors.red);
+        return;
+      }
 
-    if (newPass.length < 6) {
-      _showSnackBar("Password must be at least 6 characters long.", Colors.red);
-      return;
-    }
-
-    // 4. Complexity Check (Pro Touch)
-    final hasLetter = RegExp(r'[a-zA-Z]').hasMatch(newPass);
-    final hasDigit = RegExp(r'[0-9]').hasMatch(newPass);
-    if (!hasLetter || !hasDigit) {
-      _showSnackBar("Password must contain both letters and numbers.", Colors.red);
-      return;
+      // C. Match Check
+      if (newPass != confirmPass) {
+        _showSnackBar("New passwords do not match.", Colors.red);
+        return;
+      }
     }
 
     setState(() => loading = true);
 
     try {
-      // 5. Re-authentication (Required for sensitive actions)
+      // 2. Re-authentication (Wajib confirm password lama)
       AuthCredential credential = EmailAuthProvider.credential(
           email: currentUser!.email!,
           password: oldPass
       );
       await currentUser!.reauthenticateWithCredential(credential);
 
-      // 6. Update in Firebase Auth
+      // --- [LOGIC PASSWORD HISTORY: SUB-COLLECTION] ---
+      // Hash password baru untuk comparison
+      String newPassHash = _hashPassword(newPass);
+
+      if (!isAdminBypass) {
+        // Query 5 password terakhir dari sub-collection 'historypass'
+        QuerySnapshot historySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('historypass') // Nama collection baru
+            .orderBy('timestamp', descending: true) // Susun ikut masa terkini
+            .limit(5) // Ambil 5 shj
+            .get();
+
+        // Loop check: Adakah hash baru wujud dalam 5 list terakhir?
+        for (var doc in historySnapshot.docs) {
+          if (doc['passwordHash'] == newPassHash) {
+            _showSnackBar("You cannot reuse a recent password. Please choose a different one.", Colors.red);
+            setState(() => loading = false);
+            return; // STOP SINI
+          }
+        }
+      }
+
+      // --- UPDATE PASSWORD DI FIREBASE AUTH ---
       await currentUser!.updatePassword(newPass);
 
-      // 7. Record Activity in Firestore
+      // --- SIMPAN HISTORY DI SUB-COLLECTION 'historypass' ---
+      // Kita simpan password LAMA (oldPass) sebagai history
+      String oldPassHash = _hashPassword(oldPass);
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('historypass') // Simpan kat sini
+          .add({
+        'passwordHash': oldPassHash,
+        'timestamp': FieldValue.serverTimestamp(), // Supaya boleh sort nanti
+      });
+
+      // --- RECORD ACTIVITY (Log biasa) ---
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('activities')
           .add({
         'timestamp': FieldValue.serverTimestamp(),
-        'description': 'Security update: User changed account password.',
+        'description': isAdminBypass
+            ? 'Admin Override: Default password used.'
+            : 'Security update: Password changed successfully.',
         'iconCode': Icons.lock_person_rounded.codePoint,
         'action': 'Security Update',
       });
 
       if (mounted) {
         _showSnackBar("Password updated successfully!", Colors.green);
+        oldPasswordController.clear();
+        newPasswordController.clear();
+        confirmPasswordController.clear();
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) Navigator.pop(context, 'success');
         });
       }
 
     } on FirebaseAuthException catch (e) {
-      String errorMsg = "Update failed. Please try again.";
+      String errorMsg = "Update failed.";
       if (e.code == 'wrong-password') errorMsg = "Current password is incorrect.";
-      if (e.code == 'requires-recent-login') errorMsg = "Please log out and log in again for security.";
+      if (e.code == 'requires-recent-login') errorMsg = "Please log out and log in again.";
+      if (e.code == 'weak-password') errorMsg = "Password is too weak.";
       _showSnackBar(errorMsg, Colors.red);
     } catch (e) {
-      _showSnackBar("An error occurred: $e", Colors.red);
+      _showSnackBar("Error: $e", Colors.red);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -177,7 +244,7 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
             const Text("Change Password", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             Text(
-              "Strengthen your account security by updating your password regularly.",
+              "Strengthen your account security. You cannot reuse recent passwords.",
               style: TextStyle(color: Colors.grey[600], fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 35),
@@ -192,6 +259,8 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
 
             _buildInputLabel("Confirm New Password"),
             _buildPasswordField(controller: confirmPasswordController, hint: "Re-type new password", icon: Icons.verified_user_outlined),
+
+            const SizedBox(height: 10),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -215,7 +284,7 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
                   backgroundColor: primaryBlue,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 5,
-                  shadowColor: primaryBlue.withValues(alpha: 0.4),
+                  shadowColor: primaryBlue.withOpacity(0.4),
                 ),
                 onPressed: loading ? null : _changePassword,
                 child: loading
@@ -249,7 +318,7 @@ class _ChangePasswordProfilePageState extends State<ChangePasswordProfilePage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: TextField(
         controller: controller,
