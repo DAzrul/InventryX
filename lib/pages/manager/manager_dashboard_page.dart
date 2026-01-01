@@ -4,15 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-// Pastikan import ni betul ikut folder kau
-import 'notifications/manager_notification_page.dart';
+// Shared notification page import
+import '../notifications/notification_page.dart';
 
 class ManagerDashboardPage extends StatelessWidget {
   const ManagerDashboardPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    const Color bgBlue = Color(0xFFF4F7FF); // Warna background premium
+    const Color bgBlue = Color(0xFFF4F7FF);
 
     return Scaffold(
       backgroundColor: bgBlue,
@@ -25,33 +25,29 @@ class ManagerDashboardPage extends StatelessWidget {
             const _HeaderSection(),
             const SizedBox(height: 30),
 
-            // --- QUICK STATS ROW ---
             _buildSectionTitle("Business Overview"),
             const SizedBox(height: 12),
             const _QuickStatsRow(),
 
             const SizedBox(height: 30),
 
-            // --- PIE CHART ---
             _buildSectionTitle("Inventory Insights"),
             const SizedBox(height: 10),
             const _TotalProductsCard(),
 
             const SizedBox(height: 30),
 
-            // --- BAR CHART ---
             _buildSectionTitle("Revenue Performance"),
             const SizedBox(height: 10),
             const _TotalSalesCard(),
 
             const SizedBox(height: 30),
 
-            // --- TOP SELLING PRODUCTS ---
             _buildSectionTitle("Hot Items Today"),
             const SizedBox(height: 12),
-            const _TopProductsList(), // Modul yang kita dah repair
+            const _TopProductsList(),
 
-            const SizedBox(height: 120), // Spacing extra bawah
+            const SizedBox(height: 120),
           ],
         ),
       ),
@@ -72,7 +68,7 @@ class ManagerDashboardPage extends StatelessWidget {
 }
 
 // ==========================================================
-// 1. HEADER SECTION (REAL-TIME USER)
+// 1. HEADER SECTION (UPDATED TO FETCH ROLE)
 // ==========================================================
 class _HeaderSection extends StatelessWidget {
   const _HeaderSection();
@@ -87,11 +83,14 @@ class _HeaderSection extends StatelessWidget {
       builder: (context, snapshot) {
         String name = "Manager";
         String? img;
+        String userRole = "manager"; // Default fallback
 
         if (snapshot.hasData && snapshot.data!.exists) {
           var d = snapshot.data!.data() as Map<String, dynamic>;
           name = d['username'] ?? "Manager";
           img = d['profilePictureUrl'];
+          // Ambil role dari Firestore field 'role'
+          userRole = d['role'] ?? "manager";
         }
 
         return Row(
@@ -99,14 +98,14 @@ class _HeaderSection extends StatelessWidget {
             Container(
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)
+                  border: Border.all(color: primaryBlue.withOpacity(0.1), width: 2)
               ),
               child: CircleAvatar(
                 radius: 24,
                 backgroundColor: Colors.white,
                 backgroundImage: (img != null && img.isNotEmpty) ? CachedNetworkImageProvider(img) : null,
                 child: (img == null || img.isEmpty)
-                    ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4))
+                    ? Icon(Icons.person_rounded, color: primaryBlue.withOpacity(0.4))
                     : null,
               ),
             ),
@@ -123,7 +122,8 @@ class _HeaderSection extends StatelessWidget {
                 ],
               ),
             ),
-            _NotificationButton(),
+            // Pass userRole ke button
+            _NotificationButton(userRole: userRole),
           ],
         );
       },
@@ -132,7 +132,72 @@ class _HeaderSection extends StatelessWidget {
 }
 
 // ==========================================================
-// 2. QUICK STATS ROW
+// 2. NOTIFICATION BUTTON (WITH UNREAD RED DOT)
+// ==========================================================
+class _NotificationButton extends StatelessWidget {
+  final String userRole;
+
+  const _NotificationButton({required this.userRole});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      // Listen for any alert that is NOT done
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .where('isDone', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 10
+                    )
+                  ]
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: Colors.black87, size: 22),
+                onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => NotificationPage(userRole: userRole)
+                    )
+                ),
+              ),
+            ),
+            // Red Dot indicator
+            if (hasUnread)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ==========================================================
+// 3. QUICK STATS ROW
 // ==========================================================
 class _QuickStatsRow extends StatelessWidget {
   const _QuickStatsRow();
@@ -141,7 +206,6 @@ class _QuickStatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // SALES TODAY
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('sales')
               .where('status', isEqualTo: 'completed')
@@ -163,7 +227,6 @@ class _QuickStatsRow extends StatelessWidget {
           },
         ),
         const SizedBox(width: 15),
-        // LOW STOCK ALERTS
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('products').snapshots(),
           builder: (context, snapshot) {
@@ -196,7 +259,7 @@ class _StatItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 15, offset: const Offset(0, 8))],
+          boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 8))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,7 +276,7 @@ class _StatItem extends StatelessWidget {
 }
 
 // ==========================================================
-// 3. PIE CHART CARD
+// 4. PIE CHART CARD
 // ==========================================================
 class _TotalProductsCard extends StatelessWidget {
   const _TotalProductsCard();
@@ -225,7 +288,7 @@ class _TotalProductsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.indigo.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('products').snapshots(),
@@ -276,7 +339,7 @@ class _TotalProductsCard extends StatelessWidget {
 }
 
 // ==========================================================
-// 4. BAR CHART CARD
+// 5. BAR CHART CARD
 // ==========================================================
 class _TotalSalesCard extends StatelessWidget {
   const _TotalSalesCard();
@@ -288,7 +351,7 @@ class _TotalSalesCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.indigo.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('sales').where('status', isEqualTo: 'completed').snapshots(),
@@ -315,7 +378,7 @@ class _TotalSalesCard extends StatelessWidget {
             if (v > maxVal) maxVal = v;
             groups.add(BarChartGroupData(x: i, barRods: [
               BarChartRodData(toY: v, width: 14, borderRadius: BorderRadius.circular(4),
-                  gradient: LinearGradient(colors: [const Color(0xFF2D54FF), const Color(0xFF2D54FF).withValues(alpha: 0.6)], begin: Alignment.bottomCenter, end: Alignment.topCenter))
+                  gradient: LinearGradient(colors: [const Color(0xFF2D54FF), const Color(0xFF2D54FF).withOpacity(0.6)], begin: Alignment.bottomCenter, end: Alignment.topCenter))
             ]));
           }
 
@@ -351,10 +414,7 @@ class _TotalSalesCard extends StatelessWidget {
 }
 
 // ==========================================================
-// 5. TOP SELLING PRODUCTS (HOT ITEMS) - REPAIRED LOGIC
-// ==========================================================
-// ==========================================================
-// 5. TOP SELLING PRODUCTS (HOT ITEMS)
+// 6. TOP SELLING PRODUCTS
 // ==========================================================
 class _TopProductsList extends StatelessWidget {
   const _TopProductsList();
@@ -371,7 +431,7 @@ class _TopProductsList extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.indigo.withValues(alpha: 0.06),
+            color: Colors.indigo.withOpacity(0.06),
             blurRadius: 20,
             offset: const Offset(0, 10),
           )
@@ -390,7 +450,7 @@ class _TopProductsList extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
+                  color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Text(
@@ -427,13 +487,10 @@ class _TopProductsList extends StatelessWidget {
                 );
               }
 
-              // Aggregation Logic: Summing up quantities by product name
               Map<String, int> productSales = {};
 
               for (var doc in snapshot.data!.docs) {
                 Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
-                // [FIXED] Using 'snapshotName' from the database screenshot
                 String pName = data['snapshotName'] ?? 'Unknown Item';
                 int qty = (data['quantitySold'] ?? 0) as int;
 
@@ -444,11 +501,9 @@ class _TopProductsList extends StatelessWidget {
                 }
               }
 
-              // Sorting: Highest quantity first
               var sortedKeys = productSales.keys.toList(growable: false)
                 ..sort((k1, k2) => productSales[k2]!.compareTo(productSales[k1]!));
 
-              // Take top 3 items
               var top3 = sortedKeys.take(3).toList();
 
               return Column(
@@ -456,7 +511,6 @@ class _TopProductsList extends StatelessWidget {
                   return _ProductListRow(
                     name: key,
                     count: "${productSales[key]} Sold",
-                    // Highlight the top item with a distinct color
                     color: key == top3.first
                         ? const Color(0xFFFF5B5B)
                         : Colors.indigo.shade400,
@@ -498,21 +552,11 @@ class _ProductListRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(children: [
-        CircleAvatar(radius: 18, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.star_rounded, color: color, size: 18)),
+        CircleAvatar(radius: 18, backgroundColor: color.withOpacity(0.1), child: Icon(Icons.star_rounded, color: color, size: 18)),
         const SizedBox(width: 15),
         Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
         Text(count, style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 12)),
       ]),
-    );
-  }
-}
-
-class _NotificationButton extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
-      child: IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.black87, size: 22), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManagerNotificationPage()))),
     );
   }
 }

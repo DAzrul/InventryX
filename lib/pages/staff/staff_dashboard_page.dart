@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../Features_app/barcode_scanner_page.dart';
 import 'stock_out.dart';
 import 'daily_sales.dart';
+// 🔹 Add this import for the shared notification page
+import '../notifications/notification_page.dart';
 
 class StaffDashboardPage extends StatefulWidget {
   final String username;
@@ -191,15 +193,20 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  // --- HELPERS (HEADER REPAIRED) ---
+  // --- HELPERS (HEADER UPDATED) ---
   Widget _buildHeaderSection(Color primaryColor) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('users').where('username', isEqualTo: widget.username).limit(1).snapshots(),
       builder: (context, snapshot) {
-        String name = widget.username; String? img;
+        String name = widget.username;
+        String? img;
+        String userRole = "staff"; // 🔹 Default role
+
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           var d = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-          name = d['username'] ?? name; img = d['profilePictureUrl'];
+          name = d['username'] ?? name;
+          img = d['profilePictureUrl'];
+          userRole = d['role'] ?? "staff"; // 🔹 Ambil role dari Firestore
         }
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -209,15 +216,14 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 Container(
                   decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: primaryColor.withValues(alpha: 0.1), width: 2)
+                      border: Border.all(color: primaryColor.withOpacity(0.1), width: 2)
                   ),
                   child: CircleAvatar(
                     radius: 22,
                     backgroundColor: Colors.white,
                     backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null,
-                    // [FIX] Tunjuk Icon Person ikut design Admin Dashboard
                     child: (img == null || img.isEmpty)
-                        ? Icon(Icons.person_rounded, color: primaryColor.withValues(alpha: 0.4))
+                        ? Icon(Icons.person_rounded, color: primaryColor.withOpacity(0.4))
                         : null,
                   ),
                 ),
@@ -232,7 +238,61 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 ),
               ],
             ),
-            const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.grey)
+            // 🔹 Notification Button for Staff
+            _buildNotificationButton(userRole),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildNotificationButton(String role) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .where('isDone', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 10,
+                  )
+                ],
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: Colors.black87, size: 22),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => NotificationPage(userRole: role)),
+                  );
+                },
+              ),
+            ),
+            if (hasUnread)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -248,7 +308,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           if (snapshot.hasData) count = calcLogic(snapshot.data!.docs);
           return Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))]),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 28, color: Colors.black87), const SizedBox(height: 16), Text("$count Items", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey))]),
           );
         },
@@ -264,7 +324,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     return Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
         child: Row(children: [CircleAvatar(backgroundColor: const Color(0xFFF5F5F5), child: Icon(icon, color: trailingColor, size: 20)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11))])), Text(trailingText, style: TextStyle(color: trailingColor, fontWeight: FontWeight.bold, fontSize: 14))])
     );
   }

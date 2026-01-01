@@ -5,9 +5,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'pages/manager/notifications/manager_notification_page.dart';
-// 🔹 ADD THIS IMPORT
-import 'pages/manager/notifications/expiry_alert_detail_page.dart';
+
+// Import the shared pages
+import 'pages/notifications/notification_page.dart';
+import 'pages/notifications/expiry_alert_detail_page.dart';
+import 'pages/notifications/risk_alert_detail_page.dart';
 
 import 'pages/login_page.dart';
 import 'firebase_options.dart';
@@ -31,9 +33,10 @@ void main() async {
   await flutterLocalNotificationsPlugin.initialize(
     initializationSettings,
     onDidReceiveNotificationResponse: (NotificationResponse response) {
-      // Tapping foreground local notification goes to the general list
+      // For local notifications, we navigate to the general list.
+      // Note: role fetching for local notifications usually requires a wrapper or state management.
       navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const ManagerNotificationPage()),
+        MaterialPageRoute(builder: (_) => const LoginPage()), // Re-routing through login handles role check
       );
     },
   );
@@ -70,22 +73,46 @@ class _MyAppState extends State<MyApp> {
     _setupFirebaseMessaging();
   }
 
-  // 🔹 ADDED THIS HELPER METHOD FOR NAVIGATION
-  void _handleNotificationClick(RemoteMessage message) {
+  // 🔹 UPDATED: Fetch user role before deep-linking to detail pages
+  Future<void> _handleNotificationClick(RemoteMessage message) async {
     final data = message.data;
-    if (data.containsKey('batchId') && data.containsKey('productId')) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) return;
+
+    // Fetch the role from Firestore to pass to the shared pages
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final String role = userDoc.data()?['role'] ?? 'staff';
+
+    // 1. Handle Risk Alerts
+    if (data['alertType'] == 'risk' || data.containsKey('riskId')) {
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => RiskAlertDetailPage(
+            riskAnalysisId: data['riskId'] ?? "",
+            alertId: "",
+            userRole: role,
+          ),
+        ),
+      );
+    }
+    // 2. Handle Expiry Alerts
+    else if (data.containsKey('batchId') && data.containsKey('productId')) {
       navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (_) => ExpiryAlertDetailPage(
             batchId: data['batchId'],
             productId: data['productId'],
             stage: data['stage'] ?? "5",
+            userRole: role,
           ),
         ),
       );
-    } else {
+    }
+    // 3. Fallback to general list
+    else {
       navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const ManagerNotificationPage()),
+        MaterialPageRoute(builder: (_) => NotificationPage(userRole: role)),
       );
     }
   }
@@ -93,7 +120,9 @@ class _MyAppState extends State<MyApp> {
   void _setupFirebaseMessaging() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
-    await messaging.subscribeToTopic("manager_alerts");
+
+    // 🔹 Ensure topic matches index.js
+    await messaging.subscribeToTopic("inventory_alerts");
 
     String? token = await messaging.getToken();
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -120,12 +149,10 @@ class _MyAppState extends State<MyApp> {
       );
     });
 
-    // 🔹 UPDATED: Handle Tap when app is in Background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _handleNotificationClick(message);
     });
 
-    // 🔹 UPDATED: Check if app was opened from Terminated state
     FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         _handleNotificationClick(message);
@@ -139,7 +166,7 @@ class _MyAppState extends State<MyApp> {
       valueListenable: themeNotifier,
       builder: (_, currentThemeMode, __) {
         return MaterialApp(
-          navigatorKey: navigatorKey, // 🔹 REQUIRED FOR NAVIGATION
+          navigatorKey: navigatorKey,
           title: 'InventoryX',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
