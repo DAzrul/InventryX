@@ -247,12 +247,11 @@ class _NotificationPageState extends State<NotificationPage>
     final riskValue = alert['riskValue'] ?? 0;
     final productName = alert['productName'] ?? 'Unknown';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
-
-    // 🔹 FIX: Use the 'productId' field from the alert document
-    final productId = alert['productId'] ?? '';
-
+    // Use riskAnalysisId as the productId to fetch product details
+    final productId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
+    // 1. DYNAMIC COLOR & ICON LOGIC
     Color riskColor = riskLevel == "High" ? Colors.red : Colors.orange;
     String riskIcon = riskLevel == "High" ? "🔥" : "⚠️";
     String riskTitle = "$riskIcon ${riskLevel.toUpperCase()} RISK";
@@ -260,19 +259,16 @@ class _NotificationPageState extends State<NotificationPage>
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
       builder: (context, productSnap) {
+        // While loading or if product doesn't exist, we show a simplified version
         String category = "N/A";
         String subCategory = "N/A";
-
-        // 🔹 Check connection state to avoid flickering N/A while loading
-        if (productSnap.connectionState == ConnectionState.waiting) {
-          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
-        }
 
         if (productSnap.hasData && productSnap.data!.exists) {
           final product = productSnap.data!.data() as Map<String, dynamic>;
           category = product['category'] ?? "N/A";
           subCategory = product['subCategory'] ?? "N/A";
 
+          // Apply subCategory filter if active
           if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
             return const SizedBox.shrink();
           }
@@ -296,24 +292,45 @@ class _NotificationPageState extends State<NotificationPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // HEADER: 🔥 HIGH RISK or ⚠️ MEDIUM RISK + Date
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(riskTitle, style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13)),
-                  Text("${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(
+                    riskTitle,
+                    style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13),
+                  ),
+                  Text(
+                    "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
                 ],
               ),
               const SizedBox(height: 2),
-              Text(productName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
 
-              // This will now show correctly because productId matches the 'products' collection
+              // PRODUCT NAME
+              Text(
+                productName,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+
+              // SUBCATEGORY (CATEGORY) - Non-italic
               Text(
                 "$subCategory ($category)",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500
+                ),
               ),
 
               const SizedBox(height: 4),
-              Text("Risk Score: $riskValue/100", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+
+              // RISK SCORE
+              Text(
+                "Risk Score: $riskValue/100",
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         );

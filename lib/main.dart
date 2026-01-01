@@ -27,17 +27,30 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+  const AndroidInitializationSettings initializationSettingsAndroid =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings =
+  InitializationSettings(android: initializationSettingsAndroid);
 
   await flutterLocalNotificationsPlugin.initialize(
     initializationSettings,
     onDidReceiveNotificationResponse: (NotificationResponse response) {
-      // For local notifications, we navigate to the general list.
-      // Note: role fetching for local notifications usually requires a wrapper or state management.
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const LoginPage()), // Re-routing through login handles role check
-      );
+      if (response.payload != null) {
+        try {
+          // Convert the query string payload back into a Map
+          final Map<String, dynamic> data = Map<String, dynamic>.from(
+              Uri.splitQueryString(response.payload!)
+          );
+
+          // 🔹 Call the static handler on MyApp
+          MyApp.handleLocalNotificationClick(data);
+        } catch (e) {
+          debugPrint("Payload Error: $e");
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => const LoginPage()),
+          );
+        }
+      }
     },
   );
 
@@ -55,64 +68,94 @@ void main() async {
   await Hive.initFlutter();
   await Hive.openBox('settingsBox');
   final settingsBox = Hive.box('settingsBox');
-  themeNotifier.value = settingsBox.get('darkMode', defaultValue: false) ? ThemeMode.dark : ThemeMode.light;
+  themeNotifier.value = settingsBox.get('darkMode', defaultValue: false)
+      ? ThemeMode.dark : ThemeMode.light;
 
   runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  // 🔹 Static helper to bridge global main() and the private State class
+  static void handleLocalNotificationClick(Map<String, dynamic> data) {
+    _MyAppState.instance?._handleNotificationClick(RemoteMessage(data: data));
+  }
+
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
+  // 🔹 Static instance to keep the state accessible for notification routing
+  static _MyAppState? instance;
+
   @override
   void initState() {
     super.initState();
+    instance = this;
     _setupFirebaseMessaging();
   }
 
-  // 🔹 UPDATED: Fetch user role before deep-linking to detail pages
+  @override
+  void dispose() {
+    instance = null;
+    super.dispose();
+  }
+
   Future<void> _handleNotificationClick(RemoteMessage message) async {
     final data = message.data;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final user = FirebaseAuth.instance.currentUser;
 
-    if (uid == null) return;
-
-    // Fetch the role from Firestore to pass to the shared pages
-    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    final String role = userDoc.data()?['role'] ?? 'staff';
-
-    // 1. Handle Risk Alerts
-    if (data['alertType'] == 'risk' || data.containsKey('riskId')) {
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => RiskAlertDetailPage(
-            riskAnalysisId: data['riskId'] ?? "",
-            alertId: "",
-            userRole: role,
-          ),
-        ),
+    // 1. If not logged in, force Login
+    if (user == null) {
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
       );
+      return;
     }
-    // 2. Handle Expiry Alerts
-    else if (data.containsKey('batchId') && data.containsKey('productId')) {
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => ExpiryAlertDetailPage(
-            batchId: data['batchId'],
-            productId: data['productId'],
-            stage: data['stage'] ?? "5",
-            userRole: role,
+
+    try {
+      // 2. Get User Role for the Detail Pages
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final String role = userDoc.data()?['role'] ?? 'staff';
+
+      // 3. Navigation Logic based on Alert Type
+      if (data['alertType'] == 'risk') {
+        final String riskId = data['riskAnalysisId'] ?? data['riskId'] ?? "";
+
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => RiskAlertDetailPage(
+              riskAnalysisId: riskId,
+              alertId: "",
+              userRole: role,
+            ),
           ),
-        ),
-      );
-    }
-    // 3. Fallback to general list
-    else {
+        );
+      }
+      else if (data['alertType'] == 'expiry') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => ExpiryAlertDetailPage(
+              batchId: data['batchId'] ?? "",
+              productId: data['productId'] ?? "",
+              stage: data['stage'] ?? "5",
+              userRole: role,
+            ),
+          ),
+        );
+      }
+      else {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => NotificationPage(userRole: role)),
+        );
+      }
+    } catch (e) {
+      debugPrint("Routing Error: $e");
       navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => NotificationPage(userRole: role)),
+        MaterialPageRoute(builder: (_) => const LoginPage()),
       );
     }
   }
@@ -121,7 +164,6 @@ class _MyAppState extends State<MyApp> {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
 
-    // 🔹 Ensure topic matches index.js
     await messaging.subscribeToTopic("inventory_alerts");
 
     String? token = await messaging.getToken();
@@ -130,9 +172,15 @@ class _MyAppState extends State<MyApp> {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({'fcmToken': token});
     }
 
+    // Foreground listener
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      String title = message.notification?.title ?? "No Title";
-      String body = message.notification?.body ?? "No Body";
+      String title = message.notification?.title ?? "Inventory Alert";
+      String body = message.notification?.body ?? "";
+
+      // Create a URL-encoded payload string for local notification
+      String payload = Uri(
+          queryParameters: message.data.map((key, value) => MapEntry(key, value.toString()))
+      ).query;
 
       flutterLocalNotificationsPlugin.show(
         message.hashCode,
@@ -146,9 +194,11 @@ class _MyAppState extends State<MyApp> {
             priority: Priority.high,
           ),
         ),
+        payload: payload,
       );
     });
 
+    // Background/Terminated listeners
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _handleNotificationClick(message);
     });

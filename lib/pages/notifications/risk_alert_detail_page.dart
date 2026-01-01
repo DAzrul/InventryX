@@ -4,13 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class RiskAlertDetailPage extends StatelessWidget {
   final String riskAnalysisId;
   final String alertId;
-  final String userRole; // 🔹 Added this to fix the error in main.dart
+  final String userRole;
 
   const RiskAlertDetailPage({
     super.key,
     required this.riskAnalysisId,
     required this.alertId,
-    required this.userRole, // 🔹 Constructor now requires userRole
+    required this.userRole,
   });
 
   @override
@@ -40,14 +40,12 @@ class RiskAlertDetailPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ⚠️ HEADER
                 Text(
                   "⚠️ $riskLevel RISK DETECTED",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statusColor),
                 ),
                 const SizedBox(height: 16),
 
-                // RISK DETAILS CONTAINER
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -83,7 +81,7 @@ class RiskAlertDetailPage extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
-                // RECOMMENDATION BUTTON
+                // 🔹 CHANGED: Button text to "Recommendation"
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -94,7 +92,7 @@ class RiskAlertDetailPage extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text("View Mitigation Strategy", style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text("Recommendation", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -108,42 +106,61 @@ class RiskAlertDetailPage extends StatelessWidget {
   void _showRecommendationSheet(BuildContext context, String level, String alertId) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // Allows content to fit nicely
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        String title = level == "High" ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT";
-        List<String> steps = level == "High"
-            ? ["1. Stop all incoming orders for this product", "2. Bundle with fast-moving items", "3. Relocate to 'Quick Sale' section"]
-            : ["1. Reduce next order quantity", "2. Monitor daily sales closely", "3. Review pricing strategy"];
+        bool isHigh = level == "High";
 
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Center(child: Text("Mitigation Strategy", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-              const Divider(),
-              Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: level == "High" ? Colors.red : Colors.orange)),
-              const SizedBox(height: 10),
-              ...steps.map((step) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(step),
-              )),
+              // --- SCORING DETAILS SECTION ---
+              const Center(child: Text("Scoring Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+              const Divider(thickness: 1, height: 20),
+              Text("Risk Level: $level", style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
+              const SizedBox(height: 8),
+              const Text("Reason:", style: TextStyle(fontWeight: FontWeight.bold)),
+              if (isHigh) ...[
+                const Text("• Stock is 3× higher than forecast"),
+                const Text("• Expiry in 6 days"),
+                const Text("• Sales trend decreasing"),
+              ] else ...[
+                const Text("• Stock slightly higher than forecast"),
+                const Text("• Expiry within 14 days"),
+              ],
+
               const SizedBox(height: 20),
 
-              // 🔹 Shared Action Button (Accessible by Manager and Staff)
+              // --- ACTIONS SECTION ---
+              const Center(child: Text("Recommended Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+              const Divider(thickness: 1, height: 20),
+              Text(isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
+                  style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
+              const SizedBox(height: 10),
+              if (isHigh) ...[
+                const Text("1. Stop all incoming orders for this product"),
+                const Text("2. Bundle with fast-moving items"),
+                const Text("3. Relocate to 'Quick Sale' section"),
+              ] else ...[
+                const Text("1. Reduce next order quantity"),
+                const Text("2. Monitor daily sales closely"),
+                const Text("3. Review pricing strategy"),
+              ],
+
+              const SizedBox(height: 24),
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () async {
-                    // This updates the central 'alerts' collection so both roles see the change
                     if (alertId.isNotEmpty) {
                       await FirebaseFirestore.instance.collection('alerts').doc(alertId).update({'isDone': true});
                     }
-
-                    Navigator.pop(context); // Close BottomSheet
-                    Navigator.pop(context); // Go back to List
-
+                    Navigator.pop(context);
+                    Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Risk marked as handled ✅"))
                     );
@@ -151,6 +168,7 @@ class RiskAlertDetailPage extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3A8A),
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: const Text("Mark as Handled"),
                 ),

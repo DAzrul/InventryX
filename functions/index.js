@@ -1,15 +1,12 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
 // ==========================================================
-<<<<<<< HEAD
-// 1. RISK ANALYSIS TRIGGER (UPDATED)
-=======
 // 1. DELETE USER & DATA (Region: Singapore)
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
 // ==========================================================
 exports.deleteUserAndData = onCall({ region: "asia-southeast1" }, async (request) => {
   const userIdToDelete = request.data.userIdToDelete;
@@ -54,20 +51,12 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
 
     if (!existing.empty) return null;
 
-<<<<<<< HEAD
-    // 🔹 FIX: We must include productId so Flutter can find the Category/SubCategory
-    // Based on your risk_analysis structure, the document ID (riskId) IS usually the productId.
-=======
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
     const alertData = {
       alertType: "risk",
       riskLevel: riskLevel,
       riskValue: riskData.RiskValue || 0,
       riskAnalysisId: riskId,
-<<<<<<< HEAD
-      productId: riskId, // 🔹 ADDED THIS: Mapping riskId to productId for lookup
-=======
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
+      // 🔹 productId removed as requested
       productName: riskData.ProductName || "Unknown Product",
       isRead: false,
       isDone: false,
@@ -78,7 +67,7 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
     try {
       await db.collection("alerts").add(alertData);
       const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
-      const emoji = riskLevel === "High" ? "🔥" : "⚠️"; // Updated emoji to match your Flutter code
+      const emoji = riskLevel === "High" ? "🔥" : "⚠️";
 
       return admin.messaging().send({
         notification: {
@@ -87,7 +76,6 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
         },
         data: {
           riskAnalysisId: riskId,
-          productId: riskId, // Pass productId in data payload as well
           alertType: "risk",
           click_action: "FLUTTER_NOTIFICATION_CLICK"
         },
@@ -102,22 +90,12 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
 });
 
 // ==========================================================
-<<<<<<< HEAD
-// 2. EXPIRY ALERT LOGIC (REMAINS THE SAME)
-=======
 // 3. EXPIRY ALERT HELPER & TRIGGERS (Region: Singapore)
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
 // ==========================================================
 async function createAlertForBatch(db, batch, batchId) {
   if (!batch.expiryDate || !batch.productId) return null;
 
-<<<<<<< HEAD
-  const msiaDateString = new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Kuala_Lumpur",
-  });
-=======
   const msiaDateString = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
   const today = new Date(msiaDateString);
 
   const expDate = batch.expiryDate.toDate();
@@ -181,14 +159,10 @@ async function createAlertForBatch(db, batch, batchId) {
   }
 }
 
-<<<<<<< HEAD
-exports.onBatchChange = onDocumentWritten("batches/{batchId}", async (event) => {
-=======
 exports.onBatchChange = onDocumentWritten({
   document: "batches/{batchId}",
   region: "asia-southeast1"
 }, async (event) => {
->>>>>>> 92f7c80335241b617c9ab25174dffc5fddc2d079
   const db = admin.firestore();
   const snapshot = event.data.after;
   if (!snapshot || !snapshot.exists) return null;
@@ -198,6 +172,7 @@ exports.onBatchChange = onDocumentWritten({
 exports.dailyExpiryCheck = onSchedule({
   schedule: "every day 00:00",
   timeZone: "Asia/Kuala_Lumpur",
+  region: "asia-southeast1",
 }, async () => {
   const db = admin.firestore();
   const snapshot = await db.collection("batches").get();
