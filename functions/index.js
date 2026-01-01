@@ -1,13 +1,11 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
-<<<<<<< HEAD
 // ==========================================================
-// 1. RISK ANALYSIS TRIGGER (NEW)
+// 1. RISK ANALYSIS TRIGGER (UPDATED)
 // ==========================================================
 exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", async (event) => {
   const db = admin.firestore();
@@ -16,13 +14,11 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
   if (!snapshot || !snapshot.exists) return null;
 
   const riskData = snapshot.data();
-  const riskLevel = riskData.RiskLevel; // "High" or "Medium"
+  const riskLevel = riskData.RiskLevel;
 
-  // Only alert for High or Medium risk
   if (riskLevel === "High" || riskLevel === "Medium") {
     const riskId = event.params.riskId;
 
-    // Check if an unhandled alert for this risk already exists to avoid spam
     const existing = await db.collection("alerts")
       .where("riskAnalysisId", "==", riskId)
       .where("isDone", "==", false)
@@ -30,12 +26,14 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
 
     if (!existing.empty) return null;
 
-    // Structure for Risk Alert (Omits batchId and expiryStage)
+    // 🔹 FIX: We must include productId so Flutter can find the Category/SubCategory
+    // Based on your risk_analysis structure, the document ID (riskId) IS usually the productId.
     const alertData = {
       alertType: "risk",
       riskLevel: riskLevel,
       riskValue: riskData.RiskValue || 0,
-      riskAnalysisId: riskId, // ID from risk_analysis collection
+      riskAnalysisId: riskId,
+      productId: riskId, // 🔹 ADDED THIS: Mapping riskId to productId for lookup
       productName: riskData.ProductName || "Unknown Product",
       isRead: false,
       isDone: false,
@@ -47,7 +45,7 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
       await db.collection("alerts").add(alertData);
 
       const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
-      const emoji = riskLevel === "High" ? "⚠️" : "💡";
+      const emoji = riskLevel === "High" ? "🔥" : "⚠️"; // Updated emoji to match your Flutter code
 
       return admin.messaging().send({
         notification: {
@@ -56,6 +54,7 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
         },
         data: {
           riskAnalysisId: riskId,
+          productId: riskId, // Pass productId in data payload as well
           alertType: "risk",
           click_action: "FLUTTER_NOTIFICATION_CLICK"
         },
@@ -70,46 +69,15 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
 });
 
 // ==========================================================
-// 2. EXPIRY ALERT LOGIC (EXISTING)
+// 2. EXPIRY ALERT LOGIC (REMAINS THE SAME)
 // ==========================================================
-=======
-// --- DELETE USER & DATA (Region: Singapore) ---
-exports.deleteUserAndData = onCall({ region: "asia-southeast1" }, async (request) => {
-  const userIdToDelete = request.data.userIdToDelete;
-
-  if (!userIdToDelete) {
-    throw new HttpsError("invalid-argument", "The function must be called with a userIdToDelete.");
-  }
-
-  try {
-    // 1. Delete dari Firebase Auth
-    await admin.auth().deleteUser(userIdToDelete);
-
-    // 2. Delete document dari Firestore
-    await admin.firestore().collection("users").doc(userIdToDelete).delete();
-
-    console.log(`Successfully deleted user: ${userIdToDelete} from Singapore region`);
-    return { status: "success", message: "User deleted successfully" };
-  } catch (error) {
-    console.error("Error deleting user:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
-
-// --- HELPER FUNCTION UNTUK ALERT ---
->>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 async function createAlertForBatch(db, batch, batchId) {
   if (!batch.expiryDate || !batch.productId) return null;
 
-<<<<<<< HEAD
   const msiaDateString = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Kuala_Lumpur",
   });
   const today = new Date(msiaDateString);
-=======
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
->>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 
   const expDate = batch.expiryDate.toDate();
   const expDateString = expDate.toLocaleDateString("en-CA", {
@@ -149,7 +117,6 @@ async function createAlertForBatch(db, batch, batchId) {
     productName: productData.productName || "Unknown Product",
   };
 
-<<<<<<< HEAD
   try {
     await db.collection("alerts").add(alertData);
     const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
@@ -173,48 +140,18 @@ async function createAlertForBatch(db, batch, batchId) {
     console.error("Error:", error);
     return null;
   }
-=======
-  await db.collection("alerts").add(alertData);
-
-  const now = new Date();
-  const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-
-  let notificationTitle = stage === "expired"
-    ? `🔔 EXPIRED PRODUCT          ${dateStr}`
-    : `🔔 EXPIRY SOON (${stage} Days Left)          ${dateStr}`;
-
-  const notificationBody = `"${productData.productName}"\n"${productData.subCategory}"\n"${batch.batchNumber || "N/A"}"\nTap for more details`;
-
-  await admin.messaging().send({
-    notification: { title: notificationTitle, body: notificationBody },
-    data: { batchId, productId: batch.productId, stage, click_action: "FLUTTER_NOTIFICATION_CLICK" },
-    topic: "manager_alerts",
-  });
->>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 }
 
-// --- BATCH CHANGE (Region: Singapore) ---
-exports.onBatchChange = onDocumentWritten({
-  document: "batches/{batchId}",
-  region: "asia-southeast1"
-}, async (event) => {
+exports.onBatchChange = onDocumentWritten("batches/{batchId}", async (event) => {
   const db = admin.firestore();
-<<<<<<< HEAD
   const snapshot = event.data.after;
   if (!snapshot || !snapshot.exists) return null;
   return createAlertForBatch(db, snapshot.data(), event.params.batchId);
-=======
-  const batch = event.data.after.data();
-  if (!batch) return;
-  await createAlertForBatch(db, batch, event.params.batchId);
->>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 });
 
-// --- DAILY SCHEDULE (Region: Singapore) ---
 exports.dailyExpiryCheck = onSchedule({
   schedule: "every day 00:00",
   timeZone: "Asia/Kuala_Lumpur",
-  region: "asia-southeast1",
 }, async () => {
   const db = admin.firestore();
   const snapshot = await db.collection("batches").get();

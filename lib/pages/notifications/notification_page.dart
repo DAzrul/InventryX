@@ -247,39 +247,77 @@ class _NotificationPageState extends State<NotificationPage>
     final riskValue = alert['riskValue'] ?? 0;
     final productName = alert['productName'] ?? 'Unknown';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
+
+    // 🔹 FIX: Use the 'productId' field from the alert document
+    final productId = alert['productId'] ?? '';
+
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
     Color riskColor = riskLevel == "High" ? Colors.red : Colors.orange;
+    String riskIcon = riskLevel == "High" ? "🔥" : "⚠️";
+    String riskTitle = "$riskIcon ${riskLevel.toUpperCase()} RISK";
 
-    return _cardWrapper(
-      alertId: alertId,
-      isDone: isDone,
-      accentColor: riskColor,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => RiskAlertDetailPage(
-            riskAnalysisId: riskAnalysisId,
-            alertId: alertId,
-            userRole: widget.userRole,
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
+      builder: (context, productSnap) {
+        String category = "N/A";
+        String subCategory = "N/A";
+
+        // 🔹 Check connection state to avoid flickering N/A while loading
+        if (productSnap.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+        }
+
+        if (productSnap.hasData && productSnap.data!.exists) {
+          final product = productSnap.data!.data() as Map<String, dynamic>;
+          category = product['category'] ?? "N/A";
+          subCategory = product['subCategory'] ?? "N/A";
+
+          if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+            return const SizedBox.shrink();
+          }
+        }
+
+        return _cardWrapper(
+          alertId: alertId,
+          isDone: isDone,
+          accentColor: riskColor,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RiskAlertDetailPage(
+                riskAnalysisId: riskAnalysisId,
+                alertId: alertId,
+                userRole: widget.userRole,
+              ),
+            ),
           ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text("⚠️ $riskLevel Risk".toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, color: riskColor)),
-              Text("${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(riskTitle, style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13)),
+                  Text("${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(productName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+
+              // This will now show correctly because productId matches the 'products' collection
+              Text(
+                "$subCategory ($category)",
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+              ),
+
+              const SizedBox(height: 4),
+              Text("Risk Score: $riskValue/100", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          Text("Risk Score: $riskValue/100", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        ],
-      ),
+        );
+      },
     );
   }
 
