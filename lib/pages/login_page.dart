@@ -5,11 +5,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Destination Imports (Make sure these paths are correct, mat!)
+// Package Biometric
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/services.dart';
+
+// Destination Imports
+// (Pastikan path folder ni betul ikut projek kau)
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
 import 'forgot_password_page.dart';
+import 'verify_2fa_page.dart';
 
 class LoginPage extends StatefulWidget {
   final String? autoLoginUsername;
@@ -52,22 +58,85 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  // Controllers
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // State Variables
   bool rememberMe = false;
   bool showPassword = false;
   bool loading = false;
+
+  // Biometric Variables
+  final LocalAuthentication auth = LocalAuthentication();
+  bool _canCheckBiometrics = false; // Phone support tak?
+  bool _hasSavedUser = false; // Ada user pernah login tak?
 
   final Color primaryBlue = const Color(0xFF233E99);
 
   @override
   void initState() {
     super.initState();
-    _checkLoginStatus();
+    _checkLoginStatus(); // Cek Auto Login
+    _checkBiometricsSupport(); // Cek Support Jari/FaceID
   }
 
+  // --- 1. LOGIC BIOMETRIC SETUP ---
+  Future<void> _checkBiometricsSupport() async {
+    late bool canCheckBiometrics;
+    try {
+      canCheckBiometrics = await auth.canCheckBiometrics;
+    } on PlatformException catch (_) {
+      canCheckBiometrics = false;
+    }
+
+    // Cek SharedPreferences: Kita hanya benarkan biometric kalau ada data user tersimpan
+    final prefs = await SharedPreferences.getInstance();
+    final String? savedId = prefs.getString('savedUserId');
+
+    if (!mounted) return;
+    setState(() {
+      _canCheckBiometrics = canCheckBiometrics;
+      _hasSavedUser = savedId != null;
+    });
+  }
+
+  // --- 2. LOGIC BIOMETRIC ACTION ---
+  Future<void> _authenticate() async {
+    bool authenticated = false;
+    try {
+      authenticated = await auth.authenticate(
+        localizedReason: 'Scan your face or fingerprint to login securely',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
+    } on PlatformException catch (e) {
+      _showSnack("Biometric Error: ${e.message}");
+      return;
+    }
+
+    if (!mounted) return;
+
+    if (authenticated) {
+      // BIOMETRIC LULUS! Ambil data lama & Login terus
+      final prefs = await SharedPreferences.getInstance();
+      String? username = prefs.getString('savedUsername');
+      String? role = prefs.getString('savedRole');
+      String? userId = prefs.getString('savedUserId');
+
+      if (username != null && role != null && userId != null) {
+        await LoginPage._recordActivity(userId, "Biometric Login", "User logged in via FaceID/Fingerprint.");
+        _navigateToHomePage(username, role, userId);
+      } else {
+        _showSnack("Session expired. Please login with password first.");
+      }
+    }
+  }
+
+  // --- 3. LOGIC AUTO LOGIN (APP START) ---
   Future<void> _checkLoginStatus() async {
     if (widget.autoLoginUsername != null) {
       usernameController.text = widget.autoLoginUsername!;
@@ -78,6 +147,7 @@ class _LoginPageState extends State<LoginPage> {
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final String? savedUserId = prefs.getString('savedUserId');
 
+    // Kalau ada tiket "Trusted Device" (isLoggedIn = true)
     if (isLoggedIn && savedUserId != null) {
       if (!await _isNetworkAvailable()) {
         final savedUsername = prefs.getString('savedUsername');
@@ -95,7 +165,9 @@ class _LoginPageState extends State<LoginPage> {
           Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
           String freshUsername = userData['username'];
           String freshRole = userData['role'];
+
           if (userData['status'] == 'Active') {
+            // Update data latest & Masuk Home
             await prefs.setString('savedUsername', freshUsername);
             await prefs.setString('savedRole', freshRole);
             await LoginPage._recordActivity(savedUserId, "Auto Login", "Session restored via auto-login.");
@@ -112,8 +184,8 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // --- 4. LOGIC MANUAL LOGIN (USERNAME/PASS) ---
   Future<void> loginUser() async {
-    // FORCE LOWERCASE mat, biar match dengan pendaftaran!
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
 
@@ -149,24 +221,49 @@ class _LoginPageState extends State<LoginPage> {
       String role = userData['role'];
       String userId = userSnap.docs.first.id;
 
+      // CHECK 2FA STATUS DARI DATABASE
+      bool is2FAEnabled = userData['is2FAEnabled'] ?? false;
+
       if (userData['status'] != 'Active') {
         _showSnack("Account disabled. Please contact your administrator.");
         setState(() => loading = false);
         return;
       }
 
+      // Login ke Firebase
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
 
-      if (rememberMe) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isLoggedIn', true);
-        await prefs.setString('savedUsername', username);
-        await prefs.setString('savedRole', role);
-        await prefs.setString('savedUserId', userId);
+      // --- LOGIC PENENTUAN 2FA ---
+      if (is2FAEnabled) {
+        // Kena OTP! Bawa ke Verify Page
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Verify2FAPage(
+              userId: userId,
+              username: username,
+              role: role,
+              email: email,
+              rememberMe: rememberMe,
+            ),
+          ),
+        );
+      } else {
+        // TAK PAYAH OTP! Login Biasa
+        await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
+
+        if (rememberMe) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLoggedIn', true); // Cop Trusted Device
+          await prefs.setString('savedUsername', username);
+          await prefs.setString('savedRole', role);
+          await prefs.setString('savedUserId', userId);
+        }
+
+        _navigateToHomePage(username, role, userId);
       }
 
-      _navigateToHomePage(username, role, userId);
     } on FirebaseAuthException catch (e) {
       String errorMsg = "Login Failed: ${e.message}";
       if (e.code == 'wrong-password') errorMsg = "Incorrect password.";
@@ -200,36 +297,93 @@ class _LoginPageState extends State<LoginPage> {
       SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating, backgroundColor: primaryBlue)
   );
 
+  // --- UI SECTION (Dah Fix Keyboard & Nama App) ---
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 60),
-                  Center(child: Image.asset("assets/logo.png", height: 100)), // Updated path mat
-                  const SizedBox(height: 50),
-                  const Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
-                  const SizedBox(height: 40),
-                  _buildModernField(usernameController, Icons.person_outline_rounded, label: "Email or Username"),
-                  const SizedBox(height: 25),
-                  _buildModernField(passwordController, Icons.lock_outline_rounded, label: "Password", isPassword: true),
-                  const SizedBox(height: 15),
-                  _buildUtilsRow(),
-                  const SizedBox(height: 40),
-                  _buildLoginButton(),
-                ],
+    return GestureDetector(
+      // Logic: Tekan luar field, keyboard tutup
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        // Logic: Resize UI bila keyboard naik supaya tak tertutup
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 30),
+
+                      // LOGO
+                      Image.asset("assets/logo.png", height: 100),
+                      const SizedBox(height: 15),
+
+                      // NAMA APP
+                      Text(
+                        "InventryX",
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: primaryBlue,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+
+                      const SizedBox(height: 40),
+
+                      // Tajuk Sign In
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      _buildModernField(usernameController, Icons.person_outline_rounded, label: "Email or Username"),
+                      const SizedBox(height: 25),
+                      _buildModernField(passwordController, Icons.lock_outline_rounded, label: "Password", isPassword: true),
+
+                      const SizedBox(height: 15),
+                      _buildUtilsRow(),
+
+                      const SizedBox(height: 40),
+                      _buildLoginButton(),
+
+                      // BUTANG BIOMETRIC (FACE ID / FINGERPRINT)
+                      if (_canCheckBiometrics && _hasSavedUser) ...[
+                        const SizedBox(height: 30),
+                        Center(
+                          child: Column(
+                            children: [
+                              IconButton(
+                                iconSize: 60,
+                                icon: Icon(Icons.lock_person_rounded, color: primaryBlue),
+                                onPressed: _authenticate,
+                                tooltip: "Secure Login",
+                              ),
+                              const SizedBox(height: 5),
+                              const Text("Tap to unlock", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // Jarak bawah untuk keyboard breathing room
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-          if (loading) _buildBlurLoading(),
-        ],
+            if (loading) _buildBlurLoading(),
+          ],
+        ),
       ),
     );
   }
@@ -291,8 +445,8 @@ class _LoginPageState extends State<LoginPage> {
       height: 65,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]), // Modern syntax!
-        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.85)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22))),
@@ -303,7 +457,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildBlurLoading() => Container(
-      color: Colors.white.withValues(alpha: 0.7),
+      color: Colors.white.withOpacity(0.7),
       child: Center(child: CircularProgressIndicator(color: primaryBlue))
   );
 }

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+// Pastikan path widget ini betul mengikut struktur folder anda
 import 'widgets/user_header_status.dart';
 import 'widgets/user_info_fields.dart';
 
@@ -16,8 +17,7 @@ class UserDeletePage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.loggedInUsername,
-    required this.username,
-    required Map<String, dynamic> userData,
+    required this.username, required Map<String, dynamic> userData,
   });
 
   @override
@@ -81,7 +81,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
     }
   }
 
-  // --- [UPDATE 1] LOGIC ACTIVATE DENGAN PREMIUM MESSAGES ---
+  // --- LOGIC ACTIVATE ACCOUNT ---
   void _activateUserStatus() async {
     if (!await _isNetworkAvailable()) {
       _showStyledSnackBar("No internet connection.", isError: true);
@@ -100,9 +100,17 @@ class _UserDeletePageState extends State<UserDeletePage> {
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({'status': 'Active'});
-      if (!mounted) return;
 
-      // [FIX] Success Dialog
+      // Simpan aktiviti pengaktifan
+      await FirebaseFirestore.instance.collection('users').doc(widget.userId).collection('activities').add({
+        'action': 'Account Activated',
+        'description': 'Admin reactivated this account.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'iconCode': Icons.bolt_rounded.codePoint,
+        'performedBy': widget.loggedInUsername,
+      });
+
+      if (!mounted) return;
       _showSuccessDialog("Account Activated!", "User access has been restored.");
 
     } catch (e) {
@@ -111,7 +119,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
     }
   }
 
-  // --- [UPDATE 2] LOGIC DELETE DENGAN PREMIUM MESSAGES ---
+  // --- LOGIC PERMANENT DELETE (CLOUD FUNCTIONS) ---
   void _deleteUserPermanently() async {
     if (!await _isNetworkAvailable()) {
       _showStyledSnackBar("No internet connection.", isError: true);
@@ -120,7 +128,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
 
     bool confirm = await _showActionConfirmDialog(
       title: "Permanent Deletion",
-      message: "Warning: All data for $_displayName will be wiped permanently. Proceed?",
+      message: "Warning: All data for $_displayName will be wiped permanently. This action cannot be undone. Proceed?",
       confirmText: "DELETE FOREVER",
       confirmColor: Colors.red,
     );
@@ -129,22 +137,26 @@ class _UserDeletePageState extends State<UserDeletePage> {
     setState(() => _isLoading = true);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('deleteUserAndData');
+      // PENTING: Gunakan region asia-southeast1 (Singapore) mengikut lokasi DB anda
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-southeast1')
+          .httpsCallable('deleteUserAndData');
+
       final result = await callable.call({'userIdToDelete': widget.userId});
 
       if (result.data['status'] == 'success' && mounted) {
-        // [FIX] Success Dialog (Merah sebab delete)
         _showSuccessDialog("Account Deleted!", "User data has been wiped permanently.", isDelete: true);
+      } else {
+        throw Exception(result.data['message'] ?? "Unknown error occurred.");
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showStyledSnackBar("Delete failed: $e", isError: true);
+        _showStyledSnackBar("Deletion failed: $e", isError: true);
       }
     }
   }
 
-  // --- [UPDATE 3] WIDGET SNACKBAR PREMIUM ---
+  // --- WIDGET SNACKBAR ---
   void _showStyledSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -157,60 +169,38 @@ class _UserDeletePageState extends State<UserDeletePage> {
             ),
             const SizedBox(width: 15),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    isError ? "Error" : "Success",
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    message,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: Text(
+                message,
+                style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ),
           ],
         ),
         backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         margin: const EdgeInsets.all(20),
-        elevation: 10,
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  // --- [UPDATE 4] DIALOG SUCCESS PREMIUM ---
+  // --- SUCCESS DIALOG ---
   void _showSuccessDialog(String title, String message, {bool isDelete = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: Colors.white,
         child: Padding(
           padding: const EdgeInsets.all(30),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: (isDelete ? Colors.red : Colors.green).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isDelete ? Icons.delete_forever_rounded : Icons.check_circle_rounded,
-                  color: isDelete ? Colors.red : Colors.green,
-                  size: 50,
-                ),
+              Icon(
+                isDelete ? Icons.delete_forever_rounded : Icons.check_circle_rounded,
+                color: isDelete ? Colors.red : Colors.green,
+                size: 60,
               ),
               const SizedBox(height: 20),
               Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -222,12 +212,12 @@ class _UserDeletePageState extends State<UserDeletePage> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isDelete ? Colors.red : Colors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
                   ),
                   onPressed: () {
                     Navigator.pop(context); // Tutup dialog
-                    Navigator.pop(context); // Balik ke list user
+                    Navigator.pop(context); // Balik ke UserListPage
                   },
                   child: const Text("OK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
@@ -243,7 +233,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
     return await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
         content: Text(message),
         actions: [
@@ -296,10 +286,8 @@ class _UserDeletePageState extends State<UserDeletePage> {
               ),
             ),
             const SizedBox(height: 30),
-
             const Text("Identity Information", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 15),
-
             UserInfoFields(
               emailController: _emailController,
               nameController: _nameController,
@@ -308,9 +296,7 @@ class _UserDeletePageState extends State<UserDeletePage> {
               roleController: _roleController,
               isReadOnly: true,
             ),
-
             const SizedBox(height: 40),
-
             if (_currentStatus == 'Inactive')
               Column(
                 children: [
@@ -321,7 +307,6 @@ class _UserDeletePageState extends State<UserDeletePage> {
               )
             else
               _buildActiveNotice(),
-
             const SizedBox(height: 40),
           ],
         ),

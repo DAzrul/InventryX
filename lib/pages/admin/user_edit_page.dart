@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Pastikan path widget ni betul ikut folder kau
@@ -10,12 +11,10 @@ class UserEditPage extends StatefulWidget {
   final String userId;
   final String loggedInUsername;
 
-  // Aku bersihkan constructor ni sikit biar kemas
   const UserEditPage({
     super.key,
     required this.userId,
     required this.loggedInUsername, required username, required Map<String, dynamic> userData,
-    // Parameter lain tak perlu sebab kita fetch fresh data dari DB
   });
 
   @override
@@ -64,17 +63,15 @@ class _UserEditPageState extends State<UserEditPage> {
     }
   }
 
-  // --- [UPDATE 1] LOGIC SAVE DENGAN PREMIUM MESSAGES ---
+  // --- LOGIC: SAVE CHANGES (Profile Update Biasa) ---
   void _saveChanges() async {
     if (_isLoading) return;
 
-    // 1. Check Network
     if (!await _isNetworkAvailable()) {
       _showStyledSnackBar("No internet connection.", isError: true);
       return;
     }
 
-    // 2. Validation
     if (_nameController.text.isEmpty || _roleController.text.isEmpty) {
       _showStyledSnackBar("Name and Role cannot be empty!", isError: true);
       return;
@@ -83,7 +80,6 @@ class _UserEditPageState extends State<UserEditPage> {
     setState(() => _isLoading = true);
 
     try {
-      // 3. Update Firestore
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'name': _nameController.text.trim(),
         'phoneNo': _phoneController.text.trim(),
@@ -93,18 +89,86 @@ class _UserEditPageState extends State<UserEditPage> {
       });
 
       if (!mounted) return;
-
-      // 4. Show Success Dialog
-      _showSuccessDialog();
+      _showSuccessDialog(); // Ini dialog, user tekan OK baru keluar
 
     } catch (e) {
-      // 5. Show Error SnackBar
       _showStyledSnackBar("Update failed: $e", isError: true);
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM ---
+  // --- [UPDATED LOGIC] ADMIN RESET PASSWORD + AUTO BACK ---
+  Future<void> _sendPasswordResetEmail() async {
+    String email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      _showStyledSnackBar("User email is missing/invalid.", isError: true);
+      return;
+    }
+
+    // 1. Confirmation Dialog
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Reset User Password?", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text("Send a password reset email to $email?\n\nThe user will receive a link to create a new password securely."),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey))
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Send Email", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 2. Firebase Send Email
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
+      // 3. Save Log Activity
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('activities')
+          .add({
+        'action': 'Admin Reset Password',
+        'description': 'Admin sent a password reset email link.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'iconCode': Icons.lock_reset_rounded.codePoint,
+        'performedBy': widget.loggedInUsername,
+      });
+
+      // 4. Show Snackbar Success
+      _showStyledSnackBar("Reset link sent successfully to $email");
+
+      // 5. [AUTO BACK LOGIC] Tunggu 1.5 saat, lepas tu balik ke User List
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (mounted) {
+        Navigator.pop(context); // Balik ke UserListPage
+      }
+
+    } on FirebaseAuthException catch (e) {
+      String err = e.message ?? "Failed to send email.";
+      if (e.code == 'user-not-found') err = "This email is not registered in Auth.";
+      _showStyledSnackBar(err, isError: true);
+      if (mounted) setState(() => _isLoading = false); // Stop loading kalau error
+    } catch (e) {
+      _showStyledSnackBar("System Error: $e", isError: true);
+      if (mounted) setState(() => _isLoading = false);
+    }
+    // Nota: Kalau success, kita tak perlu set isLoading false sbb kita dah pop page
+  }
+
+  // --- WIDGET SNACKBAR PREMIUM ---
   void _showStyledSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -137,8 +201,8 @@ class _UserEditPageState extends State<UserEditPage> {
             ),
           ],
         ),
-        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
-        behavior: SnackBarBehavior.floating, // Terapung
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: const EdgeInsets.all(20),
         elevation: 10,
@@ -147,7 +211,7 @@ class _UserEditPageState extends State<UserEditPage> {
     );
   }
 
-  // --- [UPDATE 3] DIALOG SUCCESS PREMIUM ---
+  // --- DIALOG SUCCESS PREMIUM ---
   void _showSuccessDialog() {
     showDialog(
       context: context,
@@ -220,6 +284,7 @@ class _UserEditPageState extends State<UserEditPage> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
         child: Column(
           children: [
+            // HEADER & STATUS CARD
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -236,7 +301,10 @@ class _UserEditPageState extends State<UserEditPage> {
                 isLoading: _isLoading,
               ),
             ),
+
             const SizedBox(height: 30),
+
+            // USER INFO FIELDS
             UserInfoFields(
               emailController: _emailController,
               nameController: _nameController,
@@ -245,7 +313,10 @@ class _UserEditPageState extends State<UserEditPage> {
               roleController: _roleController,
               isReadOnly: false,
             ),
+
             const SizedBox(height: 40),
+
+            // SAVE BUTTON
             SizedBox(
               width: double.infinity,
               height: 60,
@@ -260,6 +331,24 @@ class _UserEditPageState extends State<UserEditPage> {
                 child: const Text('Save Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // RESET PASSWORD BUTTON
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: TextButton.icon(
+                onPressed: _sendPasswordResetEmail,
+                icon: const Icon(Icons.lock_reset_rounded, color: Colors.red),
+                label: const Text('Send Password Reset Email', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.red)),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.red.withOpacity(0.05),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+              ),
+            ),
+
             const SizedBox(height: 40),
           ],
         ),

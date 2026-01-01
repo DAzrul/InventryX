@@ -1,9 +1,11 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
+<<<<<<< HEAD
 // ==========================================================
 // 1. RISK ANALYSIS TRIGGER (NEW)
 // ==========================================================
@@ -70,13 +72,44 @@ exports.onRiskAnalysisWritten = onDocumentWritten("risk_analysis/{riskId}", asyn
 // ==========================================================
 // 2. EXPIRY ALERT LOGIC (EXISTING)
 // ==========================================================
+=======
+// --- DELETE USER & DATA (Region: Singapore) ---
+exports.deleteUserAndData = onCall({ region: "asia-southeast1" }, async (request) => {
+  const userIdToDelete = request.data.userIdToDelete;
+
+  if (!userIdToDelete) {
+    throw new HttpsError("invalid-argument", "The function must be called with a userIdToDelete.");
+  }
+
+  try {
+    // 1. Delete dari Firebase Auth
+    await admin.auth().deleteUser(userIdToDelete);
+
+    // 2. Delete document dari Firestore
+    await admin.firestore().collection("users").doc(userIdToDelete).delete();
+
+    console.log(`Successfully deleted user: ${userIdToDelete} from Singapore region`);
+    return { status: "success", message: "User deleted successfully" };
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// --- HELPER FUNCTION UNTUK ALERT ---
+>>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 async function createAlertForBatch(db, batch, batchId) {
   if (!batch.expiryDate || !batch.productId) return null;
 
+<<<<<<< HEAD
   const msiaDateString = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Kuala_Lumpur",
   });
   const today = new Date(msiaDateString);
+=======
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+>>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 
   const expDate = batch.expiryDate.toDate();
   const expDateString = expDate.toLocaleDateString("en-CA", {
@@ -116,6 +149,7 @@ async function createAlertForBatch(db, batch, batchId) {
     productName: productData.productName || "Unknown Product",
   };
 
+<<<<<<< HEAD
   try {
     await db.collection("alerts").add(alertData);
     const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
@@ -139,18 +173,48 @@ async function createAlertForBatch(db, batch, batchId) {
     console.error("Error:", error);
     return null;
   }
+=======
+  await db.collection("alerts").add(alertData);
+
+  const now = new Date();
+  const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+  let notificationTitle = stage === "expired"
+    ? `🔔 EXPIRED PRODUCT          ${dateStr}`
+    : `🔔 EXPIRY SOON (${stage} Days Left)          ${dateStr}`;
+
+  const notificationBody = `"${productData.productName}"\n"${productData.subCategory}"\n"${batch.batchNumber || "N/A"}"\nTap for more details`;
+
+  await admin.messaging().send({
+    notification: { title: notificationTitle, body: notificationBody },
+    data: { batchId, productId: batch.productId, stage, click_action: "FLUTTER_NOTIFICATION_CLICK" },
+    topic: "manager_alerts",
+  });
+>>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 }
 
-exports.onBatchChange = onDocumentWritten("batches/{batchId}", async (event) => {
+// --- BATCH CHANGE (Region: Singapore) ---
+exports.onBatchChange = onDocumentWritten({
+  document: "batches/{batchId}",
+  region: "asia-southeast1"
+}, async (event) => {
   const db = admin.firestore();
+<<<<<<< HEAD
   const snapshot = event.data.after;
   if (!snapshot || !snapshot.exists) return null;
   return createAlertForBatch(db, snapshot.data(), event.params.batchId);
+=======
+  const batch = event.data.after.data();
+  if (!batch) return;
+  await createAlertForBatch(db, batch, event.params.batchId);
+>>>>>>> e244d6a6aec4b2818ccdf157dd2affa7c70900ce
 });
 
+// --- DAILY SCHEDULE (Region: Singapore) ---
 exports.dailyExpiryCheck = onSchedule({
   schedule: "every day 00:00",
   timeZone: "Asia/Kuala_Lumpur",
+  region: "asia-southeast1",
 }, async () => {
   const db = admin.firestore();
   const snapshot = await db.collection("batches").get();
