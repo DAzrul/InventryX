@@ -56,6 +56,7 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
       riskLevel: riskLevel,
       riskValue: riskData.RiskValue || 0,
       riskAnalysisId: riskId,
+      // 🔹 productId removed as requested
       productName: riskData.ProductName || "Unknown Product",
       isRead: false,
       isDone: false,
@@ -66,7 +67,7 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
     try {
       await db.collection("alerts").add(alertData);
       const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
-      const emoji = riskLevel === "High" ? "⚠️" : "💡";
+      const emoji = riskLevel === "High" ? "🔥" : "⚠️";
 
       return admin.messaging().send({
         notification: {
