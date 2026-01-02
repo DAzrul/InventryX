@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:excel/excel.dart' as ex; // Pastikan excel version ^4.0.6
+import 'package:excel/excel.dart' as ex;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -40,19 +40,19 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
     _tabController = TabController(length: 3, vsync: this);
   }
 
-  // --- LOGIC 1: EXPORT KE PDF (PRINT & SAVE) ---
+  // --- LOGIC 1: EXPORT KE PDF ---
   Future<void> _generateAndPrintPDF() async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
 
     try {
       final pdf = pw.Document();
-
       // Tarik Data Fresh
       final productsSnap = await _db.collection('products').get();
-      final forecastSnap = await _db.collection('forecasts').orderBy('forecastDate').get();
-      final riskSnap = await _db.collection('risk_analysis').get();
 
-      // Layout PDF
+      // Optional: Tarik data forecast & risk kalau nak masukkan dalam PDF juga
+      // final forecastSnap = await _db.collection('forecasts').get();
+      // final riskSnap = await _db.collection('risk_analysis').get();
+
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -65,7 +65,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
               // TABLE 1: INVENTORY
               pw.Text("1. Low Stock Alert (< 10 units)", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 10),
-              pw.Table.fromTextArray( // [FIXED] Guna Table.fromTextArray (Standard version stable)
+              pw.Table.fromTextArray(
                 context: context,
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
@@ -78,61 +78,30 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                   d['price']?.toString() ?? '0.00'
                 ]).toList(),
               ),
-              pw.SizedBox(height: 20),
-
-              // TABLE 2: FORECAST
-              pw.Text("2. Sales Forecast", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-              pw.Table.fromTextArray(
-                headers: ['Date', 'Product', 'Predicted Demand'],
-                data: forecastSnap.docs.take(10).map((d) {
-                  String dateStr = d['forecastDate'] is Timestamp
-                      ? DateFormat('dd/MM/yyyy').format((d['forecastDate'] as Timestamp).toDate())
-                      : '-';
-                  return [dateStr, d['productName'] ?? '-', d['predictedDemand']?.toString() ?? '0'];
-                }).toList(),
-              ),
-              pw.SizedBox(height: 20),
-
-              // TABLE 3: RISK
-              pw.Text("3. Risk Analysis", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-              pw.Table.fromTextArray(
-                headers: ['Product', 'Risk Factor', 'Level'],
-                data: riskSnap.docs.map((d) => [
-                  d['ProductName'] ?? '-',
-                  d['RiskID'] ?? '-',
-                  d['RiskLevel'] ?? '-'
-                ]).toList(),
-              ),
             ];
           },
         ),
       );
 
       Navigator.pop(context); // Tutup loading
-
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf.save(),
         name: 'Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
       );
 
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error generating PDF: $e"), backgroundColor: Colors.red));
     }
   }
 
-  // --- LOGIC 2: EXPORT KE EXCEL (SAVE TO STORAGE) ---
+  // --- LOGIC 2: EXPORT KE EXCEL ---
   Future<void> _generateAndSaveExcel() async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
 
     try {
       var excel = ex.Excel.createExcel();
-
-      // Sheet 1: Inventory
       ex.Sheet sheet1 = excel['Inventory'];
-      // [FIXED] Guna ex.TextCellValue ikut version 4.0.6
       sheet1.appendRow([ex.TextCellValue('Product Name'), ex.TextCellValue('Category'), ex.TextCellValue('Stock'), ex.TextCellValue('Price')]);
 
       final products = await _db.collection('products').get();
@@ -145,42 +114,22 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         ]);
       }
 
-      // Sheet 2: Forecast
-      ex.Sheet sheet2 = excel['Forecast'];
-      sheet2.appendRow([ex.TextCellValue('Date'), ex.TextCellValue('Product'), ex.TextCellValue('Predicted Demand')]);
-
-      final forecasts = await _db.collection('forecasts').get();
-      for (var doc in forecasts.docs) {
-        String dateStr = doc['forecastDate'] is Timestamp
-            ? DateFormat('yyyy-MM-dd').format((doc['forecastDate'] as Timestamp).toDate())
-            : '';
-        sheet2.appendRow([
-          ex.TextCellValue(dateStr),
-          ex.TextCellValue(doc['productName'] ?? ''),
-          ex.IntCellValue(int.tryParse(doc['predictedDemand'].toString()) ?? 0),
-        ]);
-      }
-
       var fileBytes = excel.save();
       final directory = await getApplicationDocumentsDirectory();
       final path = '${directory.path}/Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       final file = File(path);
 
       await file.writeAsBytes(fileBytes!);
-
       Navigator.pop(context);
-
       await OpenFilex.open(file.path);
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Excel saved & opened!"), backgroundColor: Colors.green));
-
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error Excel: $e"), backgroundColor: Colors.red));
     }
   }
 
-  // --- NAVIGASI (FIXED ADMINPAGE ERROR) ---
+  // --- NAVIGASI ADMIN ---
   void _onItemTapped(int index) {
     if (index == 0) {
       final user = FirebaseAuth.instance.currentUser;
@@ -189,7 +138,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
           builder: (context) => AdminPage(
             username: widget.loggedInUsername ?? "Admin",
             userId: user?.uid ?? '',
-            loggedInUsername: widget.loggedInUsername ?? "Admin", // [FIXED] Tambah parameter ini!
+            loggedInUsername: widget.loggedInUsername ?? "Admin",
           ),
         ), (Route<dynamic> route) => false,
       );
@@ -227,6 +176,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         });
   }
 
+  // --- NAVBAR ---
   Widget _buildFloatingNavBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -260,13 +210,17 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
     );
   }
 
+  // --- [FIX] HEADER TANPA BACK BUTTON ---
   Widget _buildReportUI(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
         title: const Text("Reports & Analytics", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E), fontSize: 20)),
         centerTitle: true, backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20), onPressed: () => Navigator.pop(context)),
+
+        // [FIX] Buang butang back
+        automaticallyImplyLeading: false,
+
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -335,11 +289,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   }
 }
 
-// ======================== TABS: KEKAL SAMA MACAM SEBELUM NI ========================
-// Pastikan kau copy balik class _InventoryReportTab, _ForecastReportTab, _RiskReportTab
-// dari kod sebelum ni dan letak kat bawah fail ni.
-// Aku ringkaskan supaya mesej tak kena potong.
-
+// 1. INVENTORY TAB
 class _InventoryReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   const _InventoryReportTab({required this.db});
@@ -364,8 +314,8 @@ class _InventoryReportTab extends StatelessWidget {
           const SizedBox(height: 15), _buildCleanBarChart(catData),
           const SizedBox(height: 35), const Text("Critical Stock Alerts", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.redAccent)),
           const SizedBox(height: 15),
-          if (docs.where((d) => (d['currentStock'] ?? 0) <= 10).isEmpty) _buildEmptyAlert()
-          else ...docs.where((d) => (d['currentStock'] ?? 0) <= 10).map((d) => _buildModernAlertTile(d['productName'], "${d['currentStock']} units left in stock", Icons.warning_amber_rounded, Colors.red)),
+          if (docs.where((d) => (int.tryParse(d['currentStock'].toString()) ?? 0) <= 10).isEmpty) _buildEmptyAlert()
+          else ...docs.where((d) => (int.tryParse(d['currentStock'].toString()) ?? 0) <= 10).map((d) => _buildModernAlertTile(d['productName'], "${d['currentStock']} units left", Icons.warning_amber_rounded, Colors.red)),
         ]);
       },
     );
@@ -376,6 +326,7 @@ class _InventoryReportTab extends StatelessWidget {
   Widget _buildModernAlertTile(String name, String subtitle, IconData icon, Color color) { return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: color.withOpacity(0.08)), boxShadow: [BoxShadow(color: color.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1A1C1E))), const SizedBox(height: 4), Text(subtitle, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))])), const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 14)])); }
 }
 
+// 2. FORECAST TAB
 class _ForecastReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   const _ForecastReportTab({required this.db});
@@ -385,7 +336,7 @@ class _ForecastReportTab extends StatelessWidget {
       stream: db.collection('forecasts').orderBy('forecastDate', descending: false).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No forecast data available.", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
+        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No forecast data.", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
         List<FlSpot> spots = [];
         double maxDemand = 0;
@@ -395,7 +346,7 @@ class _ForecastReportTab extends StatelessWidget {
           if (val > maxDemand) maxDemand = val;
           spots.add(FlSpot(i.toDouble(), val));
         }
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildHeader("Demand Prediction Trend"), const SizedBox(height: 20), _buildLineChart(spots, maxDemand), const SizedBox(height: 35), _buildHeader("Upcoming Predictions"), const SizedBox(height: 15), ...docs.take(10).map((d) { final data = d.data() as Map<String, dynamic>; String dateStr = "N/A"; if (data['forecastDate'] is Timestamp) { dateStr = DateFormat('dd MMM yyyy').format((data['forecastDate'] as Timestamp).toDate()); } return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown Product', data['predictedDemand']?.toString() ?? "0"); })]);
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildHeader("Demand Prediction Trend"), const SizedBox(height: 20), _buildLineChart(spots, maxDemand), const SizedBox(height: 35), _buildHeader("Upcoming Predictions"), const SizedBox(height: 15), ...docs.take(10).map((d) { final data = d.data() as Map<String, dynamic>; String dateStr = "N/A"; if (data['forecastDate'] is Timestamp) { dateStr = DateFormat('dd MMM yyyy').format((data['forecastDate'] as Timestamp).toDate()); } return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', data['predictedDemand']?.toString() ?? "0"); })]);
       },
     );
   }
@@ -404,6 +355,7 @@ class _ForecastReportTab extends StatelessWidget {
   Widget _buildForecastTile(String date, String productName, String demand) { return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 2), Text("Date: $date", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.bold))])), const SizedBox(width: 10), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(demand, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.purple)), const Text("units", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey))])])); }
 }
 
+// 3. RISK TAB
 class _RiskReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   const _RiskReportTab({required this.db});
@@ -413,9 +365,9 @@ class _RiskReportTab extends StatelessWidget {
       stream: db.collection('risk_analysis').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
+        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown Product', data['RiskID'] ?? 'Unknown Risk', "Risk Value: ${data['RiskValue'] ?? 0}", data['RiskLevel'] ?? 'Low'); })]);
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown', data['RiskID'] ?? 'Unknown', "Risk Value: ${data['RiskValue'] ?? 0}", data['RiskLevel'] ?? 'Low'); })]);
       },
     );
   }

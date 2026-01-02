@@ -52,8 +52,8 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
       final pdf = pw.Document();
       // Tarik Data Fresh
       final productsSnap = await _db.collection('products').get();
-      final forecastSnap = await _db.collection('forecasts').orderBy('forecastDate').get();
-      final riskSnap = await _db.collection('risk_analysis').get();
+      // final forecastSnap = await _db.collection('forecasts').orderBy('forecastDate').get(); // Optional
+      // final riskSnap = await _db.collection('risk_analysis').get(); // Optional
 
       pdf.addPage(
         pw.MultiPage(
@@ -212,13 +212,17 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
     );
   }
 
+  // --- [FIX] BUANG BUTANG BACK DARI APP BAR ---
   Widget _buildReportUI(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
         title: const Text("Reports & Analytics", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E), fontSize: 20)),
         centerTitle: true, backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20), onPressed: () => Navigator.pop(context)),
+
+        // [FIX] Buang butang back (leading)
+        automaticallyImplyLeading: false,
+
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),

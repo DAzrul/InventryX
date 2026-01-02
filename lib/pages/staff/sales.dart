@@ -26,7 +26,6 @@ class _SalesPageState extends State<SalesPage> {
   final Color primaryColor = const Color(0xFF203288);
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  // [FIX] Terima context, currentUsername, uid
   void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
       // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
@@ -100,7 +99,6 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
-  // [FIX] Terima parameter Context, Username, UID
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       // [FIX] Margin 12 bottom supaya sama dengan Dashboard
@@ -150,17 +148,15 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
+  // --- UI Components Lain ---
   Widget _buildSalesHome() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // [FIX] Hilangkan butang back
+        automaticallyImplyLeading: false,
         title: const Text(
           "Sales Management",
           style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.w800, fontSize: 18),

@@ -146,7 +146,7 @@ class _StockPageState extends State<StockPage> {
   Widget _buildStockHome() {
     return Column(
       children: [
-        _buildStockHeader(),
+        _buildStockHeader(), // Header tanpa back button
         _buildCombinedSummary(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -165,16 +165,16 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
+  // --- [FIX] HEADER TANPA BACK BUTTON ---
   Widget _buildStockHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
       color: Colors.white,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.center, // Center title
         children: [
-          IconButton(icon: const Icon(Icons.arrow_back_ios_new, size: 20), onPressed: () => Navigator.pop(context)),
+          // IconButton back dibuang di sini
           const Text("Inventory Management", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-          const SizedBox(width: 40),
         ],
       ),
     );
@@ -271,7 +271,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- [KEMASKINI UTAMA] LOGIC RESPONSIVE CARD UTK STOCK ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -283,11 +282,11 @@ class _StockPageState extends State<StockPage> {
           return (selectedCategory == 'All' || d['category'] == selectedCategory) && name.contains(searchQuery.toLowerCase());
         }).toList();
 
-        // LOGIC RESPONSIVE SAIZ
+        // Logic Responsif Saiz
         final screenWidth = MediaQuery.of(context).size.width;
         final isSmall = screenWidth < 360;
         final isTablet = screenWidth >= 600;
-        final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // SAMA DGN ADMIN
+        final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // Saiz seragam
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
@@ -354,7 +353,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- WIDGET PLACEHOLDER BARU (White Box, Blue Border) ---
+  // --- WIDGET PLACEHOLDER BARU ---
   Widget _buildPlaceholder(double size) {
     return Container(
       width: size,

@@ -9,7 +9,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../user_list_page.dart';
 
 class UserManagementPage extends StatefulWidget {
-  final String username;
+  final String username; // Ini username Admin yang sedang login
   const UserManagementPage({super.key, required this.username});
 
   @override
@@ -25,27 +25,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
   bool loading = false;
   String? selectedRole;
   String? selectedDefaultPassword;
-  String? adminProfilePictureUrl;
 
+  // Tak perlu variable adminProfilePictureUrl sbb kita guna StreamBuilder
   final Color primaryBlue = const Color(0xFF233E99);
   final List<String> roles = ['admin', 'manager', 'staff'];
   final List<String> defaultPasswords = ['adminpassword', 'password123', 'DefaultPass'];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAdminProfilePicture();
-  }
-
-  Future<void> _loadAdminProfilePicture() async {
-    try {
-      QuerySnapshot adminSnap = await FirebaseFirestore.instance
-          .collection("users").where("username", isEqualTo: widget.username).limit(1).get();
-      if (adminSnap.docs.isNotEmpty) {
-        setState(() => adminProfilePictureUrl = (adminSnap.docs.first.data() as Map<String, dynamic>)['profilePictureUrl']);
-      }
-    } catch (e) { debugPrint("Error: $e"); }
-  }
 
   // --- LOGIC: USERNAME VALIDATOR ---
   bool isValidUsername(String username) {
@@ -53,7 +37,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     return usernameRegExp.hasMatch(username);
   }
 
-  // --- LOGIC REGISTER DENGAN PREMIUM MESSAGE ---
+  // --- LOGIC REGISTER ---
   Future<void> registerUser() async {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
@@ -110,7 +94,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
         "phoneNo": phoneNo,
         "role": role,
         "status": "Active",
-        "registeredBy": widget.username,
+        "registeredBy": widget.username, // Rekod siapa yang register (Admin)
         "createdAt": FieldValue.serverTimestamp(),
         "profilePictureUrl": "",
       });
@@ -124,57 +108,43 @@ class _UserManagementPageState extends State<UserManagementPage> {
       _showSuccessDialog(name);
 
     } catch (e) {
-      // [FIX] System Error Message
       _showStyledSnackBar("Registration Failed: $e", isError: true);
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
-  // --- [UPDATE 1] WIDGET SNACKBAR PREMIUM ---
+  // --- WIDGET SNACKBAR PREMIUM ---
   void _showStyledSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(
-              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+            Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded, color: Colors.white, size: 28),
             const SizedBox(width: 15),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    isError ? "Oh Snap!" : "Success!",
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
-                  ),
+                  Text(isError ? "Oh Snap!" : "Success!", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white)),
                   const SizedBox(height: 4),
-                  Text(
-                    message,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(message, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 2, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
           ],
         ),
-        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
-        behavior: SnackBarBehavior.floating, // Terapung
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: const EdgeInsets.all(20),
-        elevation: 10,
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  // --- [UPDATE 2] DIALOG SUCCESS PREMIUM ---
+  // --- DIALOG SUCCESS ---
   void _showSuccessDialog(String createdName) {
     showDialog(
       context: context,
@@ -189,20 +159,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
                 child: const Icon(Icons.check_rounded, color: Colors.green, size: 50),
               ),
               const SizedBox(height: 20),
               const Text("Account Created!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               const SizedBox(height: 10),
-              Text(
-                "User account for $createdName has been successfully registered.",
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
+              Text("User account for $createdName has been successfully registered.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 13)),
               const SizedBox(height: 25),
               SizedBox(
                 width: double.infinity,
@@ -213,8 +176,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                   onPressed: () {
-                    Navigator.pop(context); // Tutup dialog
-                    // Redirect ke User List
+                    Navigator.pop(context);
                     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UserListPage(loggedInUsername: widget.username)));
                   },
                   child: const Text("Awesome!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -227,7 +189,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
-  // --- UI COMPONENTS ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -236,10 +197,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
         backgroundColor: Colors.white, elevation: 0, foregroundColor: Colors.black,
         title: const Text("Register New User", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20), onPressed: () => Navigator.pop(context)),
       ),
       body: loading
           ? Center(child: CircularProgressIndicator(color: primaryBlue))
@@ -247,7 +205,9 @@ class _UserManagementPageState extends State<UserManagementPage> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            // [FIX] Admin Card yang auto-update
             _buildAdminCard(),
+
             const SizedBox(height: 30),
             _buildSectionCard(
               title: "System Credentials",
@@ -279,22 +239,90 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
+  // --- [UTAMA] ADMIN CARD WITH LIVE DATA ---
   Widget _buildAdminCard() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)]),
-      child: Row(children: [
-        CircleAvatar(radius: 20, backgroundImage: adminProfilePictureUrl != null ? CachedNetworkImageProvider(adminProfilePictureUrl!) : null, child: adminProfilePictureUrl == null ? const Icon(Icons.admin_panel_settings) : null),
-        const SizedBox(width: 15),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Authorized Registrar", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)), Text(widget.username, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))]),
-      ]),
+    return StreamBuilder<QuerySnapshot>(
+      // Tarik data user berdasarkan username yang dihantar dari page sebelum ini
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: widget.username)
+            .limit(1)
+            .snapshots(),
+        builder: (context, snapshot) {
+          String displayName = widget.username;
+          String role = "Admin"; // Default
+          String? profilePic;
+
+          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+            var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+            displayName = data['name'] ?? widget.username; // Nama penuh admin
+            role = (data['role'] ?? 'Admin').toString().toUpperCase();
+            profilePic = data['profilePictureUrl'];
+          }
+
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))]
+            ),
+            child: Row(
+              children: [
+                // Gambar Profile Admin
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: primaryBlue.withOpacity(0.2), width: 2),
+                  ),
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.grey.shade100,
+                    backgroundImage: (profilePic != null && profilePic.isNotEmpty)
+                        ? CachedNetworkImageProvider(profilePic)
+                        : null,
+                    child: (profilePic == null || profilePic.isEmpty)
+                        ? Icon(Icons.person_rounded, color: primaryBlue.withOpacity(0.5))
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 15),
+
+                // Info Admin
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Authorized Registrar", style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        const SizedBox(height: 2),
+                        Text(displayName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                          child: Text(role, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryBlue)),
+                        )
+                      ]
+                  ),
+                ),
+
+                // Status Badge
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.verified_user_rounded, color: Colors.green, size: 20),
+                )
+              ],
+            ),
+          );
+        }
     );
   }
 
   Widget _buildSectionCard({required String title, required List<Widget> children}) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 15)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.blueGrey)),
         const Divider(height: 25),
@@ -326,7 +354,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
   Widget _buildSubmitButton() {
     return Container(
       width: double.infinity, height: 60,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]), boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))]),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.8)]), boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))]),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
         onPressed: loading ? null : registerUser,
