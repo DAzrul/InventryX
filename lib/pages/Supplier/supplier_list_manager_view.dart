@@ -188,6 +188,6 @@ class _SupplierListPageViewState extends State<SupplierListManagerView> {
   }
 
   Widget _buildEmptyState() {
-    return Center(child: Text("No suppliers found mat!", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
+    return Center(child: Text("No suppliers found!", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
   }
 }
