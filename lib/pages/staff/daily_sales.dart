@@ -224,7 +224,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
       await batchWrite.commit();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Simulation Saved!"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Daily record Saved!"), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
     } catch (e) {
@@ -335,7 +335,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
       child: TextField(
           controller: _remarksController,
           maxLines: 2,
-          decoration: const InputDecoration(hintText: "Add today's simulation notes...", border: InputBorder.none, hintStyle: TextStyle(fontSize: 13))
+          decoration: const InputDecoration(hintText: "Add today's Sales notes...", border: InputBorder.none, hintStyle: TextStyle(fontSize: 13))
       ),
     );
   }

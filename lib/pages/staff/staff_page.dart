@@ -11,7 +11,8 @@ class StaffPage extends StatefulWidget {
   const StaffPage({
     super.key,
     required this.loggedInUsername,
-    required this.userId, required String username
+    required this.userId, required String username,
+    // [FIX 1] Buang 'required String username' yg tak guna tu
   });
 
   @override
@@ -19,16 +20,15 @@ class StaffPage extends StatefulWidget {
 }
 
 class _StaffPageState extends State<StaffPage> {
-  // Index 0: Dashboard, Index 1: Features (Modal), Index 2: Profile
   int _selectedIndex = 0;
   final Color primaryColor = const Color(0xFF203288);
 
-  void _onItemTapped(int index) {
+  // [FIX 2] Terima currentUsername untuk dihantar ke modal
+  void _onItemTapped(int index, String currentUsername) {
     if (index == 1) {
-      // Keluar modal features "chaotic" kau tu mat
-      StaffFeaturesModal.show(context);
+      // [FIX 3] Hantar 3 Data: Context, Username, UserID
+      StaffFeaturesModal.show(context, currentUsername, widget.userId);
     } else {
-      // Tukar antara Dashboard (0) atau Profile (2)
       setState(() {
         _selectedIndex = index;
       });
@@ -55,25 +55,24 @@ class _StaffPageState extends State<StaffPage> {
             resizeToAvoidBottomInset: false,
             extendBody: true,
 
-            // --- MAIN CONTENT HANDLER ---
-            // Kita guna IndexedStack supaya bila kau pusing-pusing skrin,
-            // data kau tak hilang atau kena reload balik. Jimat data babi!
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 StaffDashboardPage(username: currentUsername),
-                ProfilePage(username: currentUsername, userId: '',),
+                // [FIX 4] Hantar widget.userId sebenar, bukan string kosong ''
+                ProfilePage(username: currentUsername, userId: widget.userId),
               ],
             ),
 
-            // --- FLOATING NAVIGATION BAR ---
-            bottomNavigationBar: _buildFloatingNavBar(),
+            // [FIX 5] Pass currentUsername ke navbar
+            bottomNavigationBar: _buildFloatingNavBar(currentUsername),
           );
         }
     );
   }
 
-  Widget _buildFloatingNavBar() {
+  // [FIX 6] Terima parameter currentUsername
+  Widget _buildFloatingNavBar(String currentUsername) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       height: 62,
@@ -82,7 +81,7 @@ class _StaffPageState extends State<StaffPage> {
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08), // Guna withOpacity kalau version lama
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -92,7 +91,8 @@ class _StaffPageState extends State<StaffPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          // [FIX 7] Panggil _onItemTapped dengan username
+          onTap: (index) => _onItemTapped(index, currentUsername),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -117,7 +117,7 @@ class _StaffPageState extends State<StaffPage> {
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.1),
+          color: primaryColor.withOpacity(0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(activeIcon, size: 22, color: primaryColor),

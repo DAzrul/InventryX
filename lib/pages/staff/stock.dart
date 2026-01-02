@@ -36,23 +36,22 @@ class _StockPageState extends State<StockPage> {
   }
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  // [FIX] Terima context, username, uid
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // 1. Dapatkan user semasa
-      final user = FirebaseAuth.instance.currentUser;
-
       // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => StaffPage(
-            loggedInUsername: widget.username, // Guna username yg ada
-            userId: user?.uid ?? '', username: '',
+            loggedInUsername: currentUsername, // Guna data sebenar
+            userId: uid, username: '', // Guna UID sebenar
           ),
         ),
             (Route<dynamic> route) => false, // False = Matikan jalan balik!
       );
     } else if (index == 1) {
-      StaffFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      StaffFeaturesModal.show(context, currentUsername, uid);
     } else {
       setState(() => _selectedIndex = index);
     }
@@ -81,6 +80,8 @@ class _StockPageState extends State<StockPage> {
           currentUsername = d['username'] ?? widget.username;
         }
 
+        final safeUid = uid ?? '';
+
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFF),
           resizeToAvoidBottomInset: true,
@@ -91,19 +92,20 @@ class _StockPageState extends State<StockPage> {
             index: _selectedIndex == 2 ? 1 : 0,
             children: [
               _buildStockHome(),
-              ProfilePage(username: currentUsername, userId: uid ?? ''),
+              ProfilePage(username: currentUsername, userId: safeUid),
             ],
           ),
 
-          // Panggil Nav Bar yg dah di-repair design dia
-          bottomNavigationBar: _buildFloatingNavBar(),
+          // [FIX] Hantar data context, username, dan uid ke navbar
+          bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
         );
       },
     );
   }
 
   // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
-  Widget _buildFloatingNavBar() {
+  // [FIX] Terima parameter Context, Username, UID
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       // [FIX] Margin 12 bottom supaya sama dengan Dashboard
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -117,7 +119,8 @@ class _StockPageState extends State<StockPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          // [FIX] Pass data ke logic onTap
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
@@ -152,6 +155,7 @@ class _StockPageState extends State<StockPage> {
   }
 
   // --- UI: STOCK HOME (TAB 0) ---
+  // (Pastikan kau copy semula method2 UI kat bawah ni, jangan biarkan kosong)
   Widget _buildStockHome() {
     return Column(
       children: [
@@ -174,7 +178,9 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
+  // ... (SAMBUNG DENGAN KOD ASAL UI KAU: _buildStockHeader, _buildCombinedSummary, dll) ...
+  // Aku pendekkan mesej, tapi kau kena ada semua method tu ye.
+
   Widget _buildStockHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),

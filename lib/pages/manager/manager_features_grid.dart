@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:inventryx/pages/ProductPage/product_list_manager_view.dart';
-import 'package:inventryx/pages/Supplier/supplier_list_staff_view.dart';
-import '../Features_app/report_page.dart';
-import '../Supplier/supplier_list_manager_view.dart';
+import 'package:inventryx/pages/Supplier/supplier_list_manager_view.dart';
+
+// [PENTING] Import ManagerReportPage
+import '../Features_app/manager_report_page.dart';
 import '../manager/forecast/forecast.dart';
 
 class _ManagerFeatureIcon extends StatelessWidget {
@@ -19,7 +20,6 @@ class _ManagerFeatureIcon extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Ikon warna kelabu gelap ikut design gambar
           Icon(icon, color: const Color(0xFF233E99), size: 30),
           const SizedBox(height: 8),
           Text(
@@ -33,21 +33,29 @@ class _ManagerFeatureIcon extends StatelessWidget {
 }
 
 class ManagerFeaturesGrid extends StatelessWidget {
-  const ManagerFeaturesGrid({super.key});
+  // [FIX 1] Kena declare variable ni dalam class supaya boleh guna
+  final String loggedInUsername;
+  final String userId;
+
+  const ManagerFeaturesGrid({
+    super.key,
+    required this.loggedInUsername, // Guna 'this.' untuk simpan data
+    required this.userId
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      mainAxisSize: MainAxisSize.min, // Penting: Hanya ambil ruang yang perlu
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _ManagerFeatureIcon(
               icon: Icons.inventory_2_outlined,
               label: "Product",
               onTap: () {
-                Navigator.pop(context); // Tutup modal dulu
+                Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => ProductListViewPage()));
               },
             ),
@@ -69,18 +77,17 @@ class ManagerFeaturesGrid extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 20), // Ruang tambahan di bawah
+        const SizedBox(height: 20),
 
-        // --- SECOND ROW (Forecast Connection Here) ---
+        // --- SECOND ROW ---
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Jarak seimbang untuk 4 item
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _ManagerFeatureIcon(
               icon: Icons.flag_outlined,
               label: "Forecast",
               onTap: () {
                 Navigator.pop(context);
-                // 2. NAVIGATE TO FORECAST PAGE
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const ForecastingPage()),
@@ -95,6 +102,8 @@ class ManagerFeaturesGrid extends StatelessWidget {
                 // Navigate...
               },
             ),
+
+            // [FIX 2] TUKAR KE MANAGER REPORT PAGE
             _ManagerFeatureIcon(
               icon: Icons.description_outlined,
               label: "Report",
@@ -102,7 +111,13 @@ class ManagerFeaturesGrid extends StatelessWidget {
                 Navigator.pop(context);
                 Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const ReportPage())
+                    MaterialPageRoute(
+                      // Panggil ManagerReportPage dan hantar data yg disimpan tadi
+                        builder: (_) => ManagerReportPage(
+                          loggedInUsername: loggedInUsername,
+                          userId: userId,
+                        )
+                    )
                 );
               },
             ),

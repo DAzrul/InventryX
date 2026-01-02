@@ -26,24 +26,22 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // 1. Dapatkan user semasa
-      final user = FirebaseAuth.instance.currentUser;
-
-      // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU
+      // 2. BUNUH SEMUA PAGE, LOAD MANAGER DASHBOARD BARU
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => ManagerPage(
-            loggedInUsername: "Manager", // Placeholder, stream akan handle
-            userId: user?.uid ?? '', username: '',
+            loggedInUsername: currentUsername, // Hantar username sebenar
+            userId: uid, username: '', // Hantar UID sebenar
           ),
         ),
             (Route<dynamic> route) => false,
       );
 
     } else if (index == 1) {
-      ManagerFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      ManagerFeaturesModal.show(context, currentUsername, uid);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
     }
@@ -56,11 +54,14 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
-          String currentUsername = "User";
+          String currentUsername = "Manager"; // Default value
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? "User";
+            currentUsername = d['username'] ?? "Manager";
           }
+
+          // Pastikan uid tidak null, kalau null pakai empty string (walaupun jarang berlaku kalau dah login)
+          final safeUid = uid ?? '';
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
@@ -68,13 +69,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             resizeToAvoidBottomInset: false,
 
             // Panggil function navbar yang dah di-design semula
-            bottomNavigationBar: _buildFloatingNavBar(),
+            bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
 
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildInventoryHome(),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: safeUid),
               ],
             ),
           );
@@ -83,9 +84,9 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   }
 
   // --- DESIGN NAVBAR: SEBIJI MACAM DASHBOARD ---
-  Widget _buildFloatingNavBar() {
+  // [FIX] Terima parameter Context, Username, UID untuk dihantar ke logic onTap
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
-      // [FIX] Margin mesti sama dengan Dashboard (12 bottom)
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       height: 62,
       decoration: BoxDecoration(
@@ -93,7 +94,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08), // Guna withOpacity utk elak error version lama
             blurRadius: 15,
             offset: const Offset(0, 5),
           )
@@ -103,16 +104,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid), // Pass data ke function
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
-
-          // [FIX PENTING] Ini property yang buat dia nampak "sama" dgn dashboard
           showSelectedLabels: true,
-          showUnselectedLabels: false, // Label hilang kalau tak select (clean look)
+          showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
-
           elevation: 0,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
           items: [
@@ -131,7 +129,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.1),
+          color: primaryColor.withOpacity(0.1), // Guna withOpacity
           shape: BoxShape.circle,
         ),
         child: Icon(activeIcon, size: 22, color: primaryColor),
@@ -148,7 +146,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text("Products", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
         const SizedBox(height: 20),
@@ -170,6 +168,6 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   }
 
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
+    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
   }
 }

@@ -26,7 +26,8 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  // [FIX] Terima context, currentUsername, uid
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
       // 1. Dapatkan user semasa
       final user = FirebaseAuth.instance.currentUser;
@@ -35,15 +36,16 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => StaffPage(
-            loggedInUsername: "Staff", // Placeholder, stream akan handle
-            userId: user?.uid ?? '', username: '',
+            loggedInUsername: currentUsername, // Guna data sebenar
+            userId: uid, username: '', // Guna UID sebenar
           ),
         ),
             (Route<dynamic> route) => false,
       );
 
     } else if (index == 1) {
-      StaffFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      StaffFeaturesModal.show(context, currentUsername, uid);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
     }
@@ -56,25 +58,26 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
-          String currentUsername = "User";
+          String currentUsername = "Staff";
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? "User";
+            currentUsername = d['username'] ?? "Staff";
           }
+          final safeUid = uid ?? '';
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
             extendBody: true,
             resizeToAvoidBottomInset: false,
 
-            // Panggil function navbar yang dah di-design semula
-            bottomNavigationBar: _buildFloatingNavBar(),
+            // [FIX] Hantar data ke navbar
+            bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
 
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildInventoryHome(),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: safeUid),
               ],
             ),
           );
@@ -83,7 +86,8 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
   }
 
   // --- DESIGN NAVBAR: SEBIJI MACAM DASHBOARD ---
-  Widget _buildFloatingNavBar() {
+  // [FIX] Terima parameter Context, Username, UID
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       // [FIX] Margin mesti sama dengan Dashboard (12 bottom)
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -93,7 +97,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           )
@@ -103,7 +107,8 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          // [FIX] Pass data ke logic onTap
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -131,7 +136,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.1),
+          color: primaryColor.withOpacity(0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(activeIcon, size: 22, color: primaryColor),
@@ -140,7 +145,8 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     );
   }
 
-  // --- UI Components Lain (Tak Berubah) ---
+  // --- UI Components Lain (Kekal Sama) ---
+  // (Pastikan kau copy semula method2 UI kat bawah ni, jangan biarkan kosong)
   Widget _buildInventoryHome() {
     return Column(children: [_buildTopHeader(), _buildCategoryFilters(), _buildProductList()]);
   }
@@ -148,7 +154,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text("Products", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
         const SizedBox(height: 20),
@@ -170,6 +176,6 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
   }
 
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
+    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
   }
 }
