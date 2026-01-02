@@ -89,7 +89,6 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
   // [FIX] Terima parameter Context, Username, UID
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
-      // [FIX] Margin mesti sama dengan Dashboard (12 bottom)
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       height: 62,
       decoration: BoxDecoration(
@@ -107,17 +106,13 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          // [FIX] Pass data ke logic onTap
           onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
-
-          // [FIX PENTING] Ini property yang buat dia nampak "sama" dgn dashboard
           showSelectedLabels: true,
-          showUnselectedLabels: false, // Label hilang kalau tak select (clean look)
+          showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
-
           elevation: 0,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
           items: [
@@ -145,8 +140,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
-  // (Pastikan kau copy semula method2 UI kat bawah ni, jangan biarkan kosong)
+  // --- UI Components Lain ---
   Widget _buildInventoryHome() {
     return Column(children: [_buildTopHeader(), _buildCategoryFilters(), _buildProductList()]);
   }
@@ -175,7 +169,174 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     return Expanded(child: StreamBuilder<QuerySnapshot>(stream: (_selectedCategory == 'ALL') ? FirebaseFirestore.instance.collection("products").snapshots() : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(), builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); final docs = snapshot.data!.docs.where((d) => d['productName'].toString().toLowerCase().contains(_searchText)).toList(); return ListView.builder(padding: const EdgeInsets.fromLTRB(20, 0, 20, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; return _buildProductCard(data); }); }));
   }
 
+  // --- [KEMASKINI UTAMA] KAD PRODUK STAFF (DESIGN SERAGAM ADMIN) ---
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
+    // Logic Responsif (Sama dengan Admin)
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+    final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // Saiz standard
+
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    return GestureDetector(
+      onTap: () => _showProductDetailDialog(data), // Staff boleh tengok detail
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // --- PLACEHOLDER / IMEJ CANTIK ---
+            ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                  ? CachedNetworkImage(
+                imageUrl: data['imageUrl'],
+                width: imgSize,
+                height: imgSize,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => _buildPlaceholder(imgSize),
+                errorWidget: (_, __, ___) => _buildPlaceholder(imgSize),
+              )
+                  : _buildPlaceholder(imgSize),
+            ),
+
+            const SizedBox(width: 15),
+
+            // --- MAKLUMAT PRODUK ---
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['productName'] ?? 'N/A',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text('RM ${price.toStringAsFixed(2)}',
+                          style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                      const SizedBox(width: 8),
+                      // STOCK CHIP (Label berwarna)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('Stock: $stock',
+                            style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGET PLACEHOLDER (Sama macam Admin) ---
+  Widget _buildPlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryColor.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryColor.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
+    );
+  }
+
+  // --- POPUP DETAIL PRODUK (VIEW ONLY - STAFF) ---
+  void _showProductDetailDialog(Map<String, dynamic> data) {
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.info_outline_rounded, color: primaryColor, size: 40),
+                ),
+                const SizedBox(height: 16),
+                const Text("Product Details", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 20),
+
+                // Detail Container
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade200)),
+                  child: Column(children: [
+                    Row(children: [
+                      ClipRRect(borderRadius: BorderRadius.circular(15), child: SizedBox(width: 70, height: 70, child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty) ? CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover) : _buildPlaceholder(70))),
+                      const SizedBox(width: 15),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), const SizedBox(height: 4), Text("Barcode: ${data['barcodeNo'] ?? 'N/A'}", style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold))]))
+                    ]),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
+                    _buildDetailRow("Category", data['category'] ?? '-'),
+                    _buildDetailRow("Supplier", data['supplier'] ?? '-'),
+                    const SizedBox(height: 12),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
+                      _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: primaryColor, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))), onPressed: () => Navigator.pop(context), child: const Text("Close", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("$label: ", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)), Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)))]));
+  }
+
+  Widget _buildStatusChip(String label, String value, Color color) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)), const SizedBox(height: 2), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13)))]);
   }
 }

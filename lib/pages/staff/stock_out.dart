@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'add_incoming_stock.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // [PENTING] Tambah ini
 import '../Features_app/barcode_scanner_page.dart';
 import 'dart:math';
 
@@ -86,7 +86,7 @@ class _StockOutPageState extends State<StockOutPage> {
       child: Container(
         height: 50,
         decoration: BoxDecoration(
-          color: Colors.grey.withValues(alpha: 0.08),
+          color: Colors.grey.withOpacity(0.08),
           borderRadius: BorderRadius.circular(15),
         ),
         child: Row(
@@ -109,7 +109,7 @@ class _StockOutPageState extends State<StockOutPage> {
           decoration: BoxDecoration(
             color: sel ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            boxShadow: sel ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))] : null,
+            boxShadow: sel ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))] : null,
           ),
           child: Center(
             child: Text(label,
@@ -175,7 +175,7 @@ class _StockOutPageState extends State<StockOutPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: mainBlue.withValues(alpha: 0.1)),
+        border: Border.all(color: mainBlue.withOpacity(0.1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -236,7 +236,7 @@ class _StockOutPageState extends State<StockOutPage> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 15)]
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15)]
       ),
       child: Column(children: [
         InkWell(
@@ -245,7 +245,7 @@ class _StockOutPageState extends State<StockOutPage> {
             if (picked != null) setState(() => _selectedDate = picked);
           },
           child: Row(children: [
-            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.calendar_today_rounded, color: Colors.blue, size: 18)),
+            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.calendar_today_rounded, color: Colors.blue, size: 18)),
             const SizedBox(width: 15),
             Text(DateFormat('dd MMMM yyyy').format(_selectedDate), style: const TextStyle(fontWeight: FontWeight.w700)),
             const Spacer(),
@@ -276,9 +276,9 @@ class _StockOutPageState extends State<StockOutPage> {
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border.all(color: mainBlue.withValues(alpha: 0.2), width: 1.5),
+          border: Border.all(color: mainBlue.withOpacity(0.2), width: 1.5),
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: mainBlue.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: mainBlue.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.add_circle_outline_rounded, color: mainBlue, size: 22),
@@ -289,6 +289,7 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
+  // --- [KEMASKINI UTAMA] UI CART ITEM YG SERAGAM ---
   Widget _buildCartItemCard(int index, StockOutItem item) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -299,13 +300,9 @@ class _StockOutPageState extends State<StockOutPage> {
           border: Border.all(color: Colors.grey.shade100)
       ),
       child: Row(children: [
-        Container(
-            width: 55, height: 55,
-            decoration: BoxDecoration(color: scaffoldBg, borderRadius: BorderRadius.circular(12)),
-            child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(item.imageUrl!, fit: BoxFit.cover))
-                : Icon(Icons.inventory_2_rounded, color: mainBlue.withValues(alpha: 0.5))
-        ),
+        // [FIX] Guna method gambar yang seragam (Saiz 55)
+        _buildProductImage(item.imageUrl, size: 55),
+
         const SizedBox(width: 15),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -313,11 +310,52 @@ class _StockOutPageState extends State<StockOutPage> {
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
           child: Text("-${item.quantity}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w900, fontSize: 15)),
         ),
         IconButton(icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20), onPressed: () => setState(() => _cartItems.removeAt(index))),
       ]),
+    );
+  }
+
+  // --- [UTAMA] WIDGET GAMBAR SERAGAM ---
+  Widget _buildProductImage(String? url, {double size = 55}) {
+    if (url == null || url.isEmpty) {
+      return _buildPlaceholder(size);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _buildPlaceholder(size),
+        errorWidget: (_, __, ___) => _buildPlaceholder(size),
+      ),
+    );
+  }
+
+  // --- [UTAMA] WIDGET PLACEHOLDER ---
+  Widget _buildPlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: mainBlue.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: mainBlue.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
     );
   }
 
@@ -327,7 +365,7 @@ class _StockOutPageState extends State<StockOutPage> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, -5))]
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))]
       ),
       child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(
@@ -390,8 +428,8 @@ class _StockOutPageState extends State<StockOutPage> {
           decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
-              border: Border.all(color: isInsufficient && _autoDeduct ? Colors.red.withValues(alpha: 0.3) : Colors.grey.shade50, width: isInsufficient ? 1.5 : 1)
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+              border: Border.all(color: isInsufficient && _autoDeduct ? Colors.red.withOpacity(0.3) : Colors.grey.shade50, width: isInsufficient ? 1.5 : 1)
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(
@@ -433,7 +471,7 @@ class _StockOutPageState extends State<StockOutPage> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, -5))]
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))]
       ),
       child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         _rowSummary("Total Prev Stock", tPrev.toString()),
@@ -650,6 +688,48 @@ class _ProductSelector extends StatefulWidget {
 class _ProductSelectorState extends State<_ProductSelector> {
   String _query = '';
   final TextEditingController _searchCtrl = TextEditingController();
+
+  // --- [KEMASKINI UTAMA] Helper Method untuk Gambar Seragam ---
+  Widget _buildProductImage(String? url, {double size = 55}) {
+    if (url == null || url.isEmpty) {
+      return _buildPlaceholder(size);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _buildPlaceholder(size),
+        errorWidget: (_, __, ___) => _buildPlaceholder(size),
+      ),
+    );
+  }
+
+  // --- Helper Method untuk Placeholder ---
+  Widget _buildPlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: const Color(0xFF1E3A8A).withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: const Color(0xFF1E3A8A).withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -676,7 +756,8 @@ class _ProductSelectorState extends State<_ProductSelector> {
                 final prod = docs[i].data() as Map<String, dynamic>;
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  leading: Container(width: 50, height: 50, decoration: BoxDecoration(color: const Color(0xFFF8FAFF), borderRadius: BorderRadius.circular(10)), child: prod['imageUrl'] != null ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(prod['imageUrl'], fit: BoxFit.cover)) : const Icon(Icons.inventory_2_rounded)),
+                  // [FIX] Guna method gambar yang seragam
+                  leading: _buildProductImage(prod['imageUrl'], size: 55),
                   title: Text(prod['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   subtitle: Text("Stock: ${prod['currentStock']}", style: const TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.add_circle_rounded, color: Color(0xFF1E3A8A)),

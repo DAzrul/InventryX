@@ -36,21 +36,19 @@ class _StockPageState extends State<StockPage> {
   }
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  // [FIX] Terima context, username, uid
   void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => StaffPage(
-            loggedInUsername: currentUsername, // Guna data sebenar
-            userId: uid, username: '', // Guna UID sebenar
+            loggedInUsername: currentUsername,
+            userId: uid, username: '',
           ),
         ),
-            (Route<dynamic> route) => false, // False = Matikan jalan balik!
+            (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      // [FIX] Hantar 3 Data: Context, Username, UserID
+      // [FIX] Hantar 3 Data
       StaffFeaturesModal.show(context, currentUsername, uid);
     } else {
       setState(() => _selectedIndex = index);
@@ -86,8 +84,6 @@ class _StockPageState extends State<StockPage> {
           backgroundColor: const Color(0xFFF8FAFF),
           resizeToAvoidBottomInset: true,
           extendBody: true,
-
-          // --- MAIN CONTENT HANDLER ---
           body: IndexedStack(
             index: _selectedIndex == 2 ? 1 : 0,
             children: [
@@ -95,19 +91,15 @@ class _StockPageState extends State<StockPage> {
               ProfilePage(username: currentUsername, userId: safeUid),
             ],
           ),
-
-          // [FIX] Hantar data context, username, dan uid ke navbar
           bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
         );
       },
     );
   }
 
-  // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
-  // [FIX] Terima parameter Context, Username, UID
+  // --- UI: FLOATING NAVBAR ---
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
-      // [FIX] Margin 12 bottom supaya sama dengan Dashboard
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       height: 62,
       decoration: BoxDecoration(
@@ -119,17 +111,13 @@ class _StockPageState extends State<StockPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          // [FIX] Pass data ke logic onTap
           onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
-
-          // [FIX PENTING] Property ni wajib ada baru design sama dengan Dashboard!
           showSelectedLabels: true,
           showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
-
           elevation: 0,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
           items: [
@@ -154,8 +142,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI: STOCK HOME (TAB 0) ---
-  // (Pastikan kau copy semula method2 UI kat bawah ni, jangan biarkan kosong)
+  // --- UI: STOCK HOME ---
   Widget _buildStockHome() {
     return Column(
       children: [
@@ -177,9 +164,6 @@ class _StockPageState extends State<StockPage> {
       ],
     );
   }
-
-  // ... (SAMBUNG DENGAN KOD ASAL UI KAU: _buildStockHeader, _buildCombinedSummary, dll) ...
-  // Aku pendekkan mesej, tapi kau kena ada semua method tu ye.
 
   Widget _buildStockHeader() {
     return Container(
@@ -287,6 +271,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
+  // --- [KEMASKINI UTAMA] LOGIC RESPONSIVE CARD UTK STOCK ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -298,6 +283,12 @@ class _StockPageState extends State<StockPage> {
           return (selectedCategory == 'All' || d['category'] == selectedCategory) && name.contains(searchQuery.toLowerCase());
         }).toList();
 
+        // LOGIC RESPONSIVE SAIZ
+        final screenWidth = MediaQuery.of(context).size.width;
+        final isSmall = screenWidth < 360;
+        final isTablet = screenWidth >= 600;
+        final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // SAMA DGN ADMIN
+
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
           physics: const BouncingScrollPhysics(),
@@ -305,14 +296,56 @@ class _StockPageState extends State<StockPage> {
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
-              child: ListTile(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
+              ),
+              child: InkWell(
                 onTap: () => _showProductDetails(data, docs[index].id),
-                leading: _buildProductImage(data['imageUrl'], size: 50),
-                title: Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w800)),
-                trailing: Text('$stock', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: stock <= 10 ? Colors.red : primaryBlue)),
+                child: Row(
+                  children: [
+                    // --- PLACEHOLDER SERAGAM ---
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                          ? CachedNetworkImage(
+                        imageUrl: data['imageUrl'],
+                        width: imgSize,
+                        height: imgSize,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => _buildPlaceholder(imgSize),
+                        errorWidget: (_, __, ___) => _buildPlaceholder(imgSize),
+                      )
+                          : _buildPlaceholder(imgSize),
+                    ),
+                    const SizedBox(width: 15),
+
+                    // --- TEXT INFO ---
+                    Expanded(
+                      child: Text(
+                        data['productName'] ?? 'Unknown',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+
+                    // --- STOCK COUNT ---
+                    Text(
+                        '$stock',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: stock <= 10 ? Colors.red : primaryBlue
+                        )
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -321,16 +354,35 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  Widget _buildProductImage(String? url, {double size = 50}) {
+  // --- WIDGET PLACEHOLDER BARU (White Box, Blue Border) ---
+  Widget _buildPlaceholder(double size) {
     return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(color: const Color(0xFFF0F2F6), borderRadius: BorderRadius.circular(15)),
-      child: (url != null && url.isNotEmpty) ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: url, fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryBlue, size: size * 0.5),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryBlue.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryBlue.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
     );
   }
 
   void _showProductDetails(Map<String, dynamic> data, String productId) {
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    // Logic Responsif Imej dalam Detail
+    final double imgSize = 70; // Tetap dlm dialog utk consistency
+
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -345,7 +397,13 @@ class _StockPageState extends State<StockPage> {
                 padding: const EdgeInsets.all(24),
                 children: [
                   Row(children: [
-                    _buildProductImage(data['imageUrl'], size: 80),
+                    // Guna Placeholder dlm Detail juga
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                          ? CachedNetworkImage(imageUrl: data['imageUrl'], width: imgSize, height: imgSize, fit: BoxFit.cover)
+                          : _buildPlaceholder(imgSize),
+                    ),
                     const SizedBox(width: 20),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // Pastikan ada package ni
 import '../Features_app/barcode_scanner_page.dart';
 
 class AddIncomingStockPage extends StatefulWidget {
@@ -99,7 +100,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
       ),
       child: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('supplier').snapshots(),
@@ -150,7 +151,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
               decoration: BoxDecoration(
                 color: isLocked ? Colors.grey.shade100 : Colors.white,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: isLocked ? Colors.transparent : primaryBlue.withValues(alpha: 0.1)),
+                border: Border.all(color: isLocked ? Colors.transparent : primaryBlue.withOpacity(0.1)),
               ),
               child: Row(
                 children: [
@@ -171,10 +172,10 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
           child: Container(
             height: 55, width: 55,
             decoration: BoxDecoration(
-              gradient: isLocked ? null : LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]),
+              gradient: isLocked ? null : LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.8)]),
               color: isLocked ? Colors.grey.shade200 : null,
               borderRadius: BorderRadius.circular(18),
-              boxShadow: isLocked ? null : [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
+              boxShadow: isLocked ? null : [BoxShadow(color: primaryBlue.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Icon(Icons.qr_code_scanner_rounded, color: isLocked ? Colors.grey : Colors.white),
           ),
@@ -183,6 +184,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
+  // --- [KEMASKINI] DIALOG PILIH PRODUK GUNA STYLE BARU ---
   void _showProductDialog() {
     showModalBottomSheet(
       context: context, isScrollControlled: true,
@@ -221,16 +223,20 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                       itemCount: list.length,
                       itemBuilder: (context, i) {
                         final d = list[i].data() as Map<String, dynamic>;
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(vertical: 5),
-                          leading: _imgPreview(d['imageUrl']),
-                          title: Text(d['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text('Current Stock: ${d['currentStock']}', style: const TextStyle(fontSize: 12)),
-                          trailing: Icon(Icons.add_circle_rounded, color: primaryBlue),
-                          onTap: () {
-                            _addBatchItem(list[i].id, d['productName'], d['barcodeNo'].toString(), d['imageUrl']);
-                            Navigator.pop(context);
-                          },
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 5),
+                            // [FIX] Guna method gambar yang seragam
+                            leading: _buildProductImage(d['imageUrl'], size: 55),
+                            title: Text(d['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            subtitle: Text('Current Stock: ${d['currentStock']}', style: const TextStyle(fontSize: 12)),
+                            trailing: Icon(Icons.add_circle_rounded, color: primaryBlue),
+                            onTap: () {
+                              _addBatchItem(list[i].id, d['productName'], d['barcodeNo'].toString(), d['imageUrl']);
+                              Navigator.pop(context);
+                            },
+                          ),
                         );
                       },
                     );
@@ -244,11 +250,47 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
-  Widget _imgPreview(String? url) {
+  // --- [UTAMA] WIDGET GAMBAR SERAGAM ---
+  Widget _buildProductImage(String? url, {double size = 55}) {
+    // 1. Kotak Placeholder Cantik (Putih + Border Biru Pudar)
+    if (url == null || url.isEmpty) {
+      return _buildPlaceholder(size);
+    }
+
+    // 2. Gambar Sebenar (Cached)
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _buildPlaceholder(size),
+        errorWidget: (_, __, ___) => _buildPlaceholder(size),
+      ),
+    );
+  }
+
+  // --- [UTAMA] WIDGET PLACEHOLDER ---
+  Widget _buildPlaceholder(double size) {
     return Container(
-      width: 45, height: 45,
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
-      child: url != null ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(url, fit: BoxFit.cover)) : const Icon(Icons.image_outlined),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryBlue.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryBlue.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
     );
   }
 
@@ -276,13 +318,15 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
           ),
           child: Column(
             children: [
               Row(
                 children: [
-                  _imgPreview(item.imageUrl),
+                  // [FIX] Guna method gambar baru (Saiz 55 sama dgn list lain)
+                  _buildProductImage(item.imageUrl, size: 55),
+
                   const SizedBox(width: 15),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -318,7 +362,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
                       child: Row(children: [
                         const Icon(Icons.event_available_rounded, size: 14, color: Colors.orange),
                         const SizedBox(width: 6),
@@ -352,7 +396,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, -5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -395,7 +439,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.orange));
   }
 
-  // --- LOGIC SAVE KEKAL SAMA MAT ---
+  // --- LOGIC SAVE (Kekal Sama) ---
   Future<void> _saveStockToFirebase() async {
     final user = _auth.currentUser;
     if (user == null || batchItems.isEmpty) return;

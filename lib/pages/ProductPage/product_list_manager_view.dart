@@ -60,7 +60,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             currentUsername = d['username'] ?? "Manager";
           }
 
-          // Pastikan uid tidak null, kalau null pakai empty string (walaupun jarang berlaku kalau dah login)
+          // Pastikan uid tidak null
           final safeUid = uid ?? '';
 
           return Scaffold(
@@ -84,7 +84,6 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   }
 
   // --- DESIGN NAVBAR: SEBIJI MACAM DASHBOARD ---
-  // [FIX] Terima parameter Context, Username, UID untuk dihantar ke logic onTap
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -94,7 +93,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08), // Guna withOpacity utk elak error version lama
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           )
@@ -104,7 +103,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: (index) => _onItemTapped(context, index, currentUsername, uid), // Pass data ke function
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -129,7 +128,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: primaryColor.withOpacity(0.1), // Guna withOpacity
+          color: primaryColor.withOpacity(0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(activeIcon, size: 22, color: primaryColor),
@@ -138,7 +137,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- UI Components Lain (Tak Berubah) ---
+  // --- UI Components Lain ---
   Widget _buildInventoryHome() {
     return Column(children: [_buildTopHeader(), _buildCategoryFilters(), _buildProductList()]);
   }
@@ -167,7 +166,103 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return Expanded(child: StreamBuilder<QuerySnapshot>(stream: (_selectedCategory == 'ALL') ? FirebaseFirestore.instance.collection("products").snapshots() : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(), builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); final docs = snapshot.data!.docs.where((d) => d['productName'].toString().toLowerCase().contains(_searchText)).toList(); return ListView.builder(padding: const EdgeInsets.fromLTRB(20, 0, 20, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; return _buildProductCard(data); }); }));
   }
 
+  // --- [KEMASKINI UTAMA] KAD PRODUK SERASI DGN ADMIN ---
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+    final double imgSize = isTablet ? 70 : isSmall ? 45 : 55;
+
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // --- PLACEHOLDER / IMEJ CANTIK ---
+          ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                ? CachedNetworkImage(
+              imageUrl: data['imageUrl'],
+              width: imgSize,
+              height: imgSize,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => _buildPlaceholder(imgSize),
+              errorWidget: (_, __, ___) => _buildPlaceholder(imgSize),
+            )
+                : _buildPlaceholder(imgSize),
+          ),
+
+          const SizedBox(width: 15),
+
+          // --- MAKLUMAT PRODUK ---
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data['productName'] ?? 'N/A',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text('RM ${price.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                    const SizedBox(width: 8),
+                    // STOCK CHIP (Label berwarna)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text('Stock: $stock',
+                          style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET PLACEHOLDER (Sama macam Admin) ---
+  Widget _buildPlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryColor.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryColor.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
+    );
   }
 }

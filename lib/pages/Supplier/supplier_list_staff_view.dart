@@ -152,8 +152,6 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
-  // (Pastikan kau copy semula method2 UI kat bawah ni, jangan biarkan kosong)
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
@@ -180,8 +178,73 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
     return Expanded(child: StreamBuilder<QuerySnapshot>(stream: _supplierStream, builder: (context, snapshot) { if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: primaryBlue)); final docs = snapshot.data!.docs.where((doc) { final d = doc.data() as Map<String, dynamic>; final name = (d['supplierName'] ?? '').toString().toLowerCase(); final phone = (d['contactNo'] ?? '').toString().toLowerCase(); return name.contains(_searchText) || phone.contains(_searchText); }).toList(); if (docs.isEmpty) return _buildEmptyState(); return ListView.builder(padding: const EdgeInsets.fromLTRB(24, 0, 24, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final s = docs[index].data() as Map<String, dynamic>; return _buildSupplierCard(s); }); }));
   }
 
+  // --- [KEMASKINI UTAMA] KAD SUPPLIER RESPONSIVE (SAMA PRODUCT & MANAGER) ---
   Widget _buildSupplierCard(Map<String, dynamic> data) {
-    return GestureDetector(onTap: () => _showSupplierDetails(context, data), child: Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: bgGray, borderRadius: BorderRadius.circular(15)), child: Icon(Icons.store_rounded, color: primaryBlue, size: 26)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['supplierName'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Row(children: [Icon(Icons.phone_rounded, size: 12, color: Colors.grey[500]), const SizedBox(width: 6), Text(data['contactNo'] ?? '-', style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w600))])])), Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300])])));
+    // Logic Responsif: Sama sebiji dengan Product List & Manager Supplier List
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+    final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // Saiz standard 55
+
+    return GestureDetector(
+      onTap: () => _showSupplierDetails(context, data),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        ),
+        child: Row(
+          children: [
+            // --- KOTAK IKON (Dynamic Size) ---
+            Container(
+              width: imgSize,
+              height: imgSize,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.business_rounded,
+                  color: primaryBlue.withOpacity(0.3),
+                  size: imgSize * 0.5, // Icon separuh dari kotak
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 15),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['supplierName'] ?? '-',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14, color: const Color(0xFF1A1C1E)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.phone_iphone_rounded, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(data['contactNo'] ?? '-', style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300]),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSupplierDetails(BuildContext context, Map<String, dynamic> data) {
