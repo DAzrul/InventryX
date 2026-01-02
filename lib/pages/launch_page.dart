@@ -65,8 +65,8 @@ class _LaunchPageState extends State<LaunchPage> with SingleTickerProviderStateM
   void _navigateToHomePage(String username, String role, String userId) {
     if (!mounted) return;
     Widget targetPage = (role == "admin") ? AdminPage(loggedInUsername: username, userId: userId, username: '',) :
-    (role == "manager") ? ManagerPage(loggedInUsername: username, userId: userId) :
-    StaffPage(loggedInUsername: username, userId: userId);
+    (role == "manager") ? ManagerPage(loggedInUsername: username, userId: userId, username: '',) :
+    StaffPage(loggedInUsername: username, userId: userId, username: '',);
 
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => targetPage));
   }

@@ -35,7 +35,7 @@ class _SupplierListPageViewState extends State<SupplierListManagerView> {
         MaterialPageRoute(
           builder: (context) => ManagerPage(
             loggedInUsername: "Manager", // Placeholder, stream akan handle
-            userId: user?.uid ?? '',
+            userId: user?.uid ?? '', username: '',
           ),
         ),
             (Route<dynamic> route) => false, // False = Matikan jalan balik!

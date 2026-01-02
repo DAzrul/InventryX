@@ -11,7 +11,7 @@ class ManagerPage extends StatefulWidget {
   const ManagerPage({
     super.key,
     required this.loggedInUsername,
-    required this.userId
+    required this.userId, required String username
   });
 
   @override

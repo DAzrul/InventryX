@@ -286,9 +286,9 @@ class _LoginPageState extends State<LoginPage> {
     if (role == "admin") {
       target = AdminPage(loggedInUsername: username, userId: userId, username: '',);
     } else if (role == "manager") {
-      target = ManagerPage(loggedInUsername: username, userId: userId);
+      target = ManagerPage(loggedInUsername: username, userId: userId, username: '',);
     } else {
-      target = StaffPage(loggedInUsername: username, userId: userId);
+      target = StaffPage(loggedInUsername: username, userId: userId, username: '',);
     }
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
   }

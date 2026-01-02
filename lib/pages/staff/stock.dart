@@ -46,7 +46,7 @@ class _StockPageState extends State<StockPage> {
         MaterialPageRoute(
           builder: (context) => StaffPage(
             loggedInUsername: widget.username, // Guna username yg ada
-            userId: user?.uid ?? '',
+            userId: user?.uid ?? '', username: '',
           ),
         ),
             (Route<dynamic> route) => false, // False = Matikan jalan balik!

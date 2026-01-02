@@ -146,9 +146,9 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
       if (widget.role == "admin") {
         targetPage = AdminPage(username: widget.username, userId: widget.userId, loggedInUsername: widget.username);
       } else if (widget.role == "manager") {
-        targetPage = ManagerPage(loggedInUsername: widget.username, userId: widget.userId);
+        targetPage = ManagerPage(username: widget.username, userId: widget.userId, loggedInUsername: widget.username);
       } else {
-        targetPage = StaffPage(loggedInUsername: widget.username, userId: widget.userId);
+        targetPage = StaffPage(username: widget.username, userId: widget.userId, loggedInUsername: widget.username);
       }
 
       Navigator.pushAndRemoveUntil(

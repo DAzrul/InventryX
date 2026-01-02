@@ -36,7 +36,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
         MaterialPageRoute(
           builder: (context) => StaffPage(
             loggedInUsername: "Staff", // Placeholder, stream akan handle
-            userId: user?.uid ?? '',
+            userId: user?.uid ?? '', username: '',
           ),
         ),
             (Route<dynamic> route) => false,
