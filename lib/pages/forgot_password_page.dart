@@ -19,19 +19,26 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final Color primaryBlue = const Color(0xFF233E99);
   final Color bgSecondary = const Color(0xFFF8FAFF);
 
-  // --- POPUP MESSAGE (MODERNIZED) ---
+  // --- POPUP MESSAGE ---
   void _showPopup(String title, String message, {bool isSuccess = false}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        title: Text(
+            title,
+            style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: isSuccess ? Colors.green : Colors.black
+            )
+        ),
         content: Text(message, style: const TextStyle(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(context); // Tutup dialog
               if (isSuccess && mounted) {
+                // Jika berjaya, bawa user balik ke Login Page
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -45,16 +52,25 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
+  // --- CHECK INTERNET ---
   Future<bool> _isNetworkAvailable() async {
     final connectivityResult = await (Connectivity().checkConnectivity());
     return connectivityResult != ConnectivityResult.none;
   }
 
+  // --- LOGIC HANTAR LINK ---
   void sendResetLink() async {
-    String input = emailController.text.trim(); // User taip username/email dlm field ni
+    String input = emailController.text.trim();
 
+    // 1. Validasi Input Kosong
     if (input.isEmpty) {
-      _showPopup("Oops!", "Enter your username or email, mat!");
+      _showPopup("Oops!", "Please enter your username or email address.");
+      return;
+    }
+
+    // 2. Semak Internet
+    if (!await _isNetworkAvailable()) {
+      _showPopup("No Internet", "Please check your internet connection and try again.");
       return;
     }
 
@@ -63,29 +79,43 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       String targetEmail = input;
 
-      // 1. Logic: Kalau user taip username (tak ada '@'), cari email dlm Firestore
+      // 3. Logic Username vs Email
+      // Jika input TIADA simbol '@', kita anggap ia adalah Username
       if (!input.contains("@")) {
-        // Cari dlm Firestore (INGAT: Cek case-sensitive ikut logic baru kau!)
+
+        // Cari email berdasarkan username dalam Firestore
         final userDoc = await FirebaseFirestore.instance
             .collection("users")
-            .where("username", isEqualTo: input) // Guna input raw kalau kau buang .toLowerCase()
+            .where("username", isEqualTo: input) // Pastikan input sama sebiji (case-sensitive)
             .limit(1)
             .get();
 
         if (userDoc.docs.isEmpty) {
-          _showPopup("Not Found", "Username '$input' tak wujud dlm sistem babi.");
+          _showPopup("Not Found", "Username '$input' not found in our system.");
           setState(() => _isLoading = false);
           return;
         }
+
+        // Ambil email sebenar dari database
         targetEmail = userDoc.docs.first['email'];
       }
 
-      // 2. Kirim link reset ke email yang dijumpai
+      // 4. Hantar Link Reset ke Email
       await _auth.sendPasswordResetEmail(email: targetEmail);
-      _showPopup("Link Sent!", "Recovery link sent to $targetEmail", isSuccess: true);
 
+      // Paparkan mesej kejayaan (Masking email sikit utk nampak pro)
+      _showPopup("Check Your Email", "Recovery link has been sent to $targetEmail", isSuccess: true);
+
+    } on FirebaseAuthException catch (e) {
+      // Handle error rasmi Firebase
+      String errMessage = "An error occurred.";
+      if (e.code == 'user-not-found') errMessage = "No registered user found with this email.";
+      if (e.code == 'invalid-email') errMessage = "The email format is invalid.";
+
+      _showPopup("Error", errMessage);
     } catch (e) {
-      _showPopup("Error", e.toString());
+      // Handle error lain
+      _showPopup("System Error", e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -115,17 +145,19 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   child: Container(
                     height: 120,
                     margin: const EdgeInsets.only(bottom: 40),
-                    child: Image.asset("assets/logo.png", fit: BoxFit.contain),
+                    child: Image.asset("assets/logo.png", fit: BoxFit.contain), // Pastikan logo wujud
                   ),
                 ),
                 const Text("Reset Password", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                 const SizedBox(height: 10),
-                Text("Enter your email address to receive a recovery link.",
+                // [UPDATED LABEL]
+                Text("Enter your username or email address to receive a recovery link.",
                     style: TextStyle(fontSize: 15, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+
                 const SizedBox(height: 40),
 
-                // Modern Email Field
-                _buildModernField(emailController, "Email Address", Icons.alternate_email_rounded),
+                // [UPDATED FIELD]
+                _buildModernField(emailController, "Username or Email", Icons.person_search_rounded),
 
                 const SizedBox(height: 40),
 
@@ -157,13 +189,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(18)),
           child: TextField(
             controller: controller,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: TextInputType.emailAddress, // Keyboard setting umum
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             decoration: InputDecoration(
               prefixIcon: Icon(icon, color: primaryBlue, size: 20),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
-              hintText: "example@email.com",
+              hintText: "Enter username / email",
               hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14, fontWeight: FontWeight.normal),
             ),
           ),
@@ -178,8 +210,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       height: 65,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.85)]),
-        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 25, offset: const Offset(0, 10))],
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.85)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
