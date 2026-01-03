@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Import Home Pages
+// Import Home Pages (Pastikan path import ini betul dalam projek anda)
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -14,7 +14,7 @@ class Verify2FAPage extends StatefulWidget {
   final String username;
   final String role;
   final String email;
-  final bool rememberMe; // Kita bawa status "Stay Signed In" dari Login Page
+  final bool rememberMe;
 
   const Verify2FAPage({
     super.key,
@@ -35,6 +35,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
 
   String? _generatedOTP;
   bool _isLoading = false;
+  bool _isSendingEmail = false;
   Timer? _timer;
   int _start = 60;
   bool _canResend = false;
@@ -42,7 +43,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
   @override
   void initState() {
     super.initState();
-    _sendOTP();
+    _generateAndSendOTP();
   }
 
   @override
@@ -52,34 +53,74 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
     super.dispose();
   }
 
-  void _sendOTP() {
+  // --- LOGIC 1: GENERATE KOD & PANGGIL FUNGSI EMAIL ---
+  Future<void> _generateAndSendOTP() async {
     setState(() {
+      // Generate nombor rawak 6 digit
       _generatedOTP = (100000 + Random().nextInt(900000)).toString();
       _start = 60;
       _canResend = false;
+      _isSendingEmail = true;
     });
 
-    _startTimer();
+    // Panggil fungsi hantar ke Firestore
+    bool success = await _sendEmailViaFirebaseExtension(
+        name: widget.username,
+        email: widget.email,
+        otp: _generatedOTP!
+    );
 
-    // [SIMULASI EMAIL]
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
+    if (mounted) {
+      setState(() => _isSendingEmail = false);
+
+      if (success) {
+        _startTimer();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Email sent! Your code is: $_generatedOTP"),
+            content: Text("Code sent to ${widget.email}"),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 10),
-            action: SnackBarAction(
-              label: 'COPY',
-              textColor: Colors.white,
-              onPressed: () => _codeController.text = _generatedOTP!,
-            ),
           ),
         );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to trigger email. Check connection."),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _canResend = true); // Benarkan user cuba lagi
       }
-    });
+    }
   }
 
+  // --- LOGIC 2: FIREBASE EXTENSION (TRIGGER EMAIL) ---
+  // Fungsi ini menulis data ke collection 'mail'. Extension akan buat kerja selebihnya.
+  Future<bool> _sendEmailViaFirebaseExtension({required String name, required String email, required String otp}) async {
+    try {
+      await FirebaseFirestore.instance.collection('mail').add({
+        'to': [email], // Extension perlukan array/list untuk 'to'
+        'message': {
+          'subject': 'Your Verification Code (2FA)',
+          'html': '''
+            <h2>Hello $name,</h2>
+            <p>Your verification code is:</p>
+            <h1 style="color: #233E99; letter-spacing: 5px;">$otp</h1>
+            <p>Please enter this code in the app to complete your login.</p>
+            <br>
+            <p>If you did not request this, please ignore this email.</p>
+          ''',
+        },
+      });
+
+      // Kalau berjaya save ke Firestore, kita anggap email sedang dihantar
+      return true;
+    } catch (e) {
+      debugPrint("Firebase Email Error: $e");
+      return false;
+    }
+  }
+
+  // --- LOGIC 3: TIMER COUNTDOWN ---
   void _startTimer() {
     const oneSec = Duration(seconds: 1);
     _timer = Timer.periodic(oneSec, (Timer timer) {
@@ -94,7 +135,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
     });
   }
 
-  // --- [UPDATE] LOGIC TRUSTED DEVICE KAT SINI ---
+  // --- LOGIC 4: SAHKAN KOD INPUT ---
   Future<void> _verifyCode() async {
     String inputCode = _codeController.text.trim();
 
@@ -104,42 +145,35 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
     }
 
     if (inputCode != _generatedOTP) {
-      _showSnack("Invalid code! Please try again.", isError: true);
+      _showSnack("Invalid code! Please check your email.", isError: true);
       return;
     }
 
-    // KOD BETUL! PROCEED
+    // KOD BETUL! MULA PROSES LOGIN
     setState(() => _isLoading = true);
 
     try {
-      // 1. [PENTING] INI LANGKAH "COP" TRUSTED DEVICE
-      // Kita hanya simpan session kalau kod 2FA dah betul.
-      // Kalau user tick "Stay Signed In" kat depan tadi, kita simpan selamanya.
+      // A. Simpan Status "Trusted Device" jika user tick "Remember Me"
       if (widget.rememberMe) {
         final prefs = await SharedPreferences.getInstance();
-
-        // Simpan "Tiket Masuk"
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('savedUsername', widget.username);
         await prefs.setString('savedRole', widget.role);
         await prefs.setString('savedUserId', widget.userId);
-
-        // [Safety] Kita boleh simpan tarikh last 2FA kalau nak expiredkan lepas sebulan (Optional)
-        // await prefs.setInt('last2FADate', DateTime.now().millisecondsSinceEpoch);
       }
 
-      // 2. Rekod Activity
+      // B. Rekod Aktiviti Login ke Firestore (Audit Trail)
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('activities')
           .add({
         'action': '2FA Login',
-        'details': 'Device verified via 2FA (Trusted).',
+        'details': 'Device verified via Firebase Email Extension.',
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      // 3. Masuk Home Page
+      // C. Navigasi ke Halaman Utama Mengikut Role
       if (!mounted) return;
       Widget targetPage;
 
@@ -158,7 +192,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
       );
 
     } catch (e) {
-      _showSnack("Error: $e", isError: true);
+      _showSnack("Login Error: $e", isError: true);
       setState(() => _isLoading = false);
     }
   }
@@ -189,23 +223,25 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 20),
+            // Ikon Email
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(Icons.verified_user_rounded, size: 60, color: primaryBlue),
+              child: Icon(Icons.mark_email_read_outlined, size: 60, color: primaryBlue),
             ),
             const SizedBox(height: 30),
 
-            const Text("Device Verification", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+            const Text("Check Your Email", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
             Text(
-              "We sent a code to ${widget.email}.\nEnter it below to trust this device.",
+              "We've sent a code to\n${widget.email}",
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              style: TextStyle(color: Colors.grey[600], fontSize: 14, height: 1.5),
             ),
 
             const SizedBox(height: 40),
 
+            // Input Field Kod 6 Digit
             TextField(
               controller: _codeController,
               keyboardType: TextInputType.number,
@@ -214,7 +250,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5),
               decoration: InputDecoration(
                 counterText: "",
-                hintText: "000000",
+                hintText: "------",
                 hintStyle: TextStyle(color: Colors.grey[300], letterSpacing: 5),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade300)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: primaryBlue, width: 2)),
@@ -225,6 +261,7 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
 
             const SizedBox(height: 30),
 
+            // Butang Verify
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -234,24 +271,36 @@ class _Verify2FAPageState extends State<Verify2FAPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   elevation: 5,
                 ),
-                onPressed: _isLoading ? null : _verifyCode,
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("VERIFY & TRUST DEVICE", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white)),
+                onPressed: (_isLoading || _isSendingEmail) ? null : _verifyCode,
+                child: (_isLoading || _isSendingEmail)
+                    ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                    const SizedBox(width: 15),
+                    Text(_isSendingEmail ? "Sending Email..." : "Verifying...", style: const TextStyle(color: Colors.white))
+                  ],
+                )
+                    : const Text("VERIFY", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white)),
               ),
             ),
 
             const SizedBox(height: 25),
 
+            // Link Resend Code
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text("Didn't receive code? ", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                 GestureDetector(
-                  onTap: _canResend ? _sendOTP : null,
+                  onTap: (_canResend && !_isSendingEmail) ? _generateAndSendOTP : null,
                   child: Text(
                     _canResend ? "Resend Now" : "Resend in ${_start}s",
-                    style: TextStyle(color: _canResend ? primaryBlue : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(
+                        color: (_canResend && !_isSendingEmail) ? primaryBlue : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13
+                    ),
                   ),
                 ),
               ],

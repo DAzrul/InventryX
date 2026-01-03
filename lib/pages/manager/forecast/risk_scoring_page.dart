@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:inventryx/models/forecast_model.dart';
 import 'risk_logic.dart';
-// IMPORT YOUR DASHBOARD
-import 'package:inventryx/pages/manager/manager_dashboard_page.dart';
+
+// [IMPORTANT] Import ManagerPage (The wrapper with the BottomNavBar)
+import 'package:inventryx/pages/manager/manager_page.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // To get current User ID
 
 class RiskScoringPage extends StatefulWidget {
   final List<ForecastModel> forecasts;
@@ -63,7 +65,7 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           }
         }
 
-        // 3. RUN RISK CALCULATION (USING YOUR NEW CLASS)
+        // 3. RUN RISK CALCULATION
         RiskResult result = RiskLogic.calculateRisk(
           forecastDemand: forecast.predictedDemand,
           currentStock: currentStock,
@@ -76,8 +78,6 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           "predictedDemand": forecast.predictedDemand,
           "currentStock": currentStock,
           "daysToExpiry": daysToExpiry,
-
-          // We get everything from the result object now!
           "riskLevel": result.riskLevel,
           "riskValue": result.riskValue,
           "reasons": result.reasons,
@@ -111,7 +111,7 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           'RiskID': docRef.id,
           'ProductName': item['productName'],
           'RiskLevel': item['riskLevel'],
-          'RiskValue': item['riskValue'], // Saved but hidden in UI
+          'RiskValue': item['riskValue'],
           'DaysToExpiry': item['daysToExpiry'],
           'CreatedAt': FieldValue.serverTimestamp(),
         });
@@ -124,11 +124,19 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           const SnackBar(content: Text("Risk Analysis Saved Successfully!")),
         );
 
-        // NAVIGATE BACK TO MANAGER DASHBOARD
+        // [FIXED] Navigate to ManagerPage (Wrapper) to keep Bottom Navigation Bar
+        final currentUser = FirebaseAuth.instance.currentUser;
+
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const ManagerDashboardPage()),
-              (route) => false,
+          MaterialPageRoute(
+            builder: (context) => ManagerPage(
+              loggedInUsername: "Manager", // Or fetch from a provider if you have it
+              userId: currentUser?.uid ?? "", // Safety check for UID
+              username: "", // Optional depending on your ManagerPage logic
+            ),
+          ),
+              (route) => false, // Remove all previous routes
         );
       }
     } catch (e) {
