@@ -60,19 +60,20 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 1. FETCH DATA (LOGIC STOK VALID + FALLBACK)
+  // 1. FETCH DATA (LOGIC STOK VALID + SYNC PENDING SALES)
   // ==========================================================
   Future<void> _fetchAndRandomizeData() async {
     setState(() => _isLoading = true);
     try {
       final DateTime now = DateTime.now();
       Map<String, int> validStockMap = {};
+      Map<String, int> pendingSalesMap = {}; // [NEW] Map untuk pending sales
 
-      // A. Cuba tarik dari Batches (Stok ikut Tarikh Luput)
+      // A. Tarik Batches (Valid Stock)
       try {
         final batchSnapshot = await FirebaseFirestore.instance
             .collection('batches')
-            .where('expiryDate', isGreaterThan: Timestamp.fromDate(now)) // Hanya ambil yang belum expired
+            .where('expiryDate', isGreaterThan: Timestamp.fromDate(now))
             .where('currentQuantity', isGreaterThan: 0)
             .get();
 
@@ -82,10 +83,22 @@ class _DailySalesPageState extends State<DailySalesPage> {
           validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
         }
       } catch (e) {
-        debugPrint("Batch Index Error (Abaikan jika belum setup index): $e");
+        debugPrint("Batch Index Error: $e");
       }
 
-      // B. Tarik Produk Utama
+      // B. [NEW] Tarik Pending Sales (Data Cart Lama)
+      try {
+        final pendingSnapshot = await FirebaseFirestore.instance.collection('pending_sales').get();
+        for (var doc in pendingSnapshot.docs) {
+          String pid = doc['productID'];
+          int qty = int.tryParse(doc['quantitySold'].toString()) ?? 0;
+          pendingSalesMap[pid] = qty;
+        }
+      } catch (e) {
+        debugPrint("Pending Sales Error: $e");
+      }
+
+      // C. Tarik Produk Utama & Gabung Data
       final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
       List<ProductLocalState> tempList = [];
       Set<String> categoriesSet = {"All"};
@@ -98,12 +111,13 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
         double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
 
-        // Logic Stok: Guna batch valid dulu, kalau 0/tak ada, baru guna stok general (fallback)
+        // Logic Stok: Guna batch valid, fallback ke product stock
         int batchStock = validStockMap[pid] ?? 0;
         int productStock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-
-        // Kalau Batch system jalan, guna batchStock. Kalau tak, guna productStock.
         int finalStock = batchStock > 0 ? batchStock : productStock;
+
+        // [NEW] Check kalau ada dalam Pending Sales, set soldQty
+        int existingQty = pendingSalesMap[pid] ?? 0;
 
         tempList.add(ProductLocalState(
           id: pid,
@@ -113,7 +127,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
           category: cat,
           price: price,
           imageUrl: data['imageUrl'] ?? data['image'],
-          soldQty: 0,
+          soldQty: existingQty, // Load qty lama
         ));
       }
 
@@ -131,7 +145,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 2. AUTO GENERATE SALES (UTK DEMO/TESTING)
+  // 2. AUTO GENERATE SALES (ADD TO CURRENT QTY)
   // ==========================================================
   void _randomizeAllSales() {
     final Random random = Random();
@@ -145,7 +159,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
             int remaining = product.currentStock - product.soldQty;
             int maxToAdd = remaining > 5 ? 5 : remaining; // Max tambah 5 sekali jalan
             int extraQty = random.nextInt(maxToAdd) + 1;
-            product.soldQty += extraQty;
+            product.soldQty += extraQty; // [FIX] Tambah, bukan replace
             itemsUpdated++;
           }
         }
@@ -154,7 +168,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(itemsUpdated > 0 ? "Sales Generated Automatically!" : "No valid stock available."),
+          content: Text(itemsUpdated > 0 ? "Sales Generated & Added to List!" : "No valid stock available."),
           backgroundColor: itemsUpdated > 0 ? primaryColor : Colors.orange,
           duration: const Duration(milliseconds: 1000),
         )
@@ -227,7 +241,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 4. SAVE TO FIREBASE
+  // 4. SAVE TO FIREBASE (UPDATE PENDING SALES)
   // ==========================================================
   Future<void> _saveToFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -243,30 +257,34 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
     try {
       final batchWrite = FirebaseFirestore.instance.batch();
-      final salesRef = FirebaseFirestore.instance.collection('sales');
+      final pendingRef = FirebaseFirestore.instance.collection('pending_sales'); // [NEW] Target collection
       final now = Timestamp.now();
 
       for (var item in _cartItems) {
-        var newDoc = salesRef.doc();
-        batchWrite.set(newDoc, {
-          'salesID': newDoc.id,
+        var docRef = pendingRef.doc(item.id); // Guna Product ID sebagai Doc ID
+
+        batchWrite.set(docRef, {
           'productID': item.id,
           'userID': user.uid,
+
+          // [IMPORTANT] Kita set nilai terkini dari UI (Overwrite), bukan increment.
           'quantitySold': item.soldQty,
           'totalAmount': item.price * item.soldQty,
+
           'saleDate': now,
           'snapshotName': item.name,
-          'status': 'pending_deduction', // Status penting untuk proses seterusnya
+          'imageUrl': item.imageUrl, // Simpan gambar
+          'status': 'pending_deduction',
           'remarks': _remarksController.text.trim(),
-        });
+        }, SetOptions(merge: true));
       }
 
       await batchWrite.commit();
 
       if (mounted) {
-        Navigator.pop(context); // Tutup Loading Dialog
-        Navigator.pop(context); // Tutup Page Daily Sales (Balik ke Menu)
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sales Recorded Successfully!"), backgroundColor: Colors.green));
+        Navigator.pop(context); // Tutup Loading
+        // Kita tak tutup page, biar user nampak status 'Saved'
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sales list updated in Stock Out!"), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
@@ -313,7 +331,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
         ],
       ),
 
-      // Guna Stack supaya Bottom Sheet boleh duduk atas Content
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Stack(
@@ -325,16 +342,14 @@ class _DailySalesPageState extends State<DailySalesPage> {
               _buildCategorySection(),
               Expanded(
                 child: ListView.builder(
-                  // Padding bawah besar sikit supaya item last tak tertutup dengan bottom sheet
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 180),
                   physics: const BouncingScrollPhysics(),
                   itemCount: filteredItems.length,
                   itemBuilder: (context, index) => _ProductListItem(
                     product: filteredItems[index],
                     onQtyChanged: (val) => setState(() {
-                      // Cari item sebenar dalam _allProducts berdasarkan ID
                       int idx = _allProducts.indexWhere((p) => p.id == filteredItems[index].id);
-                      if (idx != -1) _allProducts[idx].soldQty = val;
+                      _allProducts[idx].soldQty = val;
                     }),
                   ),
                 ),
@@ -349,7 +364,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
     );
   }
 
-  // --- WIDGET CARIAN ---
   Widget _buildSearchSection() {
     return Container(
       margin: const EdgeInsets.all(20), padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -361,7 +375,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
     );
   }
 
-  // --- WIDGET KATEGORI ---
   Widget _buildCategorySection() {
     return SizedBox(
       height: 40,
@@ -386,12 +399,9 @@ class _DailySalesPageState extends State<DailySalesPage> {
     );
   }
 
-  // --- [UTAMA] DRAGGABLE BOTTOM SHEET ---
   Widget _buildDraggableBottomSummary() {
     return DraggableScrollableSheet(
-      initialChildSize: 0.18, // Saiz mula (Nampak Total & Button shj)
-      minChildSize: 0.18,     // Paling kecil
-      maxChildSize: 0.75,     // Paling besar (bila tarik)
+      initialChildSize: 0.18, minChildSize: 0.18, maxChildSize: 0.75,
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
@@ -401,36 +411,31 @@ class _DailySalesPageState extends State<DailySalesPage> {
           ),
           child: Column(
             children: [
-              // 1. Handle Bar (Pengayuh)
               const SizedBox(height: 12),
               Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
 
-              // 2. Header (FIXED AT TOP): Total & Button
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 15, 24, 10),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Kolum Total
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Total Sales (${_totalItemsSold} items)", style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text("Total Pending Sales (${_totalItemsSold})", style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
                         Text("RM ${_totalSalesAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
                       ],
                     ),
-                    // Butang Confirm
                     ElevatedButton(
                       onPressed: _saveToFirebase,
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          elevation: 5,
-                          shadowColor: primaryColor.withOpacity(0.4)
+                        backgroundColor: primaryColor,
+                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        elevation: 5,
                       ),
-                      child: const Text("Confirm & Save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                      child: const Text("Update List", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                     ),
                   ],
                 ),
@@ -438,17 +443,14 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
               const Divider(height: 1),
 
-              // 3. List Item (SCROLLABLE)
-              // Bahagian ini akan scroll bila sheet ditarik ke atas
               Expanded(
                 child: _cartItems.isEmpty
                     ? Center(child: Text("Swipe up to see list details", style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold)))
                     : ListView.builder(
-                  controller: scrollController, // Wajib pass controller ni
+                  controller: scrollController,
                   padding: const EdgeInsets.all(24),
-                  itemCount: _cartItems.length + 1, // +1 untuk Remarks
+                  itemCount: _cartItems.length + 1,
                   itemBuilder: (context, index) {
-                    // Item Terakhir: Remarks Box
                     if (index == _cartItems.length) {
                       return Padding(
                         padding: const EdgeInsets.only(top: 20, bottom: 40),
@@ -464,23 +466,18 @@ class _DailySalesPageState extends State<DailySalesPage> {
                         ),
                       );
                     }
-
-                    // List Item Produk
                     final item = _cartItems[index];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 15),
                       child: Row(
                         children: [
-                          // Kuantiti Badge
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                             child: Text("${item.soldQty}x", style: TextStyle(fontWeight: FontWeight.w900, color: primaryColor)),
                           ),
                           const SizedBox(width: 15),
-                          // Nama
                           Expanded(child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-                          // Harga
                           Text("RM ${(item.price * item.soldQty).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -496,7 +493,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 }
 
-// --- ITEM PRODUK LIST (SERAGAM DESIGN) ---
+// --- ITEM PRODUK LIST ---
 class _ProductListItem extends StatelessWidget {
   final ProductLocalState product;
   final Function(int) onQtyChanged;
@@ -516,12 +513,8 @@ class _ProductListItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Gambar
           _buildProductImage(product.imageUrl, size: 55, primaryColor: primaryBlue),
-
           const SizedBox(width: 15),
-
-          // Info
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(product.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
@@ -531,8 +524,6 @@ class _ProductListItem extends StatelessWidget {
               Text("RM ${product.price.toStringAsFixed(2)}", style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w900)),
             ]),
           ])),
-
-          // Butang Tambah/Tolak
           Row(children: [
             IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 24), onPressed: () => onQtyChanged(max(0, product.soldQty - 1))),
             Container(width: 30, alignment: Alignment.center, child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: product.soldQty > 0 ? primaryBlue : Colors.black))),

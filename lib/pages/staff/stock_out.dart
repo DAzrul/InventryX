@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // [PENTING] Tambah ini
+import 'package:cached_network_image/cached_network_image.dart';
 import '../Features_app/barcode_scanner_page.dart';
 import 'dart:math';
 
@@ -33,19 +33,82 @@ class _StockOutPageState extends State<StockOutPage> {
     super.dispose();
   }
 
-  void _showAlert(String title, String message, {bool isError = false}) {
+  // --- [KEMASKINI] CUSTOM DIALOG PREMIUM ---
+  void _showAlert(String title, String message, {bool isError = false, bool isWarning = false}) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: isError ? Colors.red : mainBlue)),
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.w500)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              )
+            ],
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // IKON DINAMIK (Success/Error/Warning)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isError
+                      ? Colors.red.withOpacity(0.1)
+                      : (isWarning ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1)),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isError ? Icons.error_outline_rounded : (isWarning ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded),
+                  color: isError ? Colors.red : (isWarning ? Colors.orange : Colors.green),
+                  size: 45,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // TAJUK
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
+              ),
+              const SizedBox(height: 12),
+
+              // MESEJ
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 30),
+
+              // BUTANG OK
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isError ? Colors.red : (isWarning ? Colors.orange : mainBlue),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Got it!", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -125,7 +188,7 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
-  // ======================== TAB 0: SOLD ========================
+  // ======================== TAB 0: SOLD (PENDING SALES) ========================
 
   Widget _buildSoldTab() {
     return Column(
@@ -133,10 +196,10 @@ class _StockOutPageState extends State<StockOutPage> {
         _buildAutoDeductToggle(),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _db.collection('sales').where('status', isEqualTo: 'pending_deduction').snapshots(),
+            stream: _db.collection('pending_sales').snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState("Tiada jualan tertunggak.");
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState("No outstanding sales.");
 
               final salesDocs = snapshot.data!.docs;
               return FutureBuilder<Map<String, int>>(
@@ -182,7 +245,7 @@ class _StockOutPageState extends State<StockOutPage> {
         children: [
           const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text("Apply Auto-Deduction", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-            Text("Preview baki stok selepas jualan", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
+            Text("Preview remaining stock after sale", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
           ]),
           Transform.scale(
             scale: 0.8,
@@ -289,7 +352,6 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
-  // --- [KEMASKINI UTAMA] UI CART ITEM YG SERAGAM ---
   Widget _buildCartItemCard(int index, StockOutItem item) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -300,9 +362,7 @@ class _StockOutPageState extends State<StockOutPage> {
           border: Border.all(color: Colors.grey.shade100)
       ),
       child: Row(children: [
-        // [FIX] Guna method gambar yang seragam (Saiz 55)
         _buildProductImage(item.imageUrl, size: 55),
-
         const SizedBox(width: 15),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -318,7 +378,6 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
-  // --- [UTAMA] WIDGET GAMBAR SERAGAM ---
   Widget _buildProductImage(String? url, {double size = 55}) {
     if (url == null || url.isEmpty) {
       return _buildPlaceholder(size);
@@ -336,7 +395,6 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
-  // --- [UTAMA] WIDGET PLACEHOLDER ---
   Widget _buildPlaceholder(double size) {
     return Container(
       width: size,
@@ -397,7 +455,7 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
-  // ======================== SHARED LOGIC (DO NOT MODIFY) ========================
+  // ======================== SHARED LOGIC ========================
 
   Future<Map<String, int>> _calculateTotals(List<QueryDocumentSnapshot> docs) async {
     int prevTotal = 0, soldTotal = 0;
@@ -519,94 +577,78 @@ class _StockOutPageState extends State<StockOutPage> {
         )) ?? false;
     if (!confirm) return;
     setState(() => _isProcessing = true);
-    final salesQ = await _db.collection('sales').where('status', isEqualTo: 'pending_deduction').get();
+    final salesQ = await _db.collection('pending_sales').get();
     final batch = _db.batch();
     for (var doc in salesQ.docs) batch.delete(doc.reference);
     await batch.commit();
     setState(() => _isProcessing = false);
   }
 
-  // ======================== CORE LOGIC (DO NOT MODIFY) ========================
+  // ======================== CORE LOGIC: APPLY & DEDUCT ========================
 
   Future<void> _applyStockDeduction() async {
     setState(() => _isProcessing = true);
     try {
-      final salesQuery = await _db.collection('sales').where('status', isEqualTo: 'pending_deduction').get();
-      if (salesQuery.docs.isEmpty) return;
-
-      List<String> insufficientItems = [];
-      for (var saleDoc in salesQuery.docs) {
-        final saleData = saleDoc.data() as Map<String, dynamic>;
-        final productId = saleData['productID'];
-        final soldQty = saleData['quantitySold'] as int;
-        final prodDoc = await _db.collection('products').doc(productId).get();
-        final currentStock = (prodDoc.data()?['currentStock'] ?? 0) as int;
-        if (currentStock < soldQty) {
-          insufficientItems.add("${saleData['snapshotName']} (Need $soldQty, Have $currentStock)");
-        }
-      }
-
-      if (insufficientItems.isNotEmpty) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 10), Text("Stock Error")]),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Deduction failed due to insufficient stock:", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    ...insufficientItems.map((item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child: Text("• $item", style: const TextStyle(fontSize: 13, color: Colors.red)),
-                    )),
-                  ],
-                ),
-              ),
-              actions: [
-                ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: mainBlue),
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("I'll Fix It", style: TextStyle(color: Colors.white))
-                ),
-              ],
-            ),
-          );
-        }
+      final pendingQuery = await _db.collection('pending_sales').get();
+      if (pendingQuery.docs.isEmpty) {
         setState(() => _isProcessing = false);
         return;
       }
 
       final batchWrite = _db.batch();
       final now = Timestamp.now();
-      for (var saleDoc in salesQuery.docs) {
+      List<String> errors = [];
+
+      for (var saleDoc in pendingQuery.docs) {
         final saleData = saleDoc.data() as Map<String, dynamic>;
         final productId = saleData['productID'];
         final productName = saleData['snapshotName'];
         int qtyToDeduct = saleData['quantitySold'];
 
-        final batchesQ = await _db.collection('batches').where('productId', isEqualTo: productId).where('currentQuantity', isGreaterThan: 0).orderBy('currentQuantity').orderBy('expiryDate').get();
+        // FEFO - First Expiring First Out
+        final batchesQ = await _db.collection('batches')
+            .where('productId', isEqualTo: productId)
+            .where('currentQuantity', isGreaterThan: 0)
+            .orderBy('expiryDate')
+            .get();
 
-        int actuallyDeducted = 0;
-        for (var bDoc in batchesQ.docs) {
-          if (qtyToDeduct <= 0) break;
-          int bQty = bDoc['currentQuantity'];
-          int take = (bQty >= qtyToDeduct) ? qtyToDeduct : bQty;
-          batchWrite.update(bDoc.reference, {'currentQuantity': FieldValue.increment(-take), 'updatedAt': now});
-          qtyToDeduct -= take; actuallyDeducted += take;
+        int totalAvailable = batchesQ.docs.fold(0, (sum, b) => sum + (b['currentQuantity'] as int));
+
+        if (totalAvailable < qtyToDeduct) {
+          errors.add("$productName (Need: $qtyToDeduct, Have: $totalAvailable)");
+          continue;
         }
 
-        batchWrite.update(_db.collection('products').doc(productId), {'currentStock': FieldValue.increment(-actuallyDeducted), 'updatedAt': now});
+        int remainingToDeduct = qtyToDeduct;
+        for (var bDoc in batchesQ.docs) {
+          if (remainingToDeduct <= 0) break;
+          int bQty = bDoc['currentQuantity'];
+          int take = (bQty >= remainingToDeduct) ? remainingToDeduct : bQty;
+          batchWrite.update(bDoc.reference, {'currentQuantity': FieldValue.increment(-take), 'updatedAt': now});
+          remainingToDeduct -= take;
+        }
+
+        batchWrite.update(_db.collection('products').doc(productId), {'currentStock': FieldValue.increment(-qtyToDeduct), 'updatedAt': now});
+
         final movementRef = _db.collection('stockMovements').doc();
-        batchWrite.set(movementRef, {'movementId': movementRef.id, 'productId': productId, 'productName': productName, 'quantity': -actuallyDeducted, 'type': 'Sold', 'reason': 'Customer Purchase', 'timestamp': now, 'user': 'Staff'});
-        batchWrite.update(saleDoc.reference, {'status': 'completed'});
+        batchWrite.set(movementRef, {'movementId': movementRef.id, 'productId': productId, 'productName': productName, 'quantity': -qtyToDeduct, 'type': 'Sold', 'reason': 'Daily Sales Applied', 'timestamp': now, 'user': 'Staff'});
+
+        batchWrite.delete(saleDoc.reference);
       }
-      await batchWrite.commit();
-      if (mounted) _showAlert("Success", "All stock has been successfully deducted and recorded.");
+
+      if (errors.isNotEmpty) {
+        if (mounted) {
+          String errorMessage = "The following items do not have enough stock:\n\n" + errors.join('\n');
+          _showAlert("Insufficient Stock", errorMessage, isError: true);
+        }
+      } else {
+        await batchWrite.commit();
+        if (mounted) {
+          _showAlert("Process Completed", "All sales records have been successfully applied and stock has been deducted.", isError: false);
+        }
+      }
+    } catch (e) {
+      _showAlert("System Error", e.toString(), isError: true);
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -625,9 +667,10 @@ class _StockOutPageState extends State<StockOutPage> {
       }
       await batch.commit();
       setState(() { _cartItems.clear(); _notesController.clear(); _isProcessing = false; });
-      _showAlert("Success", "Manual removal has been recorded in stock movements.");
+      _showAlert("Manual Removal Success", "Stock adjustment for manual reasons has been recorded.", isError: false);
     } catch (e) {
       if (mounted) setState(() => _isProcessing = false);
+      _showAlert("System Error", e.toString(), isError: true);
     }
   }
 
@@ -649,7 +692,7 @@ class _StockOutPageState extends State<StockOutPage> {
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const LinearProgressIndicator();
               final batches = snapshot.data!.docs;
-              if (batches.isEmpty) return const Text("TIADA STOK DLM BATCH", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
+              if (batches.isEmpty) return const Text("OUT OF STOCK IN BATCHES", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
               return DropdownButtonFormField<String>(
                 isExpanded: true, value: selectedBatchId, hint: const Text("Choose Batch"),
                 items: batches.map((b) => DropdownMenuItem(value: b.id, child: Text("${b['batchNumber']} (Bal: ${b['currentQuantity']})"), onTap: () { selectedBatchNum = b['batchNumber']; maxQuantity = b['currentQuantity']; })).toList(),
@@ -689,45 +732,11 @@ class _ProductSelectorState extends State<_ProductSelector> {
   String _query = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
-  // --- [KEMASKINI UTAMA] Helper Method untuk Gambar Seragam ---
   Widget _buildProductImage(String? url, {double size = 55}) {
     if (url == null || url.isEmpty) {
-      return _buildPlaceholder(size);
+      return Container(width: size, height: size, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: const Color(0xFF1E3A8A).withOpacity(0.1), width: 1.5)), child: Center(child: Icon(Icons.inventory_2_rounded, color: const Color(0xFF1E3A8A).withOpacity(0.3), size: size * 0.5)));
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(15),
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        placeholder: (_, __) => _buildPlaceholder(size),
-        errorWidget: (_, __, ___) => _buildPlaceholder(size),
-      ),
-    );
-  }
-
-  // --- Helper Method untuk Placeholder ---
-  Widget _buildPlaceholder(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: const Color(0xFF1E3A8A).withOpacity(0.1),
-          width: 1.5,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.inventory_2_rounded,
-          color: const Color(0xFF1E3A8A).withOpacity(0.3),
-          size: size * 0.5,
-        ),
-      ),
-    );
+    return ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: url, width: size, height: size, fit: BoxFit.cover, placeholder: (_, __) => Container(width: size, height: size, color: Colors.grey[100])));
   }
 
   @override
@@ -756,7 +765,6 @@ class _ProductSelectorState extends State<_ProductSelector> {
                 final prod = docs[i].data() as Map<String, dynamic>;
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  // [FIX] Guna method gambar yang seragam
                   leading: _buildProductImage(prod['imageUrl'], size: 55),
                   title: Text(prod['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   subtitle: Text("Stock: ${prod['currentStock']}", style: const TextStyle(fontSize: 12)),
