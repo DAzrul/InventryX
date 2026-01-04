@@ -8,9 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // Import the shared pages
 import 'pages/notifications/notification_page.dart';
-import 'pages/notifications/expiry_alert_detail_page.dart';
-import 'pages/notifications/risk_alert_detail_page.dart';
-
+import 'pages/notifications/expiry_alert_detail_page.dart'; // 🔹 Re-added
+import 'pages/notifications/risk_alert_detail_page.dart';   // 🔹 Re-added
 import 'pages/login_page.dart';
 import 'firebase_options.dart';
 
@@ -37,17 +36,14 @@ void main() async {
     onDidReceiveNotificationResponse: (NotificationResponse response) {
       if (response.payload != null) {
         try {
-          // Convert the query string payload back into a Map
           final Map<String, dynamic> data = Map<String, dynamic>.from(
               Uri.splitQueryString(response.payload!)
           );
-
-          // 🔹 Call the static handler on MyApp
           MyApp.handleLocalNotificationClick(data);
         } catch (e) {
-          debugPrint("Payload Error: $e");
-          navigatorKey.currentState?.push(
+          navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
           );
         }
       }
@@ -77,7 +73,6 @@ void main() async {
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  // 🔹 Static helper to bridge global main() and the private State class
   static void handleLocalNotificationClick(Map<String, dynamic> data) {
     _MyAppState.instance?._handleNotificationClick(RemoteMessage(data: data));
   }
@@ -87,7 +82,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  // 🔹 Static instance to keep the state accessible for notification routing
   static _MyAppState? instance;
 
   @override
@@ -107,8 +101,9 @@ class _MyAppState extends State<MyApp> {
     final data = message.data;
     final user = FirebaseAuth.instance.currentUser;
 
-    // 1. If not logged in, force Login
+    // 1. If not logged in, force navigation to LoginPage ONLY
     if (user == null) {
+      debugPrint("Not logged in: Navigating to LoginPage");
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
             (route) => false,
@@ -117,14 +112,15 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
-      // 2. Get User Role for the Detail Pages
+      // 2. Fetch role from Firestore
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final String role = userDoc.data()?['role'] ?? 'staff';
 
       // 3. Navigation Logic based on Alert Type
-      if (data['alertType'] == 'risk') {
-        final String riskId = data['riskAnalysisId'] ?? data['riskId'] ?? "";
+      final String type = data['alertType'] ?? '';
 
+      if (type == 'risk') {
+        final String riskId = data['riskAnalysisId'] ?? data['riskId'] ?? "";
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (_) => RiskAlertDetailPage(
@@ -135,7 +131,7 @@ class _MyAppState extends State<MyApp> {
           ),
         );
       }
-      else if (data['alertType'] == 'expiry') {
+      else if (type == 'expiry') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (_) => ExpiryAlertDetailPage(
@@ -148,14 +144,16 @@ class _MyAppState extends State<MyApp> {
         );
       }
       else {
+        // Fallback to Notification List if type is missing or different
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => NotificationPage(userRole: role)),
         );
       }
     } catch (e) {
       debugPrint("Routing Error: $e");
-      navigatorKey.currentState?.push(
+      navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
       );
     }
   }
@@ -163,42 +161,8 @@ class _MyAppState extends State<MyApp> {
   void _setupFirebaseMessaging() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
-
     await messaging.subscribeToTopic("inventory_alerts");
 
-    String? token = await messaging.getToken();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (token != null && uid != null) {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({'fcmToken': token});
-    }
-
-    // Foreground listener
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      String title = message.notification?.title ?? "Inventory Alert";
-      String body = message.notification?.body ?? "";
-
-      // Create a URL-encoded payload string for local notification
-      String payload = Uri(
-          queryParameters: message.data.map((key, value) => MapEntry(key, value.toString()))
-      ).query;
-
-      flutterLocalNotificationsPlugin.show(
-        message.hashCode,
-        title,
-        body,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'expiry_alerts_channel',
-            'Expiry Alerts',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
-        payload: payload,
-      );
-    });
-
-    // Background/Terminated listeners
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _handleNotificationClick(message);
     });
@@ -207,6 +171,25 @@ class _MyAppState extends State<MyApp> {
       if (message != null) {
         _handleNotificationClick(message);
       }
+    });
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      String title = message.notification?.title ?? "Inventory Alert";
+      String body = message.notification?.body ?? "";
+      String payload = Uri(
+          queryParameters: message.data.map((key, value) => MapEntry(key, value.toString()))
+      ).query;
+
+      flutterLocalNotificationsPlugin.show(
+        message.hashCode, title, body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'expiry_alerts_channel', 'Expiry Alerts',
+            importance: Importance.max, priority: Priority.high,
+          ),
+        ),
+        payload: payload,
+      );
     });
   }
 
