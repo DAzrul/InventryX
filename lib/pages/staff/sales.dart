@@ -26,24 +26,21 @@ class _SalesPageState extends State<SalesPage> {
   final Color primaryColor = const Color(0xFF203288);
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // 1. Dapatkan user semasa
-      final user = FirebaseAuth.instance.currentUser;
-
       // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU (Nuclear Reset)
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => StaffPage(
-            loggedInUsername: "Staff", // Placeholder, stream akan handle
-            userId: user?.uid ?? '',
+            loggedInUsername: currentUsername, // Guna data sebenar
+            userId: uid, username: '', // Guna UID sebenar
           ),
         ),
             (Route<dynamic> route) => false, // False = Matikan jalan balik!
       );
     } else if (index == 1) {
-      // CLICK FEATURES -> TUNJUK MODAL BALIK
-      StaffFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      StaffFeaturesModal.show(context, currentUsername, uid);
     } else {
       // CLICK PROFILE -> SWITCH INDEX KE PROFILE
       setState(() {
@@ -74,11 +71,12 @@ class _SalesPageState extends State<SalesPage> {
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
-          String currentUsername = "User";
+          String currentUsername = "Staff";
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? "User";
+            currentUsername = d['username'] ?? "Staff";
           }
+          final safeUid = uid ?? '';
 
           return Scaffold(
             backgroundColor: const Color(0xFFF8FAFF),
@@ -89,19 +87,19 @@ class _SalesPageState extends State<SalesPage> {
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSalesHome(),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: safeUid),
               ],
             ),
 
-            // Panggil Nav Bar yg dah di-repair design dia
-            bottomNavigationBar: _buildFloatingNavBar(),
+            // [FIX] Panggil Nav Bar dgn data lengkap
+            bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
           );
         }
     );
   }
 
   // --- UI: FLOATING NAVBAR (DESIGN REPAIRED) ---
-  Widget _buildFloatingNavBar() {
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       // [FIX] Margin 12 bottom supaya sama dengan Dashboard
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -109,13 +107,14 @@ class _SalesPageState extends State<SalesPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          // [FIX] Pass data ke logic onTap
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
@@ -142,24 +141,22 @@ class _SalesPageState extends State<SalesPage> {
       icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(activeIcon, size: 22, color: primaryColor),
       ),
       label: label,
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
+  // --- UI Components Lain ---
   Widget _buildSalesHome() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // [FIX] Hilangkan butang back
+        automaticallyImplyLeading: false,
         title: const Text(
           "Sales Management",
           style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.w800, fontSize: 18),
@@ -176,7 +173,7 @@ class _SalesPageState extends State<SalesPage> {
             const SizedBox(height: 20),
             _SalesOptionCard(
               title: "Daily Sales Input",
-              subtitle: "Record today's automated simulation",
+              subtitle: "Record today's automated add from database",
               icon: Icons.add_chart_rounded,
               isActive: selectedOptionIndex == 0,
               primaryColor: const Color(0xFF233E99),
@@ -202,7 +199,7 @@ class _SalesPageState extends State<SalesPage> {
   Widget _buildInfoBox() {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: const Color(0xFF233E99).withValues(alpha: 0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF233E99).withValues(alpha: 0.1))),
+      decoration: BoxDecoration(color: const Color(0xFF233E99).withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF233E99).withOpacity(0.1))),
       child: Row(
         children: [
           const Icon(Icons.lightbulb_outline_rounded, color: Color(0xFF233E99)),
@@ -231,10 +228,10 @@ class _SalesOptionCard extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        gradient: isActive ? LinearGradient(colors: [primaryColor, primaryColor.withValues(alpha: 0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
+        gradient: isActive ? LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
         color: isActive ? null : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: isActive ? primaryColor.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [BoxShadow(color: isActive ? primaryColor.withOpacity(0.3) : Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Material(
         color: Colors.transparent,
@@ -247,7 +244,7 @@ class _SalesOptionCard extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: isActive ? Colors.white24 : primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+                  decoration: BoxDecoration(color: isActive ? Colors.white24 : primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
                   child: Icon(icon, color: isActive ? Colors.white : primaryColor, size: 28),
                 ),
                 const SizedBox(width: 20),

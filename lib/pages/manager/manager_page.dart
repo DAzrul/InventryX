@@ -11,7 +11,8 @@ class ManagerPage extends StatefulWidget {
   const ManagerPage({
     super.key,
     required this.loggedInUsername,
-    required this.userId
+    required this.userId, required String username,
+    // [FIX 1] Buang 'required String username' yg buat error constructor
   });
 
   @override
@@ -35,35 +36,31 @@ class _ManagerPageState extends State<ManagerPage> {
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
-
-            // --- FIX 1: ELAK OVERFLOW BILA KEYBOARD KELUAR ---
             resizeToAvoidBottomInset: false,
-
-            extendBody: true, // Nav bar akan nampak lebih "floating"
+            extendBody: true,
             body: _buildMainContent(currentUsername),
-
-            // --- FIX 2: WRAP NAV BAR DLM SAFEAREA ---
             bottomNavigationBar: SafeArea(
-              child: _buildFloatingNavBar(),
+              // [FIX 2] Pass 'currentUsername' masuk ke dalam navbar
+              child: _buildFloatingNavBar(currentUsername),
             ),
           );
         }
     );
   }
 
-  Widget _buildFloatingNavBar() {
+  // [FIX 3] Terima parameter String currentUsername
+  Widget _buildFloatingNavBar(String currentUsername) {
     return Container(
-      // --- FIX 3: KURANGKAN MARGIN BAWAH SUPAYA TAK TERTOLEK ---
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 15),
-      height: 65, // Kecilkan sikit dari 70 ke 65 mat
+      height: 65,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 15, // Kecilkan blur radius sikit
-            offset: const Offset(0, 4), // Offset jangan jauh sangat
+            blurRadius: 15,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -73,7 +70,9 @@ class _ManagerPageState extends State<ManagerPage> {
           currentIndex: _selectedIndex,
           onTap: (index) {
             if (index == 1) {
-              ManagerFeaturesModal.show(context);
+              // [FIX 4] Hantar 3 Data: Context, Username, UserID
+              // Ini selesaikan error "3 positional arguments expected"
+              ManagerFeaturesModal.show(context, currentUsername, widget.userId);
             } else {
               setState(() => _selectedIndex = index);
             }
@@ -98,9 +97,9 @@ class _ManagerPageState extends State<ManagerPage> {
 
   BottomNavigationBarItem _navItem(IconData inactiveIcon, IconData activeIcon, String label) {
     return BottomNavigationBarItem(
-      icon: Icon(inactiveIcon, size: 22), // Kecilkan sikit dari 24 ke 22
+      icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
-        padding: const EdgeInsets.all(6), // Kecilkan padding dari 8 ke 6
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           color: primaryBlue.withValues(alpha: 0.1),
           shape: BoxShape.circle,
@@ -116,7 +115,8 @@ class _ManagerPageState extends State<ManagerPage> {
       index: _selectedIndex == 2 ? 1 : 0,
       children: [
         const ManagerDashboardPage(),
-        ProfilePage(username: currentUsername, userId: '',),
+        // [FIX 5] Masukkan widget.userId, JANGAN biarkan kosong ''
+        ProfilePage(username: currentUsername, userId: widget.userId),
       ],
     );
   }

@@ -44,7 +44,7 @@ class _SupplierEditPageState extends State<SupplierEditPage> {
         addressController.text.isEmpty) {
 
       // [FIX] Error Message Cantik (Merah)
-      _showStyledSnackBar("Please fill in all fields, don't be lazy!", isError: true);
+      _showStyledSnackBar("Please fill in all fields!", isError: true);
       return;
     }
 

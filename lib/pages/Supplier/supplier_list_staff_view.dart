@@ -25,7 +25,8 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
   final Color bgGray = const Color(0xFFF8F9FD);
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  // [FIX] Terima context, currentUsername, uid
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
       // 1. Dapatkan user semasa
       final user = FirebaseAuth.instance.currentUser;
@@ -34,15 +35,15 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => StaffPage(
-            loggedInUsername: "Staff", // Placeholder, stream akan handle
-            userId: user?.uid ?? '',
+            loggedInUsername: currentUsername, // Guna data sebenar
+            userId: uid, username: '', // Guna UID sebenar
           ),
         ),
             (Route<dynamic> route) => false, // False = Matikan jalan balik!
       );
     } else if (index == 1) {
-      // CLICK FEATURES -> TUNJUK MODAL BALIK
-      StaffFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      StaffFeaturesModal.show(context, currentUsername, uid);
     } else {
       // CLICK PROFILE -> SWITCH INDEX KE PROFILE PAGE
       setState(() {
@@ -61,11 +62,12 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
-          String currentUsername = "User";
+          String currentUsername = "Staff";
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? "User";
+            currentUsername = d['username'] ?? "Staff";
           }
+          final safeUid = uid ?? '';
 
           return Scaffold(
             backgroundColor: bgGray,
@@ -77,19 +79,20 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildSupplierHome(),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: safeUid),
               ],
             ),
 
-            // Panggil Nav Bar yg dah di-repair design dia
-            bottomNavigationBar: _buildFloatingNavBar(),
+            // [FIX] Hantar data ke navbar
+            bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
           );
         }
     );
   }
 
   // --- UI: FLOATING NAVIGATION BAR (DESIGN REPAIRED) ---
-  Widget _buildFloatingNavBar() {
+  // [FIX] Terima parameter Context, Username, UID
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       // [FIX] Margin 12 bottom supaya sama dengan Dashboard
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -97,13 +100,14 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          // [FIX] Pass data ke logic onTap
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryBlue,
           unselectedItemColor: Colors.grey.shade400,
@@ -130,7 +134,7 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
       icon: Icon(inactiveIcon, size: 22),
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(activeIcon, size: 22, color: primaryBlue),
       ),
       label: label,
@@ -148,11 +152,10 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
     );
   }
 
-  // --- UI Components Lain (Kekal Sama) ---
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text("Suppliers", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
         const SizedBox(height: 20),
@@ -166,7 +169,7 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
       stream: _supplierStream,
       builder: (context, snapshot) {
         int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-        return Container(margin: const EdgeInsets.all(24), padding: const EdgeInsets.all(24), decoration: BoxDecoration(gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]), borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 28)), const SizedBox(width: 20), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("$count", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white)), const Text("Active Suppliers", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 12))])]));
+        return Container(margin: const EdgeInsets.all(24), padding: const EdgeInsets.all(24), decoration: BoxDecoration(gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.8)]), borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 28)), const SizedBox(width: 20), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("$count", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white)), const Text("Active Suppliers", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 12))])]));
       },
     );
   }
@@ -175,8 +178,73 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
     return Expanded(child: StreamBuilder<QuerySnapshot>(stream: _supplierStream, builder: (context, snapshot) { if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: primaryBlue)); final docs = snapshot.data!.docs.where((doc) { final d = doc.data() as Map<String, dynamic>; final name = (d['supplierName'] ?? '').toString().toLowerCase(); final phone = (d['contactNo'] ?? '').toString().toLowerCase(); return name.contains(_searchText) || phone.contains(_searchText); }).toList(); if (docs.isEmpty) return _buildEmptyState(); return ListView.builder(padding: const EdgeInsets.fromLTRB(24, 0, 24, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final s = docs[index].data() as Map<String, dynamic>; return _buildSupplierCard(s); }); }));
   }
 
+  // --- [KEMASKINI UTAMA] KAD SUPPLIER RESPONSIVE (SAMA PRODUCT & MANAGER) ---
   Widget _buildSupplierCard(Map<String, dynamic> data) {
-    return GestureDetector(onTap: () => _showSupplierDetails(context, data), child: Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: bgGray, borderRadius: BorderRadius.circular(15)), child: Icon(Icons.store_rounded, color: primaryBlue, size: 26)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['supplierName'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Row(children: [Icon(Icons.phone_rounded, size: 12, color: Colors.grey[500]), const SizedBox(width: 6), Text(data['contactNo'] ?? '-', style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w600))])])), Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300])])));
+    // Logic Responsif: Sama sebiji dengan Product List & Manager Supplier List
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+    final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // Saiz standard 55
+
+    return GestureDetector(
+      onTap: () => _showSupplierDetails(context, data),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        ),
+        child: Row(
+          children: [
+            // --- KOTAK IKON (Dynamic Size) ---
+            Container(
+              width: imgSize,
+              height: imgSize,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.business_rounded,
+                  color: primaryBlue.withOpacity(0.3),
+                  size: imgSize * 0.5, // Icon separuh dari kotak
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 15),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['supplierName'] ?? '-',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14, color: const Color(0xFF1A1C1E)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.phone_iphone_rounded, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(data['contactNo'] ?? '-', style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300]),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSupplierDetails(BuildContext context, Map<String, dynamic> data) {
@@ -188,6 +256,6 @@ class _SupplierListPageViewState extends State<SupplierListStaffView> {
   }
 
   Widget _buildEmptyState() {
-    return Center(child: Text("No suppliers found mat!", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
+    return Center(child: Text("No suppliers found!", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
   }
 }

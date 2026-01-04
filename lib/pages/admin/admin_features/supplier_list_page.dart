@@ -252,11 +252,145 @@ class _SupplierListPageState extends State<SupplierListPage> {
 }
 
 class _SupplierCard extends StatelessWidget {
-  final Map<String, dynamic> data; final String docId; final Color primaryColor; final VoidCallback onTap;
-  const _SupplierCard({required this.data, required this.docId, required this.primaryColor, required this.onTap});
+  final Map<String, dynamic> data;
+  final String docId;
+  final Color primaryColor;
+  final VoidCallback onTap;
+
+  const _SupplierCard({
+    required this.data,
+    required this.docId,
+    required this.primaryColor,
+    required this.onTap
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: ListTile(onTap: onTap, contentPadding: const EdgeInsets.all(12), leading: Container(width: 55, height: 55, decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.business_rounded, color: primaryColor, size: 28)), title: Text(data['supplierName'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 4), Text(data['contactNo'] ?? '-', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.bold)), Text(data['email'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade400))]), trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: const Icon(Icons.edit_square, color: Colors.blueGrey, size: 22), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierEditPage(supplierId: docId, supplierData: data)))), IconButton(icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22), onPressed: () => showDialog(context: context, builder: (_) => SupplierDeleteDialog(supplierId: docId, supplierData: data)))],)));
+    // Logic Responsif
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02), // Guna withOpacity kalau version lama
+              blurRadius: 10,
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // --- PLACEHOLDER CANTIK (Sama Style dgn Product) ---
+            Container(
+              width: isTablet ? 70 : isSmall ? 45 : 55,
+              height: isTablet ? 70 : isSmall ? 45 : 55,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(
+                  color: primaryColor.withOpacity(0.1),
+                  width: 1.5,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.business_rounded, // Icon Supplier
+                  color: primaryColor.withOpacity(0.5),
+                  size: isTablet ? 30 : 24,
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // TEXT INFO
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['supplierName'] ?? 'Unnamed',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: isTablet ? 16 : 14,
+                      color: const Color(0xFF1A1C1E),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.phone_iphone_rounded, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(
+                        data['contactNo'] ?? '-',
+                        style: TextStyle(
+                          fontSize: isTablet ? 13 : 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Optional: Tambah email kalau nak
+                  if (data['email'] != null && data['email'].isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        data['email'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // ACTION BUTTONS (Edit/Delete)
+            if (!isSmall)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_note_rounded, size: 22, color: Colors.blueGrey),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierEditPage(supplierId: docId, supplierData: data))),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep_rounded, size: 20, color: Colors.redAccent),
+                    onPressed: () => showDialog(context: context, builder: (_) => SupplierDeleteDialog(supplierId: docId, supplierData: data)),
+                  ),
+                ],
+              )
+            else
+            // Kalau skrin kecil, pakai popup menu
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.grey),
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => SupplierEditPage(supplierId: docId, supplierData: data)));
+                  } else {
+                    showDialog(context: context, builder: (_) => SupplierDeleteDialog(supplierId: docId, supplierData: data));
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

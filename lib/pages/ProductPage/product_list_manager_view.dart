@@ -26,24 +26,22 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   final List<String> _categories = ['ALL', 'FOOD', 'BEVERAGES', 'PERSONAL CARE'];
 
   // --- LOGIC NUCLEAR: RESET APP ---
-  void _onItemTapped(int index) {
+  void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // 1. Dapatkan user semasa
-      final user = FirebaseAuth.instance.currentUser;
-
-      // 2. BUNUH SEMUA PAGE, LOAD STAFF DASHBOARD BARU
+      // 2. BUNUH SEMUA PAGE, LOAD MANAGER DASHBOARD BARU
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => ManagerPage(
-            loggedInUsername: "Manager", // Placeholder, stream akan handle
-            userId: user?.uid ?? '',
+            loggedInUsername: currentUsername, // Hantar username sebenar
+            userId: uid, username: '', // Hantar UID sebenar
           ),
         ),
             (Route<dynamic> route) => false,
       );
 
     } else if (index == 1) {
-      ManagerFeaturesModal.show(context);
+      // [FIX] Hantar 3 Data: Context, Username, UserID
+      ManagerFeaturesModal.show(context, currentUsername, uid);
     } else if (index == 2) {
       setState(() => _selectedIndex = index);
     }
@@ -56,11 +54,14 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snapshot) {
-          String currentUsername = "User";
+          String currentUsername = "Manager"; // Default value
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? "User";
+            currentUsername = d['username'] ?? "Manager";
           }
+
+          // Pastikan uid tidak null
+          final safeUid = uid ?? '';
 
           return Scaffold(
             backgroundColor: const Color(0xFFF6F8FB),
@@ -68,13 +69,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
             resizeToAvoidBottomInset: false,
 
             // Panggil function navbar yang dah di-design semula
-            bottomNavigationBar: _buildFloatingNavBar(),
+            bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
 
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildInventoryHome(),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: safeUid),
               ],
             ),
           );
@@ -83,9 +84,8 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   }
 
   // --- DESIGN NAVBAR: SEBIJI MACAM DASHBOARD ---
-  Widget _buildFloatingNavBar() {
+  Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
-      // [FIX] Margin mesti sama dengan Dashboard (12 bottom)
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       height: 62,
       decoration: BoxDecoration(
@@ -93,7 +93,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           )
@@ -103,16 +103,13 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
         borderRadius: BorderRadius.circular(25),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          onTap: (index) => _onItemTapped(context, index, currentUsername, uid),
           backgroundColor: Colors.white,
           selectedItemColor: primaryColor,
           unselectedItemColor: Colors.grey.shade400,
-
-          // [FIX PENTING] Ini property yang buat dia nampak "sama" dgn dashboard
           showSelectedLabels: true,
-          showUnselectedLabels: false, // Label hilang kalau tak select (clean look)
+          showUnselectedLabels: false,
           type: BottomNavigationBarType.fixed,
-
           elevation: 0,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
           items: [
@@ -131,7 +128,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
       activeIcon: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.1),
+          color: primaryColor.withOpacity(0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(activeIcon, size: 22, color: primaryColor),
@@ -140,7 +137,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     );
   }
 
-  // --- UI Components Lain (Tak Berubah) ---
+  // --- UI Components Lain ---
   Widget _buildInventoryHome() {
     return Column(children: [_buildTopHeader(), _buildCategoryFilters(), _buildProductList()]);
   }
@@ -148,7 +145,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(35)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text("Products", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
         const SizedBox(height: 20),
@@ -169,7 +166,103 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     return Expanded(child: StreamBuilder<QuerySnapshot>(stream: (_selectedCategory == 'ALL') ? FirebaseFirestore.instance.collection("products").snapshots() : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(), builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); final docs = snapshot.data!.docs.where((d) => d['productName'].toString().toLowerCase().contains(_searchText)).toList(); return ListView.builder(padding: const EdgeInsets.fromLTRB(20, 0, 20, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; return _buildProductCard(data); }); }));
   }
 
+  // --- [KEMASKINI UTAMA] KAD PRODUK SERASI DGN ADMIN ---
   Widget _buildProductCard(Map<String, dynamic> data) {
-    return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(width: 70, height: 70, decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.grey[100]), child: (data['imageUrl'] != null && data['imageUrl'] != '') ? ClipRRect(borderRadius: BorderRadius.circular(15), child: CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover)) : Icon(Icons.inventory_2_rounded, color: primaryColor.withValues(alpha: 0.2))), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['productName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), Text("${data['category']} • Stock: ${data['currentStock']}", style: TextStyle(fontSize: 11, color: Colors.grey[500]))])), const Icon(Icons.chevron_right_rounded, color: Colors.grey)]));
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmall = screenWidth < 360;
+    final isTablet = screenWidth >= 600;
+    final double imgSize = isTablet ? 70 : isSmall ? 45 : 55;
+
+    double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
+    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // --- PLACEHOLDER / IMEJ CANTIK ---
+          ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
+                ? CachedNetworkImage(
+              imageUrl: data['imageUrl'],
+              width: imgSize,
+              height: imgSize,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => _buildPlaceholder(imgSize),
+              errorWidget: (_, __, ___) => _buildPlaceholder(imgSize),
+            )
+                : _buildPlaceholder(imgSize),
+          ),
+
+          const SizedBox(width: 15),
+
+          // --- MAKLUMAT PRODUK ---
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data['productName'] ?? 'N/A',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: isTablet ? 16 : 14),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text('RM ${price.toStringAsFixed(2)}',
+                        style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                    const SizedBox(width: 8),
+                    // STOCK CHIP (Label berwarna)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text('Stock: $stock',
+                          style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET PLACEHOLDER (Sama macam Admin) ---
+  Widget _buildPlaceholder(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: primaryColor.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.inventory_2_rounded,
+          color: primaryColor.withOpacity(0.3),
+          size: size * 0.5,
+        ),
+      ),
+    );
   }
 }

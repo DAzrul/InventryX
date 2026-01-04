@@ -27,7 +27,7 @@ class _SupplierAddPageState extends State<SupplierAddPage> {
         addressController.text.isEmpty) {
 
       // [FIX] Error Message Cantik (Merah)
-      _showStyledSnackBar("Please fill in all details, don't be lazy!", isError: true);
+      _showStyledSnackBar("Please fill in all details!", isError: true);
       return;
     }
 

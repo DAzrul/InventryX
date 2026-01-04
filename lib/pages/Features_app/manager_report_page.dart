@@ -14,24 +14,28 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 
 // Navigation Imports
-import '../admin/admin_page.dart';
-import '../admin/utils/features_modal.dart';
+import '../manager/manager_page.dart';
+import '../manager/utils/manager_features_modal.dart';
 import '../Profile/User_profile_page.dart';
 
-class ReportPage extends StatefulWidget {
-  final String? loggedInUsername;
-  final String? userId;
+class ManagerReportPage extends StatefulWidget {
+  final String loggedInUsername;
+  final String userId;
 
-  const ReportPage({super.key, this.loggedInUsername, this.userId});
+  const ManagerReportPage({
+    super.key,
+    required this.loggedInUsername,
+    required this.userId
+  });
 
   @override
-  State<ReportPage> createState() => _ReportPageState();
+  State<ManagerReportPage> createState() => _ManagerReportPageState();
 }
 
-class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateMixin {
+class _ManagerReportPageState extends State<ManagerReportPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  int _selectedIndex = 1;
+  int _selectedIndex = 1; // Default ke 1 sebab Report sebahagian dari Features
   final Color primaryBlue = const Color(0xFF233E99);
 
   @override
@@ -48,17 +52,15 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       final pdf = pw.Document();
       // Tarik Data Fresh
       final productsSnap = await _db.collection('products').get();
-
-      // Optional: Tarik data forecast & risk kalau nak masukkan dalam PDF juga
-      // final forecastSnap = await _db.collection('forecasts').get();
-      // final riskSnap = await _db.collection('risk_analysis').get();
+      // final forecastSnap = await _db.collection('forecasts').orderBy('forecastDate').get(); // Optional
+      // final riskSnap = await _db.collection('risk_analysis').get(); // Optional
 
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           build: (pw.Context context) {
             return [
-              pw.Header(level: 0, child: pw.Text("Business Analytics Report", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
+              pw.Header(level: 0, child: pw.Text("Manager Analytics Report", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
               pw.Paragraph(text: "Generated on: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}"),
               pw.SizedBox(height: 20),
 
@@ -86,7 +88,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       Navigator.pop(context); // Tutup loading
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf.save(),
-        name: 'Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+        name: 'Manager_Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
       );
 
     } catch (e) {
@@ -116,7 +118,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 
       var fileBytes = excel.save();
       final directory = await getApplicationDocumentsDirectory();
-      final path = '${directory.path}/Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+      final path = '${directory.path}/Manager_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       final file = File(path);
 
       await file.writeAsBytes(fileBytes!);
@@ -129,46 +131,46 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
     }
   }
 
-  // --- NAVIGASI ADMIN ---
+  // --- NAVIGASI MANAGER (RESET APP) ---
   void _onItemTapped(int index) {
     if (index == 0) {
-      final user = FirebaseAuth.instance.currentUser;
+      // 1. Reset ke Dashboard Manager
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (context) => AdminPage(
-            username: widget.loggedInUsername ?? "Admin",
-            userId: user?.uid ?? '',
-            loggedInUsername: widget.loggedInUsername ?? "Admin",
+          builder: (context) => ManagerPage(
+            loggedInUsername: widget.loggedInUsername,
+            userId: widget.userId, username: '',
           ),
         ), (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      FeaturesModal.show(context, widget.loggedInUsername ?? "Admin");
+      // 2. Buka Modal Features
+      ManagerFeaturesModal.show(context, widget.loggedInUsername, widget.userId);
     } else {
+      // 3. Pindah ke Profile Tab
       setState(() => _selectedIndex = index);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String currentUsername = widget.loggedInUsername ?? "Admin";
-    String? uid = FirebaseAuth.instance.currentUser?.uid;
-
     return StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        stream: _db.collection('users').doc(widget.userId).snapshots(),
         builder: (context, snapshot) {
+          String currentUsername = widget.loggedInUsername;
           if (snapshot.hasData && snapshot.data!.exists) {
             var d = snapshot.data!.data() as Map<String, dynamic>;
-            currentUsername = d['username'] ?? currentUsername;
+            currentUsername = d['username'] ?? widget.loggedInUsername;
           }
 
           return Scaffold(
             backgroundColor: const Color(0xFFF8FAFF),
+            // Stack Profile Page di index 2
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
                 _buildReportUI(context),
-                ProfilePage(username: currentUsername, userId: uid ?? ''),
+                ProfilePage(username: currentUsername, userId: widget.userId),
               ],
             ),
             bottomNavigationBar: _buildFloatingNavBar(),
@@ -176,7 +178,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         });
   }
 
-  // --- NAVBAR ---
+  // --- DESIGN NAVBAR: SEBIJI MACAM DASHBOARD ---
   Widget _buildFloatingNavBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -210,7 +212,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
     );
   }
 
-  // --- [FIX] HEADER TANPA BACK BUTTON ---
+  // --- [FIX] BUANG BUTANG BACK DARI APP BAR ---
   Widget _buildReportUI(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
@@ -218,7 +220,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         title: const Text("Reports & Analytics", style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E), fontSize: 20)),
         centerTitle: true, backgroundColor: Colors.white, elevation: 0,
 
-        // [FIX] Buang butang back
+        // [FIX] Buang butang back (leading)
         automaticallyImplyLeading: false,
 
         actions: [
@@ -289,6 +291,8 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   }
 }
 
+// ======================== TABS CONTENT (FULL LOGIC) ========================
+
 // 1. INVENTORY TAB
 class _InventoryReportTab extends StatelessWidget {
   final FirebaseFirestore db;
@@ -336,7 +340,7 @@ class _ForecastReportTab extends StatelessWidget {
       stream: db.collection('forecasts').orderBy('forecastDate', descending: false).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No forecast data.", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
+        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No forecast data available.", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
         List<FlSpot> spots = [];
         double maxDemand = 0;
@@ -365,7 +369,7 @@ class _RiskReportTab extends StatelessWidget {
       stream: db.collection('risk_analysis').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
+        if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
         return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown', data['RiskID'] ?? 'Unknown', "Risk Value: ${data['RiskValue'] ?? 0}", data['RiskLevel'] ?? 'Low'); })]);
       },

@@ -7,7 +7,7 @@ import '../staff/stock.dart';
 
 class StaffFeaturesGrid extends StatelessWidget {
   // [REVERT] Tak payah constructor pelik-pelik
-  const StaffFeaturesGrid({super.key});
+  const StaffFeaturesGrid({super.key, required String loggedInUsername, required String userId});
 
   @override
   Widget build(BuildContext context) {
