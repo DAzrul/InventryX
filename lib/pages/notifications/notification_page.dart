@@ -20,13 +20,14 @@ class _NotificationPageState extends State<NotificationPage>
   final Set<String> readNotifications = {};
   List<String> selectedSubCategories = [];
 
+  // Warna Konsisten
+  final Color primaryBlue = const Color(0xFF203288);
+  final Color accentBlue = const Color(0xFF1E3A8A);
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: 4,
-      vsync: this,
-    );
+    _tabController = TabController(length: 4, vsync: this);
 
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -46,26 +47,31 @@ class _NotificationPageState extends State<NotificationPage>
   void _showFilterDialog() async {
     final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
     final allSubCategories = productSnapshot.docs
-        .map((doc) => (doc.data())['subCategory'] as String)
+        .map((doc) => (doc.data())['subCategory'] as String?)
+        .where((s) => s != null && s.isNotEmpty)
         .toSet()
         .toList();
 
     List<String> tempSelected = List.from(selectedSubCategories);
 
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Filter by Sub Category"),
-          content: StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: allSubCategories.map((subCat) {
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Text("Filter by Sub Category", style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: allSubCategories.map((subCat) {
+                return StatefulBuilder(
+                  builder: (context, setStateDialog) {
                     return CheckboxListTile(
-                      title: Text(subCat),
+                      activeColor: primaryBlue,
+                      title: Text(subCat!),
                       value: tempSelected.contains(subCat),
                       onChanged: (value) {
                         setStateDialog(() {
@@ -77,19 +83,26 @@ class _NotificationPageState extends State<NotificationPage>
                         });
                       },
                     );
-                  }).toList(),
-                ),
-              );
-            },
+                  },
+                );
+              }).toList(),
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
               onPressed: () {
                 setState(() { selectedSubCategories = List.from(tempSelected); });
                 Navigator.pop(context);
               },
-              child: const Text("Apply"),
+              child: const Text("Apply", style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -119,9 +132,24 @@ class _NotificationPageState extends State<NotificationPage>
           return true;
         }).toList();
 
-        if (alerts.isEmpty) return Center(child: Text(unreadOnly ? "No unread alerts" : "No notifications"));
+        if (alerts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.notifications_off_outlined, size: 60, color: Colors.grey.shade300),
+                const SizedBox(height: 10),
+                Text(
+                  unreadOnly ? "No unread alerts" : "No notifications",
+                  style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
 
         return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 20),
           itemCount: alerts.length,
           itemBuilder: (context, index) {
             final alertDoc = alerts[index];
@@ -137,7 +165,9 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-// ================= CARD BUILDERS =================
+  // ================= CARD BUILDERS =================
+
+  // 1. EXPIRY CARD
   Widget _buildExpiryCard(Map<String, dynamic> alert, String alertId) {
     final batchId = alert['batchId'];
     final productId = alert['productId'];
@@ -145,7 +175,6 @@ class _NotificationPageState extends State<NotificationPage>
     final isDone = alert['isDone'] ?? false;
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
-    // 1. DYNAMIC COLOR LOGIC
     Color statusColor;
     String statusText;
 
@@ -164,20 +193,19 @@ class _NotificationPageState extends State<NotificationPage>
         break;
       default:
         statusText = "EXPIRY SOON ($stage Days)";
-        statusColor = Colors.orange; // Fallback color
+        statusColor = Colors.orange;
     }
 
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
       builder: (context, productSnap) {
         if (!productSnap.hasData) return const SizedBox();
-        final product = productSnap.data!.data() as Map<String, dynamic>;
+        final product = productSnap.data!.data() as Map<String, dynamic>? ?? {};
 
         if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(product['subCategory'])) {
           return const SizedBox.shrink();
         }
 
-        // Extract Category and SubCategory
         final String category = product['category'] ?? "N/A";
         final String subCategory = product['subCategory'] ?? "N/A";
 
@@ -185,13 +213,13 @@ class _NotificationPageState extends State<NotificationPage>
           future: FirebaseFirestore.instance.collection('batches').doc(batchId).get(),
           builder: (context, batchSnap) {
             if (!batchSnap.hasData) return const SizedBox();
-            final batch = batchSnap.data!.data() as Map<String, dynamic>;
-            final expiryDate = (batch['expiryDate'] as Timestamp).toDate();
+            final batch = batchSnap.data!.data() as Map<String, dynamic>? ?? {};
+            final expiryDate = (batch['expiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
 
             return _cardWrapper(
               alertId: alertId,
               isDone: isDone,
-              accentColor: const Color(0xFF1E3A8A),
+              accentColor: accentBlue,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -203,34 +231,18 @@ class _NotificationPageState extends State<NotificationPage>
                   ),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("🔔 $statusText",
-                          style: TextStyle(fontWeight: FontWeight.bold, color: statusColor)),
-                      Text("${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(product['productName'],
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-
-                  // 2. ADDED SUBCATEGORY (CATEGORY) TEXT
-                  Text(
-                    "$subCategory ($category)",
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                  ),
-
-                  const SizedBox(height: 4),
-                  Text("Batch No: ${batch['batchNumber']}", style: const TextStyle(fontSize: 14)),
-                  Text(
-                    "Expiry Date: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.red),
+              child: _buildStandardCardContent(
+                statusText: statusText,
+                statusColor: statusColor,
+                notifiedAt: notifiedAt,
+                productName: product['productName'] ?? 'Unknown Product',
+                categoryText: "$subCategory • $category",
+                footerWidgets: [
+                  _buildFooterItem("Batch", batch['batchNumber'] ?? '-'),
+                  _buildFooterItem(
+                    "Expiry",
+                    "${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
+                    valueColor: Colors.red,
                   ),
                 ],
               ),
@@ -241,38 +253,48 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
+  // 2. RISK CARD (FIX: CARI GUNA NAMA PRODUK)
   Widget _buildRiskCard(Map<String, dynamic> alert, String alertId) {
     final isDone = alert['isDone'] ?? false;
     final riskLevel = alert['riskLevel'] ?? 'Medium';
     final riskValue = alert['riskValue'] ?? 0;
-    final productName = alert['productName'] ?? 'Unknown';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
-    // Use riskAnalysisId as the productId to fetch product details
-    final productId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
-    // 1. DYNAMIC COLOR & ICON LOGIC
+    // Ambil nama produk dari alert (Risk Alert biasanya ada simpan nama)
+    final alertProductName = alert['productName'] ?? 'Unknown Product';
+
     Color riskColor = riskLevel == "High" ? Colors.red : Colors.orange;
     String riskIcon = riskLevel == "High" ? "🔥" : "⚠️";
     String riskTitle = "$riskIcon ${riskLevel.toUpperCase()} RISK";
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
+    // [FIX UTAMA]: Guna Query 'where' berdasarkan Nama Produk, bukan 'doc(id)'
+    // Sebab ID dalam Risk mungkin tak sama dengan ID Produk
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('products')
+          .where('productName', isEqualTo: alertProductName)
+          .limit(1)
+          .get(),
       builder: (context, productSnap) {
-        // While loading or if product doesn't exist, we show a simplified version
         String category = "N/A";
         String subCategory = "N/A";
 
-        if (productSnap.hasData && productSnap.data!.exists) {
-          final product = productSnap.data!.data() as Map<String, dynamic>;
+        // Cek jika jumpa produk dengan nama yang sama
+        if (productSnap.hasData && productSnap.data!.docs.isNotEmpty) {
+          final product = productSnap.data!.docs.first.data() as Map<String, dynamic>;
           category = product['category'] ?? "N/A";
           subCategory = product['subCategory'] ?? "N/A";
 
-          // Apply subCategory filter if active
           if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
             return const SizedBox.shrink();
           }
         }
+
+        // Kalau category masih N/A, sembunyikan baris kategori atau letak text default
+        String displayCategoryText = (subCategory == "N/A" && category == "N/A")
+            ? "Inventory Risk"
+            : "$subCategory • $category";
 
         return _cardWrapper(
           alertId: alertId,
@@ -288,48 +310,18 @@ class _NotificationPageState extends State<NotificationPage>
               ),
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // HEADER: 🔥 HIGH RISK or ⚠️ MEDIUM RISK + Date
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    riskTitle,
-                    style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13),
-                  ),
-                  Text(
-                    "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-
-              // PRODUCT NAME
-              Text(
-                productName,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
-
-              // SUBCATEGORY (CATEGORY) - Non-italic
-              Text(
-                "$subCategory ($category)",
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500
-                ),
-              ),
-
-              const SizedBox(height: 4),
-
-              // RISK SCORE
-              Text(
-                "Risk Score: $riskValue/100",
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          child: _buildStandardCardContent(
+            statusText: riskTitle,
+            statusColor: riskColor,
+            notifiedAt: notifiedAt,
+            productName: alertProductName, // Guna nama dari alert
+            categoryText: displayCategoryText, // Guna text yang dah diproses
+            footerWidgets: [
+              _buildFooterItem(
+                "Risk Score",
+                "$riskValue/100",
+                valueColor: riskColor,
+                isBold: true,
               ),
             ],
           ),
@@ -338,55 +330,127 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-  // ================= CARD WRAPPER (Indicator Logic) =================
+  // ================= UNIFIED UI HELPERS =================
+
+  Widget _buildStandardCardContent({
+    required String statusText,
+    required Color statusColor,
+    required DateTime notifiedAt,
+    required String productName,
+    required String categoryText,
+    required List<Widget> footerWidgets,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              statusText,
+              style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 12, letterSpacing: 0.5),
+            ),
+            Text(
+              "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          productName,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          categoryText,
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 12),
+        const Divider(height: 1, thickness: 0.5),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: footerWidgets.map((w) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: w,
+            );
+          }).toList(),
+        )
+      ],
+    );
+  }
+
+  Widget _buildFooterItem(String label, String value, {Color? valueColor, bool isBold = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            color: valueColor ?? Colors.black87,
+            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _cardWrapper({
     required String alertId,
     required bool isDone,
     required Color accentColor,
     required VoidCallback onTap,
-    required Widget child
+    required Widget child,
   }) {
     return GestureDetector(
       onTap: () {
         setState(() => readNotifications.add(alertId));
         onTap();
       },
-      child: IntrinsicHeight( // 🔹 Ensures the Row children can match height
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: IntrinsicHeight(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             color: isDone ? const Color(0xFFFAFAFA) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                  color: isDone ? Colors.black.withOpacity(0.02) : accentColor.withOpacity(0.12),
-                  blurRadius: isDone ? 4 : 8,
-                  offset: const Offset(0, 4)
+                color: Colors.black.withOpacity(isDone ? 0.02 : 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               )
             ],
+            border: Border.all(color: Colors.grey.shade100),
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch, // 🔹 Forces line to stretch top-to-bottom
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 🔹 Blue vertical line
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: isDone ? 0 : 5,
+              Container(
+                width: 5,
                 decoration: BoxDecoration(
-                  color: accentColor,
+                  color: isDone ? Colors.grey.shade300 : accentColor,
                   borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      bottomLeft: Radius.circular(12)
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
                   ),
                 ),
               ),
-              // 🔹 Content area
               Expanded(
-                  child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: child
-                  )
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: child,
+                ),
               ),
             ],
           ),
@@ -398,33 +462,51 @@ class _NotificationPageState extends State<NotificationPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w800, color: Colors.black)),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: false, // 🔹 Makes it fit perfectly L to R
-          indicatorSize: TabBarIndicatorSize.tab, // 🔹 Indicator follows tab width
-          labelColor: const Color(0xFF233E99),
+          isScrollable: false,
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicatorWeight: 3,
+          labelColor: primaryBlue,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: const Color(0xFF233E99),
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          indicatorColor: primaryBlue,
           tabs: const [
-            Tab(text: "All Alerts"),
+            Tab(text: "All"),
             Tab(text: "Unread"),
-            Tab(text: "Expiry Alerts"),
-            Tab(text: "Risk Alerts"),
+            Tab(text: "Expiry"),
+            Tab(text: "Risk"),
           ],
         ),
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 15, 10, 5),
+            color: const Color(0xFFF8FAFF),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(headerText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton(icon: const Icon(Icons.filter_list, color: Color(0xFF233E99)), onPressed: _showFilterDialog),
+                Text(headerText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+                IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]),
+                    child: Icon(Icons.filter_list_rounded, color: primaryBlue, size: 20),
+                  ),
+                  onPressed: _showFilterDialog,
+                ),
               ],
             ),
           ),

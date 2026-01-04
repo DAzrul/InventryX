@@ -4,9 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// [PENTING] Import StaffPage (Bapak Page) untuk reset
 import 'staff_page.dart';
-
 import 'add_incoming_stock.dart';
 import 'stock_out.dart';
 import '../Features_app/barcode_scanner_page.dart';
@@ -22,7 +20,7 @@ class StockPage extends StatefulWidget {
 }
 
 class _StockPageState extends State<StockPage> {
-  int _selectedIndex = 1; // Default kat Features (Index 1)
+  int _selectedIndex = 1;
   String selectedCategory = 'All';
   String searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -35,7 +33,6 @@ class _StockPageState extends State<StockPage> {
     super.dispose();
   }
 
-  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -48,7 +45,6 @@ class _StockPageState extends State<StockPage> {
             (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      // [FIX] Hantar 3 Data
       StaffFeaturesModal.show(context, currentUsername, uid);
     } else {
       setState(() => _selectedIndex = index);
@@ -97,7 +93,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI: FLOATING NAVBAR ---
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -142,11 +137,10 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- UI: STOCK HOME ---
   Widget _buildStockHome() {
     return Column(
       children: [
-        _buildStockHeader(), // Header tanpa back button
+        _buildStockHeader(),
         _buildCombinedSummary(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -165,15 +159,13 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- [FIX] HEADER TANPA BACK BUTTON ---
   Widget _buildStockHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
       color: Colors.white,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center, // Center title
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // IconButton back dibuang di sini
           const Text("Inventory Management", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         ],
       ),
@@ -186,23 +178,37 @@ class _StockPageState extends State<StockPage> {
       builder: (context, prodSnap) => StreamBuilder<QuerySnapshot>(
         stream: _db.collection('batches').snapshots(),
         builder: (context, batchSnap) {
-          int total = prodSnap.hasData ? prodSnap.data!.docs.length : 0;
+          int total = 0;
           int low = 0;
           int expired = 0;
 
           if (prodSnap.hasData) {
+            total = prodSnap.data!.docs.length;
+
             for (var d in prodSnap.data!.docs) {
-              int q = int.tryParse(d['currentStock']?.toString() ?? '0') ?? 0;
-              if (q > 0 && q <= 10) low++;
+              var data = d.data() as Map<String, dynamic>;
+              int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+              int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+
+              if (stock <= reorderPoint) {
+                low++;
+              }
             }
           }
 
+          // --- LOGIC KIRA EXPIRED ---
           if (batchSnap.hasData) {
             DateTime now = DateTime.now();
             for (var d in batchSnap.data!.docs) {
               var b = d.data() as Map<String, dynamic>;
-              if (b['expiryDate'] != null && (b['currentQuantity'] ?? 0) > 0) {
-                if ((b['expiryDate'] as Timestamp).toDate().isBefore(now)) expired++;
+              Timestamp? expTimestamp = b['expiryDate'] as Timestamp?;
+              int qty = int.tryParse(b['currentQuantity']?.toString() ?? '0') ?? 0;
+
+              // Kira expired JIKA (Ada Tarikh) DAN (Stok > 0) DAN (Tarikh < Sekarang)
+              if (expTimestamp != null && qty > 0) {
+                if (expTimestamp.toDate().isBefore(now)) {
+                  expired++;
+                }
               }
             }
           }
@@ -210,7 +216,11 @@ class _StockPageState extends State<StockPage> {
           return Container(
             margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15)]),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15)]
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -247,7 +257,7 @@ class _StockPageState extends State<StockPage> {
       child: TextField(
         controller: _searchController,
         onChanged: (v) => setState(() => searchQuery = v),
-        decoration: InputDecoration(hintText: "Search products...", border: InputBorder.none, prefixIcon: Icon(Icons.search, color: Colors.grey.shade400), suffixIcon: IconButton(icon: Icon(Icons.qr_code_scanner, color: primaryBlue), onPressed: _scanBarcode)),
+        decoration: InputDecoration(hintText: "Search products (Name/SKU)...", border: InputBorder.none, prefixIcon: Icon(Icons.search, color: Colors.grey.shade400), suffixIcon: IconButton(icon: Icon(Icons.qr_code_scanner, color: primaryBlue), onPressed: _scanBarcode)),
       ),
     );
   }
@@ -271,22 +281,42 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
+  // --- [UPDATED] LIST BUILDER DENGAN BARCODE SEARCH ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final docs = snapshot.data!.docs.where((doc) {
+
+        List<QueryDocumentSnapshot> docs = snapshot.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
+
+          // [FIX] Ambil Nama & Barcode untuk Search
           final name = (d['productName'] ?? '').toString().toLowerCase();
-          return (selectedCategory == 'All' || d['category'] == selectedCategory) && name.contains(searchQuery.toLowerCase());
+          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase();
+          final query = searchQuery.toLowerCase();
+
+          // Check Category
+          bool catMatch = (selectedCategory == 'All' || d['category'] == selectedCategory);
+
+          // Check Search (Name ATAU Barcode)
+          bool searchMatch = name.contains(query) || barcode.contains(query);
+
+          return catMatch && searchMatch;
         }).toList();
+
+        // Sort Data (High Stock -> Low Stock)
+        docs.sort((a, b) {
+          int stockA = int.tryParse((a.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
+          int stockB = int.tryParse((b.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
+          return stockB.compareTo(stockA);
+        });
 
         // Logic Responsif Saiz
         final screenWidth = MediaQuery.of(context).size.width;
         final isSmall = screenWidth < 360;
         final isTablet = screenWidth >= 600;
-        final double imgSize = isTablet ? 70 : isSmall ? 45 : 55; // Saiz seragam
+        final double imgSize = isTablet ? 70 : isSmall ? 45 : 55;
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
@@ -295,6 +325,7 @@ class _StockPageState extends State<StockPage> {
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+            int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
 
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -308,7 +339,6 @@ class _StockPageState extends State<StockPage> {
                 onTap: () => _showProductDetails(data, docs[index].id),
                 child: Row(
                   children: [
-                    // --- PLACEHOLDER SERAGAM ---
                     ClipRRect(
                       borderRadius: BorderRadius.circular(15),
                       child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
@@ -323,8 +353,6 @@ class _StockPageState extends State<StockPage> {
                           : _buildPlaceholder(imgSize),
                     ),
                     const SizedBox(width: 15),
-
-                    // --- TEXT INFO ---
                     Expanded(
                       child: Text(
                         data['productName'] ?? 'Unknown',
@@ -333,14 +361,12 @@ class _StockPageState extends State<StockPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-
-                    // --- STOCK COUNT ---
                     Text(
                         '$stock',
                         style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: stock <= 10 ? Colors.red : primaryBlue
+                            color: stock <= reorderPoint ? Colors.red : primaryBlue
                         )
                     ),
                   ],
@@ -353,7 +379,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- WIDGET PLACEHOLDER BARU ---
   Widget _buildPlaceholder(double size) {
     return Container(
       width: size,
@@ -378,9 +403,8 @@ class _StockPageState extends State<StockPage> {
 
   void _showProductDetails(Map<String, dynamic> data, String productId) {
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-
-    // Logic Responsif Imej dalam Detail
-    final double imgSize = 70; // Tetap dlm dialog utk consistency
+    int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+    final double imgSize = 70;
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -396,7 +420,6 @@ class _StockPageState extends State<StockPage> {
                 padding: const EdgeInsets.all(24),
                 children: [
                   Row(children: [
-                    // Guna Placeholder dlm Detail juga
                     ClipRRect(
                       borderRadius: BorderRadius.circular(15),
                       child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
@@ -410,7 +433,7 @@ class _StockPageState extends State<StockPage> {
                     ]))
                   ]),
                   const SizedBox(height: 30),
-                  _buildQuickStats(data, stock),
+                  _buildQuickStats(data, stock, reorderPoint),
                   const SizedBox(height: 35),
                   const Text("Active Stock Batches", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                   const SizedBox(height: 15),
@@ -424,10 +447,10 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  Widget _buildQuickStats(Map<String, dynamic> data, int stock) {
-    Color c = stock <= 10 ? Colors.orange : Colors.green;
+  Widget _buildQuickStats(Map<String, dynamic> data, int stock, int reorderPoint) {
+    Color c = stock <= reorderPoint ? Colors.orange : Colors.green;
     return Row(children: [
-      _infoBox("Status", stock <= 10 ? "Low Stock" : "Healthy", c),
+      _infoBox("Status", stock <= reorderPoint ? "Low Stock" : "Healthy", c),
       const SizedBox(width: 12),
       _infoBox("Supplier", data['supplier'] ?? 'N/A', primaryBlue),
     ]);
