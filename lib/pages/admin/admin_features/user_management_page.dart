@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// [PENTING] Pastikan import ni betul
+// [PENTING] Pastikan import ini betul
 import '../user_list_page.dart';
 
 class UserManagementPage extends StatefulWidget {
-  final String username; // Ini username Admin yang sedang login
+  final String username;
   const UserManagementPage({super.key, required this.username});
 
   @override
@@ -26,34 +25,72 @@ class _UserManagementPageState extends State<UserManagementPage> {
   String? selectedRole;
   String? selectedDefaultPassword;
 
-  // Tak perlu variable adminProfilePictureUrl sbb kita guna StreamBuilder
   final Color primaryBlue = const Color(0xFF233E99);
   final List<String> roles = ['admin', 'manager', 'staff'];
   final List<String> defaultPasswords = ['adminpassword', 'password123', 'DefaultPass'];
 
-  // --- LOGIC: USERNAME VALIDATOR ---
+  // --- LOGIC 1: USERNAME VALIDATOR ---
   bool isValidUsername(String username) {
+    // Hanya huruf kecil, nombor, titik dan underscore dibenarkan
     final RegExp usernameRegExp = RegExp(r'^[a-z0-9._]+$');
     return usernameRegExp.hasMatch(username);
   }
 
-  // --- LOGIC REGISTER ---
+  // --- LOGIC 2: RESET FORM ---
+  void _resetForm() {
+    emailController.clear();
+    nameController.clear();
+    phoneNoController.clear();
+    usernameController.clear();
+    setState(() {
+      selectedRole = null;
+      selectedDefaultPassword = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Form cleared!"), duration: Duration(seconds: 1)),
+    );
+  }
+
+  // --- LOGIC 3: REGISTER ---
   Future<void> registerUser() async {
     String email = emailController.text.trim();
     String name = nameController.text.trim();
     String phoneNo = phoneNoController.text.trim();
-    String username = usernameController.text.trim().toLowerCase();
+
+    // Ambil input username (mungkin kosong)
+    String rawUsername = usernameController.text.trim().toLowerCase();
+
     String role = selectedRole ?? '';
     String password = selectedDefaultPassword ?? '';
 
-    // 1. Validation Check
-    if (username.isEmpty || role.isEmpty || email.isEmpty || name.isEmpty || phoneNo.isEmpty || password.isEmpty) {
-      _showStyledSnackBar("Please fill in all fields to proceed.", isError: true);
+    // A. Validation Check (Username & Phone TIDAK wajib di sini)
+    if (role.isEmpty || email.isEmpty || name.isEmpty || password.isEmpty) {
+      _showStyledSnackBar("Please fill in required fields (Email, Name, Role, Password).", isError: true);
       return;
     }
 
-    if (!isValidUsername(username)) {
-      _showStyledSnackBar("Invalid Username! Lowercase, numbers, dots only.", isError: true);
+    // B. LOGIC AUTO-USERNAME DARI EMAIL
+    String finalUsername = rawUsername;
+
+    if (finalUsername.isEmpty) {
+      // Kalau admin tak isi username, kita extract dari email
+      if (email.contains('@')) {
+        // Contoh: ali@gmail.com -> ali
+        finalUsername = email.split('@')[0].toLowerCase();
+
+        // Buang simbol pelik (selain huruf, nombor, titik, underscore)
+        finalUsername = finalUsername.replaceAll(RegExp(r'[^a-z0-9._]'), '');
+      }
+    }
+
+    // C. Validation Username (Lepas dah auto-generate)
+    if (finalUsername.isEmpty) {
+      _showStyledSnackBar("Could not generate username from email. Please enter manually.", isError: true);
+      return;
+    }
+
+    if (!isValidUsername(finalUsername)) {
+      _showStyledSnackBar("Username '$finalUsername' invalid! Use lowercase, numbers, dots only.", isError: true);
       return;
     }
 
@@ -65,17 +102,18 @@ class _UserManagementPageState extends State<UserManagementPage> {
     setState(() => loading = true);
 
     try {
-      // 2. Duplicate Username Check
+      // D. Duplicate Username Check
+      // Kita check username yang dah di-generate tu wujud tak
       final checkUser = await FirebaseFirestore.instance
-          .collection("users").where("username", isEqualTo: username).get();
+          .collection("users").where("username", isEqualTo: finalUsername).get();
 
       if (checkUser.docs.isNotEmpty) {
-        _showStyledSnackBar("Username is already taken!", isError: true);
+        _showStyledSnackBar("Username '$finalUsername' is already taken! Please enter a different one manually.", isError: true);
         setState(() => loading = false);
         return;
       }
 
-      // 3. Register using Secondary Instance
+      // E. Register using Secondary Instance
       FirebaseApp secondaryApp = await Firebase.initializeApp(
         name: 'SecondaryApp',
         options: Firebase.app().options,
@@ -86,15 +124,15 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
       String userUid = userCredential.user!.uid;
 
-      // 4. Save to Firestore
+      // F. Save to Firestore
       await FirebaseFirestore.instance.collection("users").doc(userUid).set({
-        "username": username,
+        "username": finalUsername, // Guna finalUsername (sama ada input atau auto)
         "email": email,
         "name": name,
-        "phoneNo": phoneNo,
+        "phoneNo": phoneNo.isEmpty ? "-" : phoneNo,
         "role": role,
         "status": "Active",
-        "registeredBy": widget.username, // Rekod siapa yang register (Admin)
+        "registeredBy": widget.username,
         "createdAt": FieldValue.serverTimestamp(),
         "profilePictureUrl": "",
       });
@@ -104,8 +142,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
       if (!mounted) return;
 
-      // [FIX] Panggil Success Dialog Baru
-      _showSuccessDialog(name);
+      // Paparkan username yang berjaya didaftarkan dalam dialog
+      _showSuccessDialog(name, finalUsername);
 
     } catch (e) {
       _showStyledSnackBar("Registration Failed: $e", isError: true);
@@ -114,7 +152,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     }
   }
 
-  // --- WIDGET SNACKBAR PREMIUM ---
+  // --- WIDGET SNACKBAR ---
   void _showStyledSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -144,8 +182,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
-  // --- DIALOG SUCCESS ---
-  void _showSuccessDialog(String createdName) {
+  // --- DIALOG SUCCESS (Updated Text) ---
+  void _showSuccessDialog(String createdName, String finalUser) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -165,7 +203,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
               const SizedBox(height: 20),
               const Text("Account Created!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               const SizedBox(height: 10),
-              Text("User account for $createdName has been successfully registered.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              // Bagitahu admin username apa yang disave
+              Text("User: $createdName\nUsername: $finalUser", textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 14)),
               const SizedBox(height: 25),
               SizedBox(
                 width: double.infinity,
@@ -191,131 +230,60 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: Colors.black,
-        title: const Text("Register New User", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-        centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20), onPressed: () => Navigator.pop(context)),
-      ),
-      body: loading
-          ? Center(child: CircularProgressIndicator(color: primaryBlue))
-          : SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            // [FIX] Admin Card yang auto-update
-            _buildAdminCard(),
-
-            const SizedBox(height: 30),
-            _buildSectionCard(
-              title: "System Credentials",
-              children: [
-                _buildTextField(usernameController, "Username (no spaces)", Icons.alternate_email_rounded),
-                const SizedBox(height: 15),
-                _buildDropdown("Assigned Role", selectedRole, roles, Icons.badge_rounded, (v) => setState(() => selectedRole = v)),
-                const SizedBox(height: 15),
-                _buildDropdown("Default Password", selectedDefaultPassword, defaultPasswords, Icons.key_rounded, (v) => setState(() => selectedDefaultPassword = v), isPass: true),
-              ],
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFF),
+        appBar: AppBar(
+          backgroundColor: Colors.white, elevation: 0, foregroundColor: Colors.black,
+          title: const Text("Register New User", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          centerTitle: true,
+          leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20), onPressed: () => Navigator.pop(context)),
+          actions: [
+            IconButton(
+              onPressed: _resetForm,
+              icon: const Icon(Icons.refresh_rounded, color: Colors.redAccent),
+              tooltip: "Clear Form",
             ),
-            const SizedBox(height: 20),
-            _buildSectionCard(
-              title: "Personal Profile",
-              children: [
-                _buildTextField(nameController, "Full Name", Icons.person_outline_rounded),
-                const SizedBox(height: 15),
-                _buildTextField(emailController, "Email Address", Icons.email_outlined, type: TextInputType.emailAddress),
-                const SizedBox(height: 15),
-                _buildTextField(phoneNoController, "Phone Number", Icons.phone_android_rounded, type: TextInputType.phone),
-              ],
-            ),
-            const SizedBox(height: 40),
-            _buildSubmitButton(),
-            const SizedBox(height: 40),
+            const SizedBox(width: 10),
           ],
         ),
+        body: loading
+            ? Center(child: CircularProgressIndicator(color: primaryBlue))
+            : SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              _buildSectionCard(
+                title: "System Credentials",
+                children: [
+                  // [FIX] Label Username ditukar
+                  _buildTextField(usernameController, "Username (Auto if empty)", Icons.alternate_email_rounded),
+                  const SizedBox(height: 15),
+                  _buildDropdown("Assigned Role *", selectedRole, roles, Icons.badge_rounded, (v) => setState(() => selectedRole = v)),
+                  const SizedBox(height: 15),
+                  _buildDropdown("Default Password *", selectedDefaultPassword, defaultPasswords, Icons.key_rounded, (v) => setState(() => selectedDefaultPassword = v), isPass: true),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildSectionCard(
+                title: "Personal Profile",
+                children: [
+                  _buildTextField(nameController, "Full Name *", Icons.person_outline_rounded),
+                  const SizedBox(height: 15),
+                  _buildTextField(emailController, "Email Address *", Icons.email_outlined, type: TextInputType.emailAddress),
+                  const SizedBox(height: 15),
+                  _buildTextField(phoneNoController, "Phone Number (Optional)", Icons.phone_android_rounded, type: TextInputType.phone),
+                ],
+              ),
+              const SizedBox(height: 40),
+              _buildSubmitButton(),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
       ),
-    );
-  }
-
-  // --- [UTAMA] ADMIN CARD WITH LIVE DATA ---
-  Widget _buildAdminCard() {
-    return StreamBuilder<QuerySnapshot>(
-      // Tarik data user berdasarkan username yang dihantar dari page sebelum ini
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .where('username', isEqualTo: widget.username)
-            .limit(1)
-            .snapshots(),
-        builder: (context, snapshot) {
-          String displayName = widget.username;
-          String role = "Admin"; // Default
-          String? profilePic;
-
-          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-            var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-            displayName = data['name'] ?? widget.username; // Nama penuh admin
-            role = (data['role'] ?? 'Admin').toString().toUpperCase();
-            profilePic = data['profilePictureUrl'];
-          }
-
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))]
-            ),
-            child: Row(
-              children: [
-                // Gambar Profile Admin
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: primaryBlue.withOpacity(0.2), width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.grey.shade100,
-                    backgroundImage: (profilePic != null && profilePic.isNotEmpty)
-                        ? CachedNetworkImageProvider(profilePic)
-                        : null,
-                    child: (profilePic == null || profilePic.isEmpty)
-                        ? Icon(Icons.person_rounded, color: primaryBlue.withOpacity(0.5))
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 15),
-
-                // Info Admin
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Authorized Registrar", style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                        const SizedBox(height: 2),
-                        Text(displayName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
-                        const SizedBox(height: 2),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                          child: Text(role, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryBlue)),
-                        )
-                      ]
-                  ),
-                ),
-
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.verified_user_rounded, color: Colors.green, size: 20),
-                )
-              ],
-            ),
-          );
-        }
     );
   }
 
