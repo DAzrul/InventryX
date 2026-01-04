@@ -3,9 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:inventryx/models/forecast_model.dart';
 import 'risk_logic.dart';
 
-// [IMPORTANT] Import ManagerPage (The wrapper with the BottomNavBar)
+// [PENTING] Import ManagerPage (Wrapper Utama)
 import 'package:inventryx/pages/manager/manager_page.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // To get current User ID
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RiskScoringPage extends StatefulWidget {
   final List<ForecastModel> forecasts;
@@ -21,19 +21,23 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
   bool _isLoading = true;
   bool _isSaving = false;
 
+  final Color primaryColor = const Color(0xFF233E99);
+  final Color bgGrey = const Color(0xFFF4F7FF);
+
   @override
   void initState() {
     super.initState();
     _calculateAllRisks();
   }
 
+  // --- LOGIK PENGIRAAN RISIKO ---
   Future<void> _calculateAllRisks() async {
     List<Map<String, dynamic>> results = [];
 
     try {
       for (var forecast in widget.forecasts) {
 
-        // 1. GET TOTAL STOCK
+        // 1. Dapatkan Stok Semasa
         DocumentSnapshot productDoc = await FirebaseFirestore.instance
             .collection('products')
             .doc(forecast.productId)
@@ -44,16 +48,16 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           currentStock = int.tryParse(productDoc.get('currentStock')?.toString() ?? '0') ?? 0;
         }
 
-        // 2. GET NEAREST EXPIRY DATE
+        // 2. Dapatkan Tarikh Luput Paling Dekat
         QuerySnapshot batchSnapshot = await FirebaseFirestore.instance
             .collection('batches')
             .where('productId', isEqualTo: forecast.productId)
             .where('currentQuantity', isGreaterThan: 0)
-            .orderBy('currentQuantity')
+            .orderBy('currentQuantity') // Firestore index requirement
             .orderBy('expiryDate', descending: false)
             .get();
 
-        int daysToExpiry = 999;
+        int daysToExpiry = 999; // Default jika tiada batch
 
         for (var doc in batchSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -61,11 +65,11 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
             Timestamp expiryTs = data['expiryDate'];
             DateTime expiryDate = expiryTs.toDate();
             daysToExpiry = expiryDate.difference(DateTime.now()).inDays;
-            break;
+            break; // Ambil batch pertama (paling awal luput)
           }
         }
 
-        // 3. RUN RISK CALCULATION
+        // 3. Jalankan Pengiraan Risiko (Class Berasingan)
         RiskResult result = RiskLogic.calculateRisk(
           forecastDemand: forecast.predictedDemand,
           currentStock: currentStock,
@@ -96,17 +100,20 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
     }
   }
 
-  // --- SAVE TO DATABASE ---
+  // --- SAVE TO DATABASE & AUTO DELETE DRAFT ---
   Future<void> _saveToDatabase() async {
     setState(() => _isSaving = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
       final batch = FirebaseFirestore.instance.batch();
       final collectionRef = FirebaseFirestore.instance.collection('risk_analysis');
 
+      // 1. Simpan Data Analisis Risiko
       for (var item in _calculatedRisks) {
         DocumentReference docRef = collectionRef.doc();
-
         batch.set(docRef, {
           'RiskID': docRef.id,
           'ProductName': item['productName'],
@@ -114,36 +121,46 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           'RiskValue': item['riskValue'],
           'DaysToExpiry': item['daysToExpiry'],
           'CreatedAt': FieldValue.serverTimestamp(),
+          'CreatedBy': user.uid,
         });
       }
 
+      // 2. Commit Simpanan
       await batch.commit();
+
+      // 3. [PENTING] Padam Draf (Sebab kerja dah siap)
+      await FirebaseFirestore.instance
+          .collection('forecast_drafts')
+          .doc(user.uid)
+          .delete();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Risk Analysis Saved Successfully!")),
+          const SnackBar(
+            content: Text("Analysis Saved & Draft Cleared!"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
 
-        // [FIXED] Navigate to ManagerPage (Wrapper) to keep Bottom Navigation Bar
-        final currentUser = FirebaseAuth.instance.currentUser;
-
+        // 4. Kembali ke ManagerPage (Home) dengan betul
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (context) => ManagerPage(
-              loggedInUsername: "Manager", // Or fetch from a provider if you have it
-              userId: currentUser?.uid ?? "", // Safety check for UID
-              username: "", // Optional depending on your ManagerPage logic
+              loggedInUsername: "Manager", // Atau tarik dari provider/shared_prefs
+              userId: user.uid,
+              username: "",
             ),
           ),
-              (route) => false, // Remove all previous routes
+              (route) => false,
         );
       }
     } catch (e) {
       debugPrint("Error saving risk: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
         );
         setState(() => _isSaving = false);
       }
@@ -153,21 +170,28 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgGrey,
       appBar: AppBar(
-        title: const Text("Risk Scoring", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Risk Scoring Analysis",
+          style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.w800, fontSize: 18),
+        ),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF233E99)))
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : Column(
         children: [
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
+              physics: const BouncingScrollPhysics(),
               itemCount: _calculatedRisks.length,
               itemBuilder: (context, index) {
                 return _buildRiskItem(_calculatedRisks[index]);
@@ -180,108 +204,131 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
     );
   }
 
-  // --- UI WIDGETS ---
+  // --- UI WIDGETS (PREMIUM STYLE) ---
 
   Widget _buildRiskItem(Map<String, dynamic> item) {
+    String level = item['riskLevel'];
+    Color statusColor = _getRiskColor(level);
+
     return Column(
       children: [
-        // Grey Info Card
+        // KAD MAKLUMAT (Atas)
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8F9FA),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoRow("Product Name:", item['productName']),
-              _buildInfoRow("Predicted Demand:", "${item['predictedDemand'].round()} units"),
-              _buildInfoRow("Current Stock:", "${item['currentStock']} units"),
-              _buildInfoRow("Days Until Expiry:", item['daysToExpiry'] == 999 ? "N/A" : "${item['daysToExpiry']} days"),
+              Text(
+                  item['productName'],
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1C1E))
+              ),
+              const SizedBox(height: 15),
+              Row(
+                children: [
+                  _buildStatBox("Forecast", "${item['predictedDemand'].round()}", Icons.show_chart_rounded, Colors.blue),
+                  const SizedBox(width: 10),
+                  _buildStatBox("Stock", "${item['currentStock']}", Icons.inventory_2_rounded, Colors.purple),
+                  const SizedBox(width: 10),
+                  _buildStatBox("Expiry", item['daysToExpiry'] == 999 ? "-" : "${item['daysToExpiry']}d", Icons.access_time_filled_rounded, Colors.orange),
+                ],
+              ),
             ],
           ),
         ),
 
-        const SizedBox(height: 8),
-
-        // Risk Card
+        // KAD RISIKO (Bawah - Sambung dengan atas)
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: _getRiskColor(item['riskLevel']),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: _getRiskColor(item['riskLevel']).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+            color: statusColor,
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+            boxShadow: [BoxShadow(color: statusColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 10),
                   Text(
-                    "Risk Level: ${item['riskLevel']}",
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                    "$level Risk Detected",
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 15),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              const Text("Reasons:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
               ...(item['reasons'] as List<String>).map((r) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("• ", style: TextStyle(color: Colors.white)),
-                    Expanded(child: Text(r, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3))),
+                    const Text("• ", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(r, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3, fontWeight: FontWeight.w500))),
                   ],
                 ),
               )),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 25), // Jarak antara item
       ],
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.black87)),
-        ],
+  Widget _buildStatBox(String label, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(height: 6),
+            Text(value, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: color)),
+            Text(label, style: TextStyle(fontSize: 10, color: color.withOpacity(0.8), fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSaveButton() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, -5))],
       ),
       child: SizedBox(
         width: double.infinity,
-        height: 50,
+        height: 55,
         child: ElevatedButton(
           onPressed: _isSaving ? null : _saveToDatabase,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF233E99),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            backgroundColor: primaryColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 5,
+            shadowColor: primaryColor.withOpacity(0.4),
           ),
           child: _isSaving
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text("Save", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+              : const Text("Save Analysis Result", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
         ),
       ),
     );
@@ -289,9 +336,9 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
 
   Color _getRiskColor(String level) {
     switch (level) {
-      case "High": return const Color(0xFFE53935);
-      case "Medium": return const Color(0xFFFFB74D);
-      case "Low": return const Color(0xFF43A047);
+      case "High": return const Color(0xFFE53935); // Merah Terang
+      case "Medium": return const Color(0xFFFFA726); // Oren
+      case "Low": return const Color(0xFF43A047); // Hijau
       default: return Colors.grey;
     }
   }

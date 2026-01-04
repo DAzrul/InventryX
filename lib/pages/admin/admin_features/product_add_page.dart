@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
-// Pastikan path import ni betul ikut folder kau
+// [IMPORTANT] Ensure this path is correct based on your folder structure
 import '../../Features_app/barcode_scanner_page.dart';
 
 class ProductAddPage extends StatefulWidget {
@@ -26,7 +26,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
 
   // --- STATE VARIABLES ---
   bool loading = false;
-  File? pickedImage;
+  File? pickedImage; // Image is now optional
 
   // --- COLORS ---
   final Color primaryBlue = const Color(0xFF233E99);
@@ -64,16 +64,16 @@ class _ProductAddPageState extends State<ProductAddPage> {
     }
   }
 
-  // --- LOGIC ADD PRODUCT (PREMIUM SNACKBAR) ---
+  // --- LOGIC ADD PRODUCT (UPDATED: OPTIONAL IMAGE) ---
   Future<void> addProduct() async {
-    // 1. Validation Check
+    // 1. Validation Check (Removed pickedImage check)
     if (productNameController.text.isEmpty ||
         selectedCategory == null ||
         selectedSubCategory == null ||
-        selectedSupplierId == null ||
-        pickedImage == null) {
+        selectedSupplierId == null) {
+      // Image is NOT required anymore in this check
 
-      _showStyledSnackBar("Please fill in all required fields & image!", isError: true);
+      _showStyledSnackBar("Please fill in all required fields!", isError: true);
       return;
     }
 
@@ -97,11 +97,14 @@ class _ProductAddPageState extends State<ProductAddPage> {
         }
       }
 
-      // 3. Upload Image
-      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      final ref = FirebaseStorage.instance.ref().child('products/$fileName');
-      await ref.putFile(pickedImage!);
-      final imgUrl = await ref.getDownloadURL();
+      // 3. Upload Image (ONLY IF SELECTED)
+      String imgUrl = ""; // Default empty if no image
+      if (pickedImage != null) {
+        final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+        final ref = FirebaseStorage.instance.ref().child('products/$fileName');
+        await ref.putFile(pickedImage!);
+        imgUrl = await ref.getDownloadURL();
+      }
 
       // 4. Save to Firestore
       DocumentReference newDoc = FirebaseFirestore.instance.collection("products").doc();
@@ -112,12 +115,12 @@ class _ProductAddPageState extends State<ProductAddPage> {
         "subCategory": selectedSubCategory,
         "supplierId": selectedSupplierId,
         "supplier": supplierMap[selectedSupplierId],
-        "barcodeNo": barcodeInt,
+        "barcodeNo": barcodeInt, // Can be null if empty
         "price": double.tryParse(priceController.text.trim()) ?? 0,
         "unit": unitController.text.trim(),
         "currentStock": 0,
         "reorderLevel": int.tryParse(reorderLevelController.text.trim()) ?? 10,
-        "imageUrl": imgUrl,
+        "imageUrl": imgUrl, // Will be URL or empty string
         "createdAt": FieldValue.serverTimestamp(),
       });
 
@@ -170,8 +173,8 @@ class _ProductAddPageState extends State<ProductAddPage> {
             ),
           ],
         ),
-        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047), // Merah vs Hijau
-        behavior: SnackBarBehavior.floating, // Terapung
+        backgroundColor: isError ? const Color(0xFFE53935) : const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: const EdgeInsets.all(20),
         elevation: 10,
@@ -189,7 +192,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
-        foregroundColor: Colors.black, // Icon back warna hitam
+        foregroundColor: Colors.black,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -204,6 +207,8 @@ class _ProductAddPageState extends State<ProductAddPage> {
           child: Column(
             children: [
               _buildImageHeader(),
+              const SizedBox(height: 10),
+              const Text("(Optional Image)", style: TextStyle(color: Colors.grey, fontSize: 12)), // Added label
               const SizedBox(height: 25),
               _buildSectionCard(
                 title: "Product Identity",
@@ -257,14 +262,14 @@ class _ProductAddPageState extends State<ProductAddPage> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(35),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
               border: Border.all(color: Colors.white, width: 4),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(31),
               child: pickedImage != null
                   ? Image.file(pickedImage!, fit: BoxFit.cover)
-                  : Icon(Icons.image_outlined, size: 50, color: Colors.grey[300]),
+                  : Icon(Icons.add_photo_alternate_outlined, size: 50, color: Colors.grey[300]), // Changed icon
             ),
           ),
           GestureDetector(
@@ -283,7 +288,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
   Widget _buildBarcodeField() {
     return Row(
       children: [
-        Expanded(child: _buildModernField(barcodeController, "Barcode", Icons.qr_code, isNumber: true)),
+        Expanded(child: _buildModernField(barcodeController, "Barcode (Optional)", Icons.qr_code, isNumber: true)), // Added Optional text
         const SizedBox(width: 10),
         IconButton(
           onPressed: () async {
@@ -302,7 +307,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,8 +379,8 @@ class _ProductAddPageState extends State<ProductAddPage> {
       width: double.infinity, height: 60,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withValues(alpha: 0.8)]),
-        boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
+        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.8)]),
+        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
@@ -403,6 +408,17 @@ class _ProductAddPageState extends State<ProductAddPage> {
                 _pickerTile(Icons.photo_library_rounded, "Gallery", ImageSource.gallery),
               ],
             ),
+            if (pickedImage != null) ...[ // Option to remove image
+              const SizedBox(height: 20),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() => pickedImage = null);
+                },
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text("Remove Photo", style: TextStyle(color: Colors.red)),
+              )
+            ]
           ],
         ),
       ),

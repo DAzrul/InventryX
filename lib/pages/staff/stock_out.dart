@@ -3,8 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../Features_app/barcode_scanner_page.dart';
 import 'dart:math';
+
+// Pastikan import ini betul ikut struktur folder anda
+import '../Features_app/barcode_scanner_page.dart';
 
 class StockOutPage extends StatefulWidget {
   const StockOutPage({super.key});
@@ -33,7 +35,7 @@ class _StockOutPageState extends State<StockOutPage> {
     super.dispose();
   }
 
-  // --- [KEMASKINI] CUSTOM DIALOG PREMIUM ---
+  // --- CUSTOM DIALOG PREMIUM ---
   void _showAlert(String title, String message, {bool isError = false, bool isWarning = false}) {
     showDialog(
       context: context,
@@ -58,7 +60,6 @@ class _StockOutPageState extends State<StockOutPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // IKON DINAMIK (Success/Error/Warning)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -74,24 +75,18 @@ class _StockOutPageState extends State<StockOutPage> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // TAJUK
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
               ),
               const SizedBox(height: 12),
-
-              // MESEJ
               Text(
                 message,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 30),
-
-              // BUTANG OK
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -584,7 +579,7 @@ class _StockOutPageState extends State<StockOutPage> {
     setState(() => _isProcessing = false);
   }
 
-  // ======================== CORE LOGIC: APPLY & DEDUCT ========================
+  // ======================== CORE LOGIC: APPLY & DEDUCT (UPDATED) ========================
 
   Future<void> _applyStockDeduction() async {
     setState(() => _isProcessing = true);
@@ -599,13 +594,21 @@ class _StockOutPageState extends State<StockOutPage> {
       final now = Timestamp.now();
       List<String> errors = [];
 
+      // Dapatkan User ID semasa
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final String userId = currentUser?.uid ?? 'Staff';
+
       for (var saleDoc in pendingQuery.docs) {
         final saleData = saleDoc.data() as Map<String, dynamic>;
         final productId = saleData['productID'];
         final productName = saleData['snapshotName'];
+        // Pastikan totalAmount diambil (atau 0.0 jika null)
+        final double totalAmount = (saleData['totalAmount'] is int)
+            ? (saleData['totalAmount'] as int).toDouble()
+            : (saleData['totalAmount'] ?? 0.0);
         int qtyToDeduct = saleData['quantitySold'];
 
-        // FEFO - First Expiring First Out
+        // 1. FEFO Logic
         final batchesQ = await _db.collection('batches')
             .where('productId', isEqualTo: productId)
             .where('currentQuantity', isGreaterThan: 0)
@@ -619,32 +622,66 @@ class _StockOutPageState extends State<StockOutPage> {
           continue;
         }
 
+        // 2. Tolak stok dari batch
         int remainingToDeduct = qtyToDeduct;
         for (var bDoc in batchesQ.docs) {
           if (remainingToDeduct <= 0) break;
           int bQty = bDoc['currentQuantity'];
           int take = (bQty >= remainingToDeduct) ? remainingToDeduct : bQty;
-          batchWrite.update(bDoc.reference, {'currentQuantity': FieldValue.increment(-take), 'updatedAt': now});
+
+          batchWrite.update(bDoc.reference, {
+            'currentQuantity': FieldValue.increment(-take),
+            'updatedAt': now
+          });
           remainingToDeduct -= take;
         }
 
-        batchWrite.update(_db.collection('products').doc(productId), {'currentStock': FieldValue.increment(-qtyToDeduct), 'updatedAt': now});
+        // 3. Update Master Product
+        batchWrite.update(_db.collection('products').doc(productId), {
+          'currentStock': FieldValue.increment(-qtyToDeduct),
+          'updatedAt': now
+        });
 
+        // 4. REKOD JUALAN (OFFICIAL SALES RECORD)
+        final salesRef = _db.collection('sales').doc();
+        batchWrite.set(salesRef, {
+          'salesID': salesRef.id,
+          'productID': productId,
+          'snapshotName': productName,
+          'quantitySold': qtyToDeduct,
+          'totalAmount': totalAmount,
+          'saleDate': now,
+          'status': 'completed',
+          'userID': userId,
+          'remarks': 'Auto-deducted from pending list',
+        });
+
+        // 5. Rekod Stock Movement
         final movementRef = _db.collection('stockMovements').doc();
-        batchWrite.set(movementRef, {'movementId': movementRef.id, 'productId': productId, 'productName': productName, 'quantity': -qtyToDeduct, 'type': 'Sold', 'reason': 'Daily Sales Applied', 'timestamp': now, 'user': 'Staff'});
+        batchWrite.set(movementRef, {
+          'movementId': movementRef.id,
+          'productId': productId,
+          'productName': productName,
+          'quantity': -qtyToDeduct,
+          'type': 'Sold',
+          'reason': 'Sales Order Completed',
+          'timestamp': now,
+          'user': userId
+        });
 
+        // 6. Delete dari pending
         batchWrite.delete(saleDoc.reference);
       }
 
       if (errors.isNotEmpty) {
         if (mounted) {
-          String errorMessage = "The following items do not have enough stock:\n\n" + errors.join('\n');
+          String errorMessage = "The following items do not have enough stock:\n\n${errors.join('\n')}";
           _showAlert("Insufficient Stock", errorMessage, isError: true);
         }
       } else {
         await batchWrite.commit();
         if (mounted) {
-          _showAlert("Process Completed", "All sales records have been successfully applied and stock has been deducted.", isError: false);
+          _showAlert("Sales Recorded", "Sales confirmed and recorded into history.", isError: false);
         }
       }
     } catch (e) {
