@@ -13,6 +13,9 @@ class RiskAlertDetailPage extends StatelessWidget {
     required this.userRole,
   });
 
+  // Standard Colors
+  final Color primaryBlue = const Color(0xFF1E3A8A);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,7 +32,6 @@ class RiskAlertDetailPage extends StatelessWidget {
 
           final risk = riskSnap.data!.data() as Map<String, dynamic>;
 
-          // 🔹 Matches "ProductName" (Capital P) in your risk_analysis screenshot
           final String productName = risk['ProductName'] ?? "Unknown";
           final String riskLevel = risk['RiskLevel'] ?? "Medium";
           final int riskValue = risk['RiskValue'] ?? 0;
@@ -48,23 +50,19 @@ class RiskAlertDetailPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 🔹 FIXED: Image Retrieval Section
                 FutureBuilder<QuerySnapshot>(
-                  // Fetch all products to avoid the indexing requirement for specific 'where' queries
                   future: FirebaseFirestore.instance.collection('products').get(),
                   builder: (context, prodQuerySnap) {
                     if (prodQuerySnap.hasError) return const Icon(Icons.error);
 
                     String? imageUrl;
                     if (prodQuerySnap.hasData) {
-                      // Manually find the product that matches the name
                       try {
                         final matchingDoc = prodQuerySnap.data!.docs.firstWhere(
                                 (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
                         );
                         imageUrl = (matchingDoc.data() as Map<String, dynamic>)['imageUrl'];
                       } catch (e) {
-                        // No match found
                         imageUrl = null;
                       }
                     }
@@ -132,15 +130,19 @@ class RiskAlertDetailPage extends StatelessWidget {
 
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: ElevatedButton.icon(
                     onPressed: () => _showRecommendationSheet(context, riskLevel, alertId),
+                    icon: const Icon(Icons.lightbulb_outline),
+                    label: const Text(
+                        "View Recommendation",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                    ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A8A),
+                      backgroundColor: primaryBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text("Recommendation", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -155,72 +157,108 @@ class RiskAlertDetailPage extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.transparent, // Required for custom rounded corners
       builder: (context) {
         bool isHigh = level == "High";
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(child: Text("Scoring Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-              const Divider(thickness: 1, height: 20),
-              Text("Risk Level: $level", style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
-              const SizedBox(height: 8),
-              const Text("Reason:", style: TextStyle(fontWeight: FontWeight.bold)),
-              if (isHigh) ...[
-                const Text("• Stock is 3× higher than forecast"),
-                const Text("• Expiry in 6 days"),
-                const Text("• Sales trend decreasing"),
-              ] else ...[
-                const Text("• Stock slightly higher than forecast"),
-                const Text("• Expiry within 14 days"),
-              ],
+        return FutureBuilder<DocumentSnapshot>(
+          // Fetch the alert document to check isDone status
+          future: FirebaseFirestore.instance.collection('alerts').doc(alertId).get(),
+          builder: (context, alertSnap) {
+            bool isDone = false;
+            if (alertSnap.hasData && alertSnap.data!.exists) {
+              isDone = (alertSnap.data!.data() as Map<String, dynamic>)['isDone'] ?? false;
+            }
 
-              const SizedBox(height: 20),
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle Bar
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+                  const SizedBox(height: 20),
 
-              const Center(child: Text("Recommended Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-              const Divider(thickness: 1, height: 20),
-              Text(isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
-                  style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
-              const SizedBox(height: 10),
-              if (isHigh) ...[
-                const Text("1. Stop all incoming orders for this product"),
-                const Text("2. Bundle with fast-moving items"),
-                const Text("3. Relocate to 'Quick Sale' section"),
-              ] else ...[
-                const Text("1. Reduce next order quantity"),
-                const Text("2. Monitor daily sales closely"),
-                const Text("3. Review pricing strategy"),
-              ],
+                  const Center(child: Text("Recommended Action", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  const Divider(thickness: 1, height: 20),
 
-              const SizedBox(height: 24),
+                  Text("Risk Level: $level", style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
+                  const SizedBox(height: 8),
+                  const Text("Reason:", style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (isHigh) ...[
+                    const Text("• Stock is 3× higher than forecast"),
+                    const Text("• Expiry in 6 days"),
+                    const Text("• Sales trend decreasing"),
+                  ] else ...[
+                    const Text("• Stock slightly higher than forecast"),
+                    const Text("• Expiry within 14 days"),
+                  ],
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    if (alertId.isNotEmpty) {
-                      await FirebaseFirestore.instance.collection('alerts').doc(alertId).update({'isDone': true});
-                    }
-                    Navigator.pop(context);
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Risk marked as handled ✅"))
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E3A8A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  const SizedBox(height: 20),
+
+                  const Center(child: Text("Recommended Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  const Divider(thickness: 1, height: 20),
+                  Text(isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
+                  const SizedBox(height: 10),
+                  if (isHigh) ...[
+                    const Text("1. Stop all incoming orders for this product"),
+                    const Text("2. Bundle with fast-moving items"),
+                    const Text("3. Relocate to 'Quick Sale' section"),
+                  ] else ...[
+                    const Text("1. Reduce next order quantity"),
+                    const Text("2. Monitor daily sales closely"),
+                    const Text("3. Review pricing strategy"),
+                  ],
+
+                  const SizedBox(height: 30),
+
+                  // 🔹 UPDATED: Row with Close and Mark as Done buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text("Close", style: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isDone ? null : () async {
+                            if (alertId.isNotEmpty) {
+                              await FirebaseFirestore.instance.collection('alerts').doc(alertId).update({'isDone': true});
+                            }
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Risk marked as handled ✅"), backgroundColor: Colors.green)
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDone ? Colors.grey : primaryBlue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: Text(isDone ? "Completed" : "Mark as Done"),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: const Text("Mark as Handled"),
-                ),
-              )
-            ],
-          ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -232,7 +270,7 @@ class RiskAlertDetailPage extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
           Text(value, style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
         ],
       ),
