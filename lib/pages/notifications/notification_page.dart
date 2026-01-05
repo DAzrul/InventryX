@@ -23,10 +23,7 @@ class _NotificationPageState extends State<NotificationPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: 4,
-      vsync: this,
-    );
+    _tabController = TabController(length: 4, vsync: this);
 
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -40,6 +37,60 @@ class _NotificationPageState extends State<NotificationPage>
         });
       }
     });
+  }
+
+  // 🔹 FIXED HELPER: Builds a Tab with a Red Dot using Client-Side filtering
+  Widget _buildTabWithRedDot(String label, {String? filterType}) {
+    return StreamBuilder<QuerySnapshot>(
+      // 🔹 Fetch all alerts to filter manually (Bypasses indexing error)
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = false;
+
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          // Manually check for unread alerts in the results
+          hasUnread = snapshot.data!.docs.any((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final bool isDone = data['isDone'] ?? false;
+            final String type = data['alertType'] ?? '';
+            final String id = doc.id;
+
+            // Condition: Not marked as done in DB AND not clicked in this session
+            bool unread = (isDone == false) && !readNotifications.contains(id);
+
+            if (filterType == null) {
+              return unread; // For "Unread" tab
+            } else {
+              return unread && type == filterType; // For "Expiry" or "Risk" tabs
+            }
+          });
+        }
+
+        return Tab(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Text(label),
+              if (hasUnread)
+                Positioned(
+                  right: -10, // Adjust position so it doesn't overlap text
+                  top: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ================= FILTER DIALOG =================
@@ -110,16 +161,30 @@ class _NotificationPageState extends State<NotificationPage>
         final alerts = alertSnap.data!.docs.where((doc) {
           final alert = doc.data() as Map<String, dynamic>;
           final type = alert['alertType'] ?? 'expiry';
+          final bool isDoneInDb = alert['isDone'] ?? false; // 🔹 Check DB status
 
+          // 1. Filter by alert type if specified (Expiry or Risk tabs)
           if (filterType != null && type != filterType) return false;
 
+          // 2. Strict Unread Logic
           if (unreadOnly) {
-            return (alert['isDone'] == false) && !readNotifications.contains(doc.id);
+            // Display only if:
+            // - It is NOT marked as done in Firestore AND
+            // - It has NOT been clicked in this session
+            return isDoneInDb == false && !readNotifications.contains(doc.id);
           }
+
           return true;
         }).toList();
 
-        if (alerts.isEmpty) return Center(child: Text(unreadOnly ? "No unread alerts" : "No notifications"));
+        if (alerts.isEmpty) {
+          return Center(
+            child: Text(
+              unreadOnly ? "No unread alerts" : "No notifications",
+              style: const TextStyle(color: Colors.grey),
+            ),
+          );
+        }
 
         return ListView.builder(
           itemCount: alerts.length,
@@ -247,30 +312,36 @@ class _NotificationPageState extends State<NotificationPage>
     final riskValue = alert['riskValue'] ?? 0;
     final productName = alert['productName'] ?? 'Unknown';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
-    // Use riskAnalysisId as the productId to fetch product details
-    final productId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
-    // 1. DYNAMIC COLOR & ICON LOGIC
     Color riskColor = riskLevel == "High" ? Colors.red : Colors.orange;
     String riskIcon = riskLevel == "High" ? "🔥" : "⚠️";
     String riskTitle = "$riskIcon ${riskLevel.toUpperCase()} RISK";
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
+    return FutureBuilder<QuerySnapshot>(
+      // 🔹 Fetch products to filter manually (Bypasses indexing error)
+      future: FirebaseFirestore.instance.collection('products').get(),
       builder: (context, productSnap) {
-        // While loading or if product doesn't exist, we show a simplified version
         String category = "N/A";
         String subCategory = "N/A";
 
-        if (productSnap.hasData && productSnap.data!.exists) {
-          final product = productSnap.data!.data() as Map<String, dynamic>;
-          category = product['category'] ?? "N/A";
-          subCategory = product['subCategory'] ?? "N/A";
+        if (productSnap.hasData && productSnap.data!.docs.isNotEmpty) {
+          try {
+            // 🔹 Manually find the product that matches the name from the alert
+            final matchingDoc = productSnap.data!.docs.firstWhere(
+                    (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
+            );
 
-          // Apply subCategory filter if active
-          if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
-            return const SizedBox.shrink();
+            final productData = matchingDoc.data() as Map<String, dynamic>;
+            category = productData['category'] ?? "N/A";
+            subCategory = productData['subCategory'] ?? "N/A";
+
+            // Apply subCategory filter if active
+            if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+              return const SizedBox.shrink();
+            }
+          } catch (e) {
+            // No matching product name found in the products collection
           }
         }
 
@@ -292,7 +363,6 @@ class _NotificationPageState extends State<NotificationPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // HEADER: 🔥 HIGH RISK or ⚠️ MEDIUM RISK + Date
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -307,14 +377,12 @@ class _NotificationPageState extends State<NotificationPage>
                 ],
               ),
               const SizedBox(height: 2),
-
-              // PRODUCT NAME
               Text(
                 productName,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
 
-              // SUBCATEGORY (CATEGORY) - Non-italic
+              // 🔹 Display Category and SubCategory retrieved from products collection
               Text(
                 "$subCategory ($category)",
                 style: TextStyle(
@@ -325,8 +393,6 @@ class _NotificationPageState extends State<NotificationPage>
               ),
 
               const SizedBox(height: 4),
-
-              // RISK SCORE
               Text(
                 "Risk Score: $riskValue/100",
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
@@ -403,16 +469,16 @@ class _NotificationPageState extends State<NotificationPage>
         centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: false, // 🔹 Makes it fit perfectly L to R
-          indicatorSize: TabBarIndicatorSize.tab, // 🔹 Indicator follows tab width
+          isScrollable: false,
+          indicatorSize: TabBarIndicatorSize.tab,
           labelColor: const Color(0xFF233E99),
           unselectedLabelColor: Colors.grey,
           indicatorColor: const Color(0xFF233E99),
-          tabs: const [
-            Tab(text: "All Alerts"),
-            Tab(text: "Unread"),
-            Tab(text: "Expiry Alerts"),
-            Tab(text: "Risk Alerts"),
+          tabs: [
+            const Tab(text: "All Alerts"), // "All" usually doesn't need a dot
+            _buildTabWithRedDot("Unread"),
+            _buildTabWithRedDot("Expiry", filterType: 'expiry'),
+            _buildTabWithRedDot("Risk", filterType: 'risk'),
           ],
         ),
       ),

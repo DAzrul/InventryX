@@ -28,6 +28,8 @@ class RiskAlertDetailPage extends StatelessWidget {
           if (!riskSnap.data!.exists) return const Center(child: Text("Risk data no longer exists."));
 
           final risk = riskSnap.data!.data() as Map<String, dynamic>;
+
+          // 🔹 Matches "ProductName" (Capital P) in your risk_analysis screenshot
           final String productName = risk['ProductName'] ?? "Unknown";
           final String riskLevel = risk['RiskLevel'] ?? "Medium";
           final int riskValue = risk['RiskValue'] ?? 0;
@@ -45,6 +47,53 @@ class RiskAlertDetailPage extends StatelessWidget {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statusColor),
                 ),
                 const SizedBox(height: 16),
+
+                // 🔹 FIXED: Image Retrieval Section
+                FutureBuilder<QuerySnapshot>(
+                  // Fetch all products to avoid the indexing requirement for specific 'where' queries
+                  future: FirebaseFirestore.instance.collection('products').get(),
+                  builder: (context, prodQuerySnap) {
+                    if (prodQuerySnap.hasError) return const Icon(Icons.error);
+
+                    String? imageUrl;
+                    if (prodQuerySnap.hasData) {
+                      // Manually find the product that matches the name
+                      try {
+                        final matchingDoc = prodQuerySnap.data!.docs.firstWhere(
+                                (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
+                        );
+                        imageUrl = (matchingDoc.data() as Map<String, dynamic>)['imageUrl'];
+                      } catch (e) {
+                        // No match found
+                        imageUrl = null;
+                      }
+                    }
+
+                    return Center(
+                      child: Container(
+                        height: 200,
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: imageUrl != null && imageUrl.isNotEmpty
+                              ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                          )
+                              : const Icon(Icons.inventory_2, size: 80, color: Colors.grey),
+                        ),
+                      ),
+                    );
+                  },
+                ),
 
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -81,7 +130,6 @@ class RiskAlertDetailPage extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
-                // 🔹 CHANGED: Button text to "Recommendation"
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -106,7 +154,7 @@ class RiskAlertDetailPage extends StatelessWidget {
   void _showRecommendationSheet(BuildContext context, String level, String alertId) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Allows content to fit nicely
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         bool isHigh = level == "High";
@@ -117,7 +165,6 @@ class RiskAlertDetailPage extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- SCORING DETAILS SECTION ---
               const Center(child: Text("Scoring Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               const Divider(thickness: 1, height: 20),
               Text("Risk Level: $level", style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
@@ -134,7 +181,6 @@ class RiskAlertDetailPage extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // --- ACTIONS SECTION ---
               const Center(child: Text("Recommended Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               const Divider(thickness: 1, height: 20),
               Text(isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
