@@ -20,10 +20,6 @@ class _NotificationPageState extends State<NotificationPage>
   final Set<String> readNotifications = {};
   List<String> selectedSubCategories = [];
 
-  // Warna Konsisten
-  final Color primaryBlue = const Color(0xFF203288);
-  final Color accentBlue = const Color(0xFF1E3A8A);
-
   @override
   void initState() {
     super.initState();
@@ -43,35 +39,84 @@ class _NotificationPageState extends State<NotificationPage>
     });
   }
 
+  // 🔹 FIXED HELPER: Builds a Tab with a Red Dot using Client-Side filtering
+  Widget _buildTabWithRedDot(String label, {String? filterType}) {
+    return StreamBuilder<QuerySnapshot>(
+      // 🔹 Fetch all alerts to filter manually (Bypasses indexing error)
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = false;
+
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          // Manually check for unread alerts in the results
+          hasUnread = snapshot.data!.docs.any((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final bool isDone = data['isDone'] ?? false;
+            final String type = data['alertType'] ?? '';
+            final String id = doc.id;
+
+            // Condition: Not marked as done in DB AND not clicked in this session
+            bool unread = (isDone == false) && !readNotifications.contains(id);
+
+            if (filterType == null) {
+              return unread; // For "Unread" tab
+            } else {
+              return unread && type == filterType; // For "Expiry" or "Risk" tabs
+            }
+          });
+        }
+
+        return Tab(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Text(label),
+              if (hasUnread)
+                Positioned(
+                  right: -10, // Adjust position so it doesn't overlap text
+                  top: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // ================= FILTER DIALOG =================
   void _showFilterDialog() async {
     final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
     final allSubCategories = productSnapshot.docs
-        .map((doc) => (doc.data())['subCategory'] as String?)
-        .where((s) => s != null && s.isNotEmpty)
+        .map((doc) => (doc.data())['subCategory'] as String)
         .toSet()
         .toList();
 
     List<String> tempSelected = List.from(selectedSubCategories);
 
-    if (!mounted) return;
-
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text("Filter by Sub Category", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: allSubCategories.map((subCat) {
-                return StatefulBuilder(
-                  builder: (context, setStateDialog) {
+          title: const Text("Filter by Sub Category"),
+          content: StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: allSubCategories.map((subCat) {
                     return CheckboxListTile(
-                      activeColor: primaryBlue,
-                      title: Text(subCat!),
+                      title: Text(subCat),
                       value: tempSelected.contains(subCat),
                       onChanged: (value) {
                         setStateDialog(() {
@@ -83,26 +128,19 @@ class _NotificationPageState extends State<NotificationPage>
                         });
                       },
                     );
-                  },
-                );
-              }).toList(),
-            ),
+                  }).toList(),
+                ),
+              );
+            },
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryBlue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
               onPressed: () {
                 setState(() { selectedSubCategories = List.from(tempSelected); });
                 Navigator.pop(context);
               },
-              child: const Text("Apply", style: TextStyle(color: Colors.white)),
+              child: const Text("Apply"),
             ),
           ],
         );
@@ -123,33 +161,32 @@ class _NotificationPageState extends State<NotificationPage>
         final alerts = alertSnap.data!.docs.where((doc) {
           final alert = doc.data() as Map<String, dynamic>;
           final type = alert['alertType'] ?? 'expiry';
+          final bool isDoneInDb = alert['isDone'] ?? false; // 🔹 Check DB status
 
+          // 1. Filter by alert type if specified (Expiry or Risk tabs)
           if (filterType != null && type != filterType) return false;
 
+          // 2. Strict Unread Logic
           if (unreadOnly) {
-            return (alert['isDone'] == false) && !readNotifications.contains(doc.id);
+            // Display only if:
+            // - It is NOT marked as done in Firestore AND
+            // - It has NOT been clicked in this session
+            return isDoneInDb == false && !readNotifications.contains(doc.id);
           }
+
           return true;
         }).toList();
 
         if (alerts.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.notifications_off_outlined, size: 60, color: Colors.grey.shade300),
-                const SizedBox(height: 10),
-                Text(
-                  unreadOnly ? "No unread alerts" : "No notifications",
-                  style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
-                ),
-              ],
+            child: Text(
+              unreadOnly ? "No unread alerts" : "No notifications",
+              style: const TextStyle(color: Colors.grey),
             ),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 20),
           itemCount: alerts.length,
           itemBuilder: (context, index) {
             final alertDoc = alerts[index];
@@ -165,9 +202,7 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-  // ================= CARD BUILDERS =================
-
-  // 1. EXPIRY CARD
+// ================= CARD BUILDERS =================
   Widget _buildExpiryCard(Map<String, dynamic> alert, String alertId) {
     final batchId = alert['batchId'];
     final productId = alert['productId'];
@@ -175,6 +210,7 @@ class _NotificationPageState extends State<NotificationPage>
     final isDone = alert['isDone'] ?? false;
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
+    // 1. DYNAMIC COLOR LOGIC
     Color statusColor;
     String statusText;
 
@@ -193,19 +229,20 @@ class _NotificationPageState extends State<NotificationPage>
         break;
       default:
         statusText = "EXPIRY SOON ($stage Days)";
-        statusColor = Colors.orange;
+        statusColor = Colors.orange; // Fallback color
     }
 
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
       builder: (context, productSnap) {
         if (!productSnap.hasData) return const SizedBox();
-        final product = productSnap.data!.data() as Map<String, dynamic>? ?? {};
+        final product = productSnap.data!.data() as Map<String, dynamic>;
 
         if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(product['subCategory'])) {
           return const SizedBox.shrink();
         }
 
+        // Extract Category and SubCategory
         final String category = product['category'] ?? "N/A";
         final String subCategory = product['subCategory'] ?? "N/A";
 
@@ -213,13 +250,13 @@ class _NotificationPageState extends State<NotificationPage>
           future: FirebaseFirestore.instance.collection('batches').doc(batchId).get(),
           builder: (context, batchSnap) {
             if (!batchSnap.hasData) return const SizedBox();
-            final batch = batchSnap.data!.data() as Map<String, dynamic>? ?? {};
-            final expiryDate = (batch['expiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+            final batch = batchSnap.data!.data() as Map<String, dynamic>;
+            final expiryDate = (batch['expiryDate'] as Timestamp).toDate();
 
             return _cardWrapper(
               alertId: alertId,
               isDone: isDone,
-              accentColor: accentBlue,
+              accentColor: const Color(0xFF1E3A8A),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -231,18 +268,34 @@ class _NotificationPageState extends State<NotificationPage>
                   ),
                 ),
               ),
-              child: _buildStandardCardContent(
-                statusText: statusText,
-                statusColor: statusColor,
-                notifiedAt: notifiedAt,
-                productName: product['productName'] ?? 'Unknown Product',
-                categoryText: "$subCategory • $category",
-                footerWidgets: [
-                  _buildFooterItem("Batch", batch['batchNumber'] ?? '-'),
-                  _buildFooterItem(
-                    "Expiry",
-                    "${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
-                    valueColor: Colors.red,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("🔔 $statusText",
+                          style: TextStyle(fontWeight: FontWeight.bold, color: statusColor)),
+                      Text("${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(product['productName'],
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+
+                  // 2. ADDED SUBCATEGORY (CATEGORY) TEXT
+                  Text(
+                    "$subCategory ($category)",
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                  ),
+
+                  const SizedBox(height: 4),
+                  Text("Batch No: ${batch['batchNumber']}", style: const TextStyle(fontSize: 14)),
+                  Text(
+                    "Expiry Date: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.red),
                   ),
                 ],
               ),
@@ -253,48 +306,44 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-  // 2. RISK CARD (FIX: CARI GUNA NAMA PRODUK)
   Widget _buildRiskCard(Map<String, dynamic> alert, String alertId) {
     final isDone = alert['isDone'] ?? false;
     final riskLevel = alert['riskLevel'] ?? 'Medium';
     final riskValue = alert['riskValue'] ?? 0;
+    final productName = alert['productName'] ?? 'Unknown';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-
-    // Ambil nama produk dari alert (Risk Alert biasanya ada simpan nama)
-    final alertProductName = alert['productName'] ?? 'Unknown Product';
 
     Color riskColor = riskLevel == "High" ? Colors.red : Colors.orange;
     String riskIcon = riskLevel == "High" ? "🔥" : "⚠️";
     String riskTitle = "$riskIcon ${riskLevel.toUpperCase()} RISK";
 
-    // [FIX UTAMA]: Guna Query 'where' berdasarkan Nama Produk, bukan 'doc(id)'
-    // Sebab ID dalam Risk mungkin tak sama dengan ID Produk
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('products')
-          .where('productName', isEqualTo: alertProductName)
-          .limit(1)
-          .get(),
+      // 🔹 Fetch products to filter manually (Bypasses indexing error)
+      future: FirebaseFirestore.instance.collection('products').get(),
       builder: (context, productSnap) {
         String category = "N/A";
         String subCategory = "N/A";
 
-        // Cek jika jumpa produk dengan nama yang sama
         if (productSnap.hasData && productSnap.data!.docs.isNotEmpty) {
-          final product = productSnap.data!.docs.first.data() as Map<String, dynamic>;
-          category = product['category'] ?? "N/A";
-          subCategory = product['subCategory'] ?? "N/A";
+          try {
+            // 🔹 Manually find the product that matches the name from the alert
+            final matchingDoc = productSnap.data!.docs.firstWhere(
+                    (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
+            );
 
-          if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
-            return const SizedBox.shrink();
+            final productData = matchingDoc.data() as Map<String, dynamic>;
+            category = productData['category'] ?? "N/A";
+            subCategory = productData['subCategory'] ?? "N/A";
+
+            // Apply subCategory filter if active
+            if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+              return const SizedBox.shrink();
+            }
+          } catch (e) {
+            // No matching product name found in the products collection
           }
         }
-
-        // Kalau category masih N/A, sembunyikan baris kategori atau letak text default
-        String displayCategoryText = (subCategory == "N/A" && category == "N/A")
-            ? "Inventory Risk"
-            : "$subCategory • $category";
 
         return _cardWrapper(
           alertId: alertId,
@@ -310,18 +359,43 @@ class _NotificationPageState extends State<NotificationPage>
               ),
             ),
           ),
-          child: _buildStandardCardContent(
-            statusText: riskTitle,
-            statusColor: riskColor,
-            notifiedAt: notifiedAt,
-            productName: alertProductName, // Guna nama dari alert
-            categoryText: displayCategoryText, // Guna text yang dah diproses
-            footerWidgets: [
-              _buildFooterItem(
-                "Risk Score",
-                "$riskValue/100",
-                valueColor: riskColor,
-                isBold: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    riskTitle,
+                    style: TextStyle(fontWeight: FontWeight.bold, color: riskColor, fontSize: 13),
+                  ),
+                  Text(
+                    "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                productName,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+
+              // 🔹 Display Category and SubCategory retrieved from products collection
+              Text(
+                "$subCategory ($category)",
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500
+                ),
+              ),
+
+              const SizedBox(height: 4),
+              Text(
+                "Risk Score: $riskValue/100",
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -330,127 +404,55 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-  // ================= UNIFIED UI HELPERS =================
-
-  Widget _buildStandardCardContent({
-    required String statusText,
-    required Color statusColor,
-    required DateTime notifiedAt,
-    required String productName,
-    required String categoryText,
-    required List<Widget> footerWidgets,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              statusText,
-              style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 12, letterSpacing: 0.5),
-            ),
-            Text(
-              "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          productName,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          categoryText,
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 12),
-        const Divider(height: 1, thickness: 0.5),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: footerWidgets.map((w) {
-            return Padding(
-              padding: const EdgeInsets.only(right: 20),
-              child: w,
-            );
-          }).toList(),
-        )
-      ],
-    );
-  }
-
-  Widget _buildFooterItem(String label, String value, {Color? valueColor, bool isBold = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            color: valueColor ?? Colors.black87,
-            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
+  // ================= CARD WRAPPER (Indicator Logic) =================
   Widget _cardWrapper({
     required String alertId,
     required bool isDone,
     required Color accentColor,
     required VoidCallback onTap,
-    required Widget child,
+    required Widget child
   }) {
     return GestureDetector(
       onTap: () {
         setState(() => readNotifications.add(alertId));
         onTap();
       },
-      child: IntrinsicHeight(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: IntrinsicHeight( // 🔹 Ensures the Row children can match height
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
             color: isDone ? const Color(0xFFFAFAFA) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDone ? 0.02 : 0.06),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                  color: isDone ? Colors.black.withOpacity(0.02) : accentColor.withOpacity(0.12),
+                  blurRadius: isDone ? 4 : 8,
+                  offset: const Offset(0, 4)
               )
             ],
-            border: Border.all(color: Colors.grey.shade100),
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch, // 🔹 Forces line to stretch top-to-bottom
             children: [
-              Container(
-                width: 5,
+              // 🔹 Blue vertical line
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: isDone ? 0 : 5,
                 decoration: BoxDecoration(
-                  color: isDone ? Colors.grey.shade300 : accentColor,
+                  color: accentColor,
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    bottomLeft: Radius.circular(12),
+                      topLeft: Radius.circular(12),
+                      bottomLeft: Radius.circular(12)
                   ),
                 ),
               ),
+              // 🔹 Content area
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: child,
-                ),
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: child
+                  )
               ),
             ],
           ),
@@ -462,51 +464,33 @@ class _NotificationPageState extends State<NotificationPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w800, color: Colors.black)),
+        title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: false,
           indicatorSize: TabBarIndicatorSize.tab,
-          indicatorWeight: 3,
-          labelColor: primaryBlue,
+          labelColor: const Color(0xFF233E99),
           unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          indicatorColor: primaryBlue,
-          tabs: const [
-            Tab(text: "All"),
-            Tab(text: "Unread"),
-            Tab(text: "Expiry"),
-            Tab(text: "Risk"),
+          indicatorColor: const Color(0xFF233E99),
+          tabs: [
+            const Tab(text: "All Alerts"), // "All" usually doesn't need a dot
+            _buildTabWithRedDot("Unread"),
+            _buildTabWithRedDot("Expiry", filterType: 'expiry'),
+            _buildTabWithRedDot("Risk", filterType: 'risk'),
           ],
         ),
       ),
       body: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 15, 10, 5),
-            color: const Color(0xFFF8FAFF),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(headerText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
-                IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]),
-                    child: Icon(Icons.filter_list_rounded, color: primaryBlue, size: 20),
-                  ),
-                  onPressed: _showFilterDialog,
-                ),
+                Text(headerText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(icon: const Icon(Icons.filter_list, color: Color(0xFF233E99)), onPressed: _showFilterDialog),
               ],
             ),
           ),
