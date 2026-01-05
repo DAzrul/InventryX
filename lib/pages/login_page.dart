@@ -5,12 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-// Package Biometric
-import 'package:local_auth/local_auth.dart';
-import 'package:flutter/services.dart';
-
 // Destination Imports
-// (Pastikan path folder ni betul ikut projek kau)
 import 'admin/admin_page.dart';
 import 'manager/manager_page.dart';
 import 'staff/staff_page.dart';
@@ -26,7 +21,8 @@ class LoginPage extends StatefulWidget {
     final String? userId = prefs.getString('savedUserId');
 
     if (userId != null) {
-      await _recordActivity(userId, "Sign Out", "User signed out of the account.");
+      await _recordActivity(
+          userId, "Sign Out", "User signed out of the account.");
     }
 
     await prefs.setBool('isLoggedIn', false);
@@ -36,7 +32,8 @@ class LoginPage extends StatefulWidget {
     await FirebaseAuth.instance.signOut();
   }
 
-  static Future<void> _recordActivity(String userId, String action, String details) async {
+  static Future<void> _recordActivity(
+      String userId, String action, String details) async {
     try {
       await FirebaseFirestore.instance
           .collection('users')
@@ -68,75 +65,16 @@ class _LoginPageState extends State<LoginPage> {
   bool showPassword = false;
   bool loading = false;
 
-  // Biometric Variables
-  final LocalAuthentication auth = LocalAuthentication();
-  bool _canCheckBiometrics = false; // Phone support tak?
-  bool _hasSavedUser = false; // Ada user pernah login tak?
-
+  // Warna Utama (Dark Blue dari design)
   final Color primaryBlue = const Color(0xFF233E99);
 
   @override
   void initState() {
     super.initState();
-    _checkLoginStatus(); // Cek Auto Login
-    _checkBiometricsSupport(); // Cek Support Jari/FaceID
+    _checkLoginStatus();
   }
 
-  // --- 1. LOGIC BIOMETRIC SETUP ---
-  Future<void> _checkBiometricsSupport() async {
-    late bool canCheckBiometrics;
-    try {
-      canCheckBiometrics = await auth.canCheckBiometrics;
-    } on PlatformException catch (_) {
-      canCheckBiometrics = false;
-    }
-
-    // Cek SharedPreferences: Kita hanya benarkan biometric kalau ada data user tersimpan
-    final prefs = await SharedPreferences.getInstance();
-    final String? savedId = prefs.getString('savedUserId');
-
-    if (!mounted) return;
-    setState(() {
-      _canCheckBiometrics = canCheckBiometrics;
-      _hasSavedUser = savedId != null;
-    });
-  }
-
-  // --- 2. LOGIC BIOMETRIC ACTION ---
-  Future<void> _authenticate() async {
-    bool authenticated = false;
-    try {
-      authenticated = await auth.authenticate(
-        localizedReason: 'Scan your face or fingerprint to login securely',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: true,
-        ),
-      );
-    } on PlatformException catch (e) {
-      _showSnack("Biometric Error: ${e.message}");
-      return;
-    }
-
-    if (!mounted) return;
-
-    if (authenticated) {
-      // BIOMETRIC LULUS! Ambil data lama & Login terus
-      final prefs = await SharedPreferences.getInstance();
-      String? username = prefs.getString('savedUsername');
-      String? role = prefs.getString('savedRole');
-      String? userId = prefs.getString('savedUserId');
-
-      if (username != null && role != null && userId != null) {
-        await LoginPage._recordActivity(userId, "Biometric Login", "User logged in via FaceID/Fingerprint.");
-        _navigateToHomePage(username, role, userId);
-      } else {
-        _showSnack("Session expired. Please login with password first.");
-      }
-    }
-  }
-
-  // --- 3. LOGIC AUTO LOGIN (APP START) ---
+  // --- LOGIC AUTO LOGIN ---
   Future<void> _checkLoginStatus() async {
     if (widget.autoLoginUsername != null) {
       usernameController.text = widget.autoLoginUsername!;
@@ -147,7 +85,6 @@ class _LoginPageState extends State<LoginPage> {
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final String? savedUserId = prefs.getString('savedUserId');
 
-    // Kalau ada tiket "Trusted Device" (isLoggedIn = true)
     if (isLoggedIn && savedUserId != null) {
       if (!await _isNetworkAvailable()) {
         final savedUsername = prefs.getString('savedUsername');
@@ -160,17 +97,21 @@ class _LoginPageState extends State<LoginPage> {
 
       setState(() => loading = true);
       try {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(savedUserId).get();
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(savedUserId)
+            .get();
         if (userDoc.exists && _auth.currentUser != null) {
-          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+          Map<String, dynamic> userData =
+          userDoc.data() as Map<String, dynamic>;
           String freshUsername = userData['username'];
           String freshRole = userData['role'];
 
           if (userData['status'] == 'Active') {
-            // Update data latest & Masuk Home
             await prefs.setString('savedUsername', freshUsername);
             await prefs.setString('savedRole', freshRole);
-            await LoginPage._recordActivity(savedUserId, "Auto Login", "Session restored via auto-login.");
+            await LoginPage._recordActivity(
+                savedUserId, "Auto Login", "Session restored via auto-login.");
             _navigateToHomePage(freshUsername, freshRole, savedUserId);
           } else {
             await LoginPage.clearLoginState(context);
@@ -184,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // --- 4. LOGIC MANUAL LOGIN (USERNAME/PASS) ---
+  // --- LOGIC MANUAL LOGIN ---
   Future<void> loginUser() async {
     String input = usernameController.text.trim();
     String password = passwordController.text.trim();
@@ -204,9 +145,17 @@ class _LoginPageState extends State<LoginPage> {
     try {
       QuerySnapshot userSnap;
       if (input.contains('@')) {
-        userSnap = await FirebaseFirestore.instance.collection("users").where('email', isEqualTo: input).limit(1).get();
+        userSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .where('email', isEqualTo: input)
+            .limit(1)
+            .get();
       } else {
-        userSnap = await FirebaseFirestore.instance.collection("users").where('username', isEqualTo: input).limit(1).get();
+        userSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .where('username', isEqualTo: input)
+            .limit(1)
+            .get();
       }
 
       if (userSnap.docs.isEmpty) {
@@ -221,7 +170,6 @@ class _LoginPageState extends State<LoginPage> {
       String role = userData['role'];
       String userId = userSnap.docs.first.id;
 
-      // CHECK 2FA STATUS DARI DATABASE
       bool is2FAEnabled = userData['is2FAEnabled'] ?? false;
 
       if (userData['status'] != 'Active') {
@@ -230,12 +178,9 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Login ke Firebase
       await _auth.signInWithEmailAndPassword(email: email, password: password);
 
-      // --- LOGIC PENENTUAN 2FA ---
       if (is2FAEnabled) {
-        // Kena OTP! Bawa ke Verify Page
         if (!mounted) return;
         Navigator.push(
           context,
@@ -250,12 +195,12 @@ class _LoginPageState extends State<LoginPage> {
           ),
         );
       } else {
-        // TAK PAYAH OTP! Login Biasa
-        await LoginPage._recordActivity(userId, "Login", "User manually signed in.");
+        await LoginPage._recordActivity(
+            userId, "Login", "User manually signed in.");
 
         if (rememberMe) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('isLoggedIn', true); // Cop Trusted Device
+          await prefs.setBool('isLoggedIn', true);
           await prefs.setString('savedUsername', username);
           await prefs.setString('savedRole', role);
           await prefs.setString('savedUserId', userId);
@@ -263,7 +208,6 @@ class _LoginPageState extends State<LoginPage> {
 
         _navigateToHomePage(username, role, userId);
       }
-
     } on FirebaseAuthException catch (e) {
       String errorMsg = "Login Failed: ${e.message}";
       if (e.code == 'wrong-password') errorMsg = "Incorrect password.";
@@ -284,28 +228,45 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     Widget target;
     if (role == "admin") {
-      target = AdminPage(loggedInUsername: username, userId: userId, username: '',);
+      target = AdminPage(
+        loggedInUsername: username,
+        userId: userId,
+        username: '',
+      );
     } else if (role == "manager") {
-      target = ManagerPage(loggedInUsername: username, userId: userId, username: '',);
+      target = ManagerPage(
+        loggedInUsername: username,
+        userId: userId,
+        username: '',
+      );
     } else {
-      target = StaffPage(loggedInUsername: username, userId: userId, username: '',);
+      target = StaffPage(
+        loggedInUsername: username,
+        userId: userId,
+        username: '',
+      );
     }
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
+    Navigator.pushReplacement(
+        context, MaterialPageRoute(builder: (_) => target));
   }
 
   void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating, backgroundColor: primaryBlue)
-  );
+      SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: primaryBlue));
 
-  // --- UI SECTION (Dah Fix Keyboard & Nama App) ---
+  // --- UI SECTION ---
   @override
   Widget build(BuildContext context) {
+    // Detect jika keyboard terbuka
+    final bool isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return GestureDetector(
-      // Logic: Tekan luar field, keyboard tutup
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: Colors.white,
-        // Logic: Resize UI bila keyboard naik supaya tak tertutup
+        // PENTING: Ini membenarkan UI ditolak ke atas oleh keyboard
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
@@ -313,68 +274,60 @@ class _LoginPageState extends State<LoginPage> {
               child: Center(
                 child: SingleChildScrollView(
                   physics: const ClampingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  // Padding dinamik: Bila keyboard buka, kita tambah padding bawah supaya boleh scroll
+                  padding: EdgeInsets.only(
+                    left: 24.0,
+                    right: 24.0,
+                    bottom: isKeyboardVisible ? MediaQuery.of(context).viewInsets.bottom + 20 : 20,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 30),
+                      // Kurangkan jarak atas bila keyboard buka supaya logo tak hilang terus
+                      SizedBox(height: isKeyboardVisible ? 10 : 40),
 
-                      // LOGO
-                      Image.asset("assets/logo.png", height: 100),
-                      const SizedBox(height: 15),
+                      // 1. LOGO MENGECIL (Animasi Halus)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                        height: isKeyboardVisible ? 100 : 180, // Kecilkan logo bila menaip
+                        child: Image.asset("assets/logo.png"),
+                      ),
 
-                      // NAMA APP
-                      Text(
+                      // Jarak antara logo dan tajuk
+                      SizedBox(height: isKeyboardVisible ? 0 : 10),
+
+                      // 2. TAJUK (Font 42, #005A99)
+                      const Text(
                         "InventryX",
                         style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: primaryBlue,
-                          letterSpacing: 1.5,
+                          fontSize: 42,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF005A99),
                         ),
-                      ),
-
-                      const SizedBox(height: 40),
-
-                      // Tajuk Sign In
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("Sign In", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1)),
                       ),
 
                       const SizedBox(height: 30),
 
-                      _buildModernField(usernameController, Icons.person_outline_rounded, label: "Email or Username"),
-                      const SizedBox(height: 25),
-                      _buildModernField(passwordController, Icons.lock_outline_rounded, label: "Password", isPassword: true),
+                      // 3. INPUT FIELDS
+                      _buildModernField(usernameController, Icons.person_outline,
+                          label: "Username"),
+                      const SizedBox(height: 20),
+                      _buildModernField(passwordController, Icons.lock_outline,
+                          label: "Password", isPassword: true),
 
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 20),
+
+                      // 4. REMEMBER ME & FORGOT PASSWORD
                       _buildUtilsRow(),
 
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 30),
+
+                      // 5. SIGN IN BUTTON
                       _buildLoginButton(),
 
-                      // BUTANG BIOMETRIC (FACE ID / FINGERPRINT)
-                      if (_canCheckBiometrics && _hasSavedUser) ...[
-                        const SizedBox(height: 30),
-                        Center(
-                          child: Column(
-                            children: [
-                              IconButton(
-                                iconSize: 60,
-                                icon: Icon(Icons.lock_person_rounded, color: primaryBlue),
-                                onPressed: _authenticate,
-                                tooltip: "Secure Login",
-                              ),
-                              const SizedBox(height: 5),
-                              const Text("Tap to unlock", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // Jarak bawah untuk keyboard breathing room
+                      // Ruang ekstra di bawah supaya butang tak rapat sangat dengan keyboard
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -388,25 +341,47 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildModernField(TextEditingController controller, IconData icon, {required String label, bool isPassword = false}) {
+  Widget _buildModernField(TextEditingController controller, IconData icon,
+      {required String label, bool isPassword = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            color: Colors.black87,
+          ),
+        ),
         const SizedBox(height: 8),
         Container(
-          decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(18)),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F7FB),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: TextField(
             controller: controller,
             obscureText: isPassword && !showPassword,
             decoration: InputDecoration(
-              prefixIcon: Icon(icon, color: primaryBlue),
-              suffixIcon: isPassword ? IconButton(
-                icon: Icon(showPassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                onPressed: () => setState(() => showPassword = !showPassword),
-              ) : null,
+              prefixIcon: Icon(icon, color: Colors.grey),
+              suffixIcon: isPassword
+                  ? IconButton(
+                icon: Icon(
+                  showPassword
+                      ? Icons.visibility
+                      : Icons.visibility_off,
+                  color: Colors.grey,
+                ),
+                onPressed: () =>
+                    setState(() => showPassword = !showPassword),
+              )
+                  : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+              contentPadding:
+              const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              hintText: "Enter ${label.toLowerCase()}",
+              hintStyle: TextStyle(color: Colors.grey.shade400),
             ),
           ),
         ),
@@ -418,46 +393,69 @@ class _LoginPageState extends State<LoginPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        GestureDetector(
-          onTap: () => setState(() => rememberMe = !rememberMe),
-          child: Row(
-            children: [
-              Checkbox(
+        Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
                 value: rememberMe,
                 onChanged: (v) => setState(() => rememberMe = v!),
                 activeColor: primaryBlue,
+                side: const BorderSide(color: Colors.grey, width: 1.5),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4)),
               ),
-              const Text("Stay Signed In", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              "Remember me",
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
         TextButton(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
-          child: Text("Forgot Password?", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w800, fontSize: 13)),
+          onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage())),
+          child: const Text(
+            "Forgot password?",
+            style: TextStyle(
+              color: Color(0xFF233E99), // Guna primaryBlue
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ],
     );
   }
 
   Widget _buildLoginButton() {
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      height: 65,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [primaryBlue, primaryBlue.withOpacity(0.85)]),
-        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
-      ),
+      height: 55,
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22))),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryBlue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
         onPressed: loading ? null : loginUser,
-        child: const Text("SIGN IN", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
+        child: const Text(
+          "Sign In",
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildBlurLoading() => Container(
-      color: Colors.white.withOpacity(0.7),
-      child: Center(child: CircularProgressIndicator(color: primaryBlue))
+    color: Colors.white.withOpacity(0.7),
+    child: Center(child: CircularProgressIndicator(color: primaryBlue)),
   );
 }
