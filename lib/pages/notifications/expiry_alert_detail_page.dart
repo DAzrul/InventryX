@@ -5,41 +5,50 @@ class ExpiryAlertDetailPage extends StatelessWidget {
   final String batchId;
   final String productId;
   final String stage;
-  final String userRole; // Added to maintain consistency with shared navigation
+  final String userRole;
 
   const ExpiryAlertDetailPage({
     super.key,
     required this.batchId,
     required this.productId,
     required this.stage,
-    required this.userRole, // Now required in constructor
+    required this.userRole,
   });
+
+  // Warna standard
+  final Color primaryBlue = const Color(0xFF1E3A8A);
+  final Color bgGrey = const Color(0xFFF8FAFF);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: bgGrey,
       appBar: AppBar(
+        // --- [SIMBOL ANAK PANAH (<) DI SINI] ---
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        // ---------------------------------------
         title: const Text(
           "Expiry Alert Detail",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
         ),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
       ),
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('batches').doc(batchId).get(),
         builder: (context, batchSnap) {
-          if (!batchSnap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (!batchSnap.hasData) return const Center(child: CircularProgressIndicator());
 
           final batch = batchSnap.data!.data() as Map<String, dynamic>;
 
           return FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
             builder: (context, productSnap) {
-              if (!productSnap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
+              if (!productSnap.hasData) return const Center(child: CircularProgressIndicator());
 
               final product = productSnap.data!.data() as Map<String, dynamic>;
 
@@ -49,91 +58,149 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                     .doc(product['supplierId'])
                     .get(),
                 builder: (context, supplierSnap) {
-                  if (!supplierSnap.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                  if (!supplierSnap.hasData) return const Center(child: CircularProgressIndicator());
 
                   final supplier = supplierSnap.data!.data() as Map<String, dynamic>;
 
+                  // --- LOGIC TARIKH ---
                   final expiryRaw = (batch['expiryDate'] as Timestamp).toDate();
                   final createdAt = (batch['createdAt'] as Timestamp).toDate();
-
-                  // Normalize dates
                   final today = DateTime.now();
                   final todayDate = DateTime(today.year, today.month, today.day);
                   final expiryDate = DateTime(expiryRaw.year, expiryRaw.month, expiryRaw.day);
-
                   final daysLeft = expiryDate.difference(todayDate).inDays;
 
-                  // Status Styling
+                  // --- LOGIC WARNA STATUS ---
                   Color statusColor;
                   String statusText;
+                  IconData statusIcon;
+
                   if (stage == "expired") {
-                    statusText = "EXPIRED";
+                    statusText = "CRITICAL: EXPIRED";
                     statusColor = Colors.red;
+                    statusIcon = Icons.error_outline;
                   } else if (stage == "3") {
-                    statusText = "EXPIRY SOON (3 Days)";
-                    statusColor = Colors.yellow[900]!;
+                    statusText = "WARNING: EXPIRY IN 3 DAYS";
+                    statusColor = Colors.orange[900]!;
+                    statusIcon = Icons.access_time_filled;
                   } else if (stage == "5") {
-                    statusText = "EXPIRY SOON (5 Days)";
-                    statusColor = Colors.yellow[600]!;
+                    statusText = "ALERT: EXPIRY IN 5 DAYS";
+                    statusColor = Colors.amber[800]!;
+                    statusIcon = Icons.access_time;
                   } else {
                     statusText = "EXPIRY SOON ($stage Days)";
                     statusColor = Colors.orange;
+                    statusIcon = Icons.info_outline;
                   }
 
                   return SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          "🔔 $statusText",
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statusColor),
-                        ),
-                        const SizedBox(height: 16),
-
+                        // 1. STATUS BANNER
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: statusColor.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(statusIcon, color: statusColor),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  statusText,
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: statusColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 2. PRODUCT INFO CARD
+                        Container(
+                          padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const Text("Product Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                              const Divider(thickness: 1.2, height: 20, color: Colors.grey),
-                              if (product['imageUrl'] != null)
-                                Center(child: Image.network(product['imageUrl'], height: 140)),
-                              const SizedBox(height: 12),
-                              Text(product['productName'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                              if (product['imageUrl'] != null && product['imageUrl'].isNotEmpty)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(product['imageUrl'], height: 120, width: 120, fit: BoxFit.cover),
+                                )
+                              else
+                                Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
+
                               const SizedBox(height: 16),
-                              _row("Sub Category", product['subCategory']),
-                              _row("Supplier Name", supplier['supplierName']),
-                              const Divider(thickness: 1.0, color: Colors.grey),
-                              _row("Batch Number", batch['batchNumber']),
-                              _row("Stock In Date", createdAt.toString().split(' ')[0]),
-                              _row("Current Quantity", batch['currentQuantity'].toString()),
-                              _row("Expiry Date", expiryDate.toString().split(' ')[0]),
-                              _row("Days Left", daysLeft.toString()),
+
+                              Text(
+                                product['productName'] ?? 'Unknown Product',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E)),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "${product['subCategory']} • ${product['category']}",
+                                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                              ),
+
+                              const SizedBox(height: 20),
+                              const Divider(),
+                              const SizedBox(height: 10),
+
+                              // BUTIRAN
+                              _buildDetailRow("Supplier", supplier['supplierName']),
+                              _buildDetailRow("Stock In Date", "${createdAt.day}/${createdAt.month}/${createdAt.year}"),
+                              const SizedBox(height: 10),
+
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
+                                child: Column(
+                                  children: [
+                                    _buildDetailRow("Batch Number", batch['batchNumber'], isBold: true),
+                                    _buildDetailRow("Current Quantity", batch['currentQuantity'].toString(), isBold: true),
+                                    const Divider(height: 20),
+                                    _buildDetailRow(
+                                        "Expiry Date",
+                                        "${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
+                                        valueColor: Colors.red, isBold: true
+                                    ),
+                                    _buildDetailRow(
+                                        "Days Remaining",
+                                        daysLeft <= 0 ? "Expired" : "$daysLeft Days",
+                                        valueColor: daysLeft <= 0 ? Colors.red : Colors.orange[800], isBold: true
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 30),
+
+                        // 3. ACTION BUTTON
                         SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
+                          height: 55,
+                          child: ElevatedButton.icon(
                             onPressed: () => _showRecommendation(context, stage, batchId),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A8A),
+                              backgroundColor: primaryBlue,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
                             ),
-                            child: const Text("Recommendation", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.lightbulb_outline),
+                            label: const Text("View Recommendation", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -148,42 +215,65 @@ class ExpiryAlertDetailPage extends StatelessWidget {
     );
   }
 
+  // --- HELPER UNTUK ROW BIASA ---
+  Widget _buildDetailRow(String label, String value, {bool isBold = false, Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+          Text(
+              value,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+                  color: valueColor ?? Colors.black87
+              )
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- RECOMMENDATION MODAL ---
   void _showRecommendation(BuildContext context, String stage, String batchId) {
     String actionTitle = "";
     Color actionColor = Colors.black;
     List<Widget> reasonWidgets = [];
 
-    // Logic for Recommendation Content
+    // Logic Recommendation
     if (stage == "5") {
       actionTitle = "APPLY DISCOUNT";
-      actionColor = Colors.yellow[600]!;
+      actionColor = Colors.amber[800]!;
       reasonWidgets = [
-        const Text("• Product expires in 5 days"),
-        const Text("• Suggested Discount Rate: 10–20%"),
-        _urgencyText("MEDIUM", actionColor),
+        _buildBulletPoint("Product expires in 5 days."),
+        _buildBulletPoint("Suggested Discount: 10% - 20% to clear stock."),
+        _urgencyBadge("MEDIUM", actionColor),
       ];
     } else if (stage == "3") {
-      actionTitle = "SHELF ROTATION";
-      actionColor = Colors.yellow[900]!;
+      actionTitle = "SHELF ROTATION / CLEARANCE";
+      actionColor = Colors.orange[900]!;
       reasonWidgets = [
-        const Text("• Product expires in 3 days"),
-        const Text("• Move product to front shelf / eye-level"),
-        _urgencyText("HIGH", actionColor),
+        _buildBulletPoint("Product expires in 3 days."),
+        _buildBulletPoint("Move to front shelf (eye-level) or Clearance bin."),
+        _urgencyBadge("HIGH", actionColor),
       ];
     } else if (stage == "expired") {
-      actionTitle = "RETURN TO SUPPLIER";
+      actionTitle = "DISPOSE / RETURN";
       actionColor = Colors.red;
       reasonWidgets = [
-        const Text("• Product has passed expiry date"),
-        const Text("• Update stock status"),
-        _urgencyText("CRITICAL", actionColor),
+        _buildBulletPoint("Product has passed expiry date."),
+        _buildBulletPoint("Remove from shelf immediately."),
+        _buildBulletPoint("Update stock status to 'Written Off'."),
+        _urgencyBadge("CRITICAL", actionColor),
       ];
     }
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return FutureBuilder<QuerySnapshot>(
           future: FirebaseFirestore.instance
@@ -200,56 +290,80 @@ class ExpiryAlertDetailPage extends StatelessWidget {
               isDone = alertSnap.data!.docs.first['isDone'] ?? false;
             }
 
-            return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 16, left: 16, right: 16),
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-                  const SizedBox(height: 16),
-                  const Center(child: Text("Recommendation Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-                  const Divider(thickness: 1.2, color: Colors.grey, height: 20),
-                  const SizedBox(height: 8),
-                  Center(child: Text(actionTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: actionColor))),
-                  const SizedBox(height: 12),
-                  const Text("Reason:", style: TextStyle(fontWeight: FontWeight.w600)),
-                  ...reasonWidgets,
-                  const SizedBox(height: 24),
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+                  const SizedBox(height: 20),
 
-                  // Action Buttons (Same for both Manager and Staff)
+                  const Center(child: Text("Recommended Action", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  const SizedBox(height: 20),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: actionColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: actionColor.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(actionTitle, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: actionColor, letterSpacing: 1.0)),
+                        const SizedBox(height: 10),
+                        ...reasonWidgets,
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // Action Buttons
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel"),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text("Close", style: TextStyle(color: Colors.grey)),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
                           onPressed: isDone
-                              ? null // Disable if already done
+                              ? null
                               : () async {
                             if (alertSnap.data!.docs.isNotEmpty) {
                               await alertSnap.data!.docs.first.reference.update({'isDone': true});
                             }
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Alert marked as done ✅')),
+                              const SnackBar(content: Text('Action marked as completed ✅'), backgroundColor: Colors.green),
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isDone ? Colors.grey : const Color(0xFF1E3A8A),
+                            backgroundColor: isDone ? Colors.grey : primaryBlue,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           child: Text(isDone ? "Completed" : "Mark as Done"),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
                 ],
               ),
             );
@@ -259,25 +373,25 @@ class ExpiryAlertDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _urgencyText(String level, Color color) {
-    return RichText(
-      text: TextSpan(
-        text: "• Action Urgency: ",
-        style: const TextStyle(color: Colors.black),
-        children: [TextSpan(text: level, style: TextStyle(color: color, fontWeight: FontWeight.bold))],
+  Widget _buildBulletPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("• ", style: TextStyle(fontSize: 16)),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.3))),
+        ],
       ),
     );
   }
 
-  Widget _row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-          Expanded(child: Text(value)),
-        ],
-      ),
+  Widget _urgencyBadge(String level, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+      child: Text("Urgency: $level", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
     );
   }
 }

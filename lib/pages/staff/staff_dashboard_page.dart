@@ -37,7 +37,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         .orderBy('timestamp', descending: true);
   }
 
-  // --- LOGIC 2: SCAN BARCODE & SHOW DETAILS ---
+  // --- [FIXED] LOGIC 2: SCAN BARCODE (String & Number Check) ---
   Future<void> _scanAndShowDetails() async {
     final scannedCode = await Navigator.push<String>(
       context,
@@ -45,11 +45,25 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
 
     if (scannedCode != null && scannedCode.isNotEmpty) {
-      final snapshot = await FirebaseFirestore.instance
+
+      // 1. Cuba cari sebagai STRING dulu (e.g., "955...")
+      var snapshot = await FirebaseFirestore.instance
           .collection('products')
           .where('barcodeNo', isEqualTo: scannedCode)
           .limit(1)
           .get();
+
+      // 2. Kalau tak jumpa, cuba cari sebagai NUMBER (e.g., 955...)
+      if (snapshot.docs.isEmpty) {
+        int? numericCode = int.tryParse(scannedCode);
+        if (numericCode != null) {
+          snapshot = await FirebaseFirestore.instance
+              .collection('products')
+              .where('barcodeNo', isEqualTo: numericCode)
+              .limit(1)
+              .get();
+        }
+      }
 
       if (!mounted) return;
 
@@ -57,7 +71,11 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         _showProductDetailPopup(snapshot.docs.first.data());
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Product not found!"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Product not found for barcode: $scannedCode"),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -234,20 +252,33 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 icon: Icons.warning_amber_rounded,
                 label: "Low Stock Alert",
                 color: Colors.orange,
-                calcLogic: (docs) => docs.where((d) => (int.tryParse(d['currentStock'].toString()) ?? 0) <= 10).length,
+                calcLogic: (docs) {
+                  int count = 0;
+                  for (var d in docs) {
+                    var data = d.data() as Map<String, dynamic>;
+                    int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+                    int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+                    if (stock <= reorderPoint) count++;
+                  }
+                  return count;
+                },
               ),
               const SizedBox(width: 16),
+              // [FIX] Update Logic Expired untuk sama dengan Stock Page
               _buildStatCard(
                 stream: FirebaseFirestore.instance.collection('batches').where('currentQuantity', isGreaterThan: 0).snapshots(),
                 icon: Icons.event_busy_rounded,
-                label: "Expiring Soon",
+                label: "Expired Items", // Tukar label supaya tepat
                 color: Colors.red,
                 calcLogic: (docs) {
                   final now = DateTime.now();
-                  final next30Days = now.add(const Duration(days: 30));
                   return docs.where((d) {
-                    DateTime exp = (d['expiryDate'] as Timestamp).toDate();
-                    return exp.isAfter(now) && exp.isBefore(next30Days);
+                    final data = d.data() as Map<String, dynamic>;
+                    Timestamp? expT = data['expiryDate'] as Timestamp?;
+                    if (expT == null) return false;
+
+                    // Logic: Expired jika tarikh < sekarang
+                    return expT.toDate().isBefore(now);
                   }).length;
                 },
               ),
@@ -258,7 +289,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           const Text("Quick Action", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
 
-          // --- QUICK ACTION BUTTONS (WARNA BIRU) ---
+          // --- QUICK ACTION BUTTONS ---
           _buildQuickActionButton(
               title: "Scan Item / Check Stock",
               subtitle: "Scan barcode to view details",
@@ -420,7 +451,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  // --- [UPDATE] QUICK ACTION BUTTON JADI BIRU ---
   Widget _buildQuickActionButton({required String title, required String subtitle, required IconData icon, required Color color, required VoidCallback onTap}) {
     return InkWell(
         onTap: onTap,
@@ -428,7 +458,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-                color: color, // Guna warna biru
+                color: color,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]
             ),

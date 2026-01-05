@@ -5,8 +5,51 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:math';
 
-// Pastikan import ini betul ikut struktur folder anda
+// Pastikan path import ini betul ikut struktur folder anda
 import '../Features_app/barcode_scanner_page.dart';
+
+// --- [GLOBAL CART MANAGER] ---
+// Ini memastikan data cart manual KEKAL walaupun user keluar masuk page
+class StockOutCartManager {
+  static final StockOutCartManager _instance = StockOutCartManager._internal();
+  factory StockOutCartManager() => _instance;
+  StockOutCartManager._internal();
+
+  List<StockOutItem> items = [];
+
+  void addItem(StockOutItem newItem) {
+    // Logic Gabung (Merge): Kalau batch sama, tambah quantity je
+    int index = items.indexWhere((i) => i.batchId == newItem.batchId);
+    if (index != -1) {
+      var old = items[index];
+      items[index] = StockOutItem(
+          productId: old.productId,
+          productName: old.productName,
+          imageUrl: old.imageUrl,
+          quantity: old.quantity + newItem.quantity,
+          batchId: old.batchId,
+          batchNumber: old.batchNumber
+      );
+    } else {
+      items.add(newItem);
+    }
+  }
+
+  void removeItem(int index) {
+    items.removeAt(index);
+  }
+
+  void clearCart() {
+    items.clear();
+  }
+
+  // Helper untuk check qty yang dah ada dalam cart (untuk validasi)
+  int getQuantityForBatch(String batchId) {
+    return items
+        .where((i) => i.batchId == batchId)
+        .fold(0, (sum, i) => sum + i.quantity);
+  }
+}
 
 class StockOutPage extends StatefulWidget {
   const StockOutPage({super.key});
@@ -20,6 +63,9 @@ class _StockOutPageState extends State<StockOutPage> {
   final Color scaffoldBg = const Color(0xFFF8FAFF);
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // Panggil Cart Manager (Global)
+  final StockOutCartManager _cartManager = StockOutCartManager();
+
   int _currentSubTab = 0;
   bool _autoDeduct = true;
   bool _isProcessing = false;
@@ -27,7 +73,6 @@ class _StockOutPageState extends State<StockOutPage> {
   DateTime _selectedDate = DateTime.now();
   String _selectedReason = 'damaged';
   final TextEditingController _notesController = TextEditingController();
-  List<StockOutItem> _cartItems = [];
 
   @override
   void dispose() {
@@ -259,6 +304,9 @@ class _StockOutPageState extends State<StockOutPage> {
   // ======================== TAB 1: OTHERS ========================
 
   Widget _buildOthersTab() {
+    // [FIX] Ambil list dari Manager supaya tak hilang bila refresh
+    List<StockOutItem> items = _cartManager.items;
+
     return Column(
       children: [
         Expanded(
@@ -274,10 +322,12 @@ class _StockOutPageState extends State<StockOutPage> {
                 const SizedBox(height: 12),
                 _buildAddProductButton(),
                 const SizedBox(height: 16),
-                if (_cartItems.isEmpty)
+
+                if (items.isEmpty)
                   _buildEmptyState("No items for removal.")
                 else
-                  ..._cartItems.asMap().entries.map((entry) => _buildCartItemCard(entry.key, entry.value)),
+                  ...items.asMap().entries.map((entry) => _buildCartItemCard(entry.key, entry.value)),
+
                 const SizedBox(height: 120),
               ],
             ),
@@ -368,7 +418,13 @@ class _StockOutPageState extends State<StockOutPage> {
           decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
           child: Text("-${item.quantity}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w900, fontSize: 15)),
         ),
-        IconButton(icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20), onPressed: () => setState(() => _cartItems.removeAt(index))),
+        IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+            // [FIX] Remove dari Global Manager dan refresh UI
+            onPressed: () => setState(() {
+              _cartManager.removeItem(index);
+            })
+        ),
       ]),
     );
   }
@@ -413,6 +469,8 @@ class _StockOutPageState extends State<StockOutPage> {
   }
 
   Widget _buildOthersBottomAction() {
+    bool hasItems = _cartManager.items.isNotEmpty;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 15, 24, 30),
       decoration: BoxDecoration(
@@ -440,7 +498,7 @@ class _StockOutPageState extends State<StockOutPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   elevation: 0,
                 ),
-                onPressed: _cartItems.isEmpty ? null : _saveOthersStockOutToFirebase,
+                onPressed: hasItems ? _saveOthersStockOutToFirebase : null,
                 child: _isProcessing
                     ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
                     : const Text('CONFIRM REMOVAL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))
@@ -579,7 +637,7 @@ class _StockOutPageState extends State<StockOutPage> {
     setState(() => _isProcessing = false);
   }
 
-  // ======================== CORE LOGIC: APPLY & DEDUCT (UPDATED) ========================
+  // ======================== CORE LOGIC: APPLY & DEDUCT (SALES) ========================
 
   Future<void> _applyStockDeduction() async {
     setState(() => _isProcessing = true);
@@ -594,7 +652,6 @@ class _StockOutPageState extends State<StockOutPage> {
       final now = Timestamp.now();
       List<String> errors = [];
 
-      // Dapatkan User ID semasa
       final currentUser = FirebaseAuth.instance.currentUser;
       final String userId = currentUser?.uid ?? 'Staff';
 
@@ -602,7 +659,6 @@ class _StockOutPageState extends State<StockOutPage> {
         final saleData = saleDoc.data() as Map<String, dynamic>;
         final productId = saleData['productID'];
         final productName = saleData['snapshotName'];
-        // Pastikan totalAmount diambil (atau 0.0 jika null)
         final double totalAmount = (saleData['totalAmount'] is int)
             ? (saleData['totalAmount'] as int).toDouble()
             : (saleData['totalAmount'] ?? 0.0);
@@ -642,7 +698,7 @@ class _StockOutPageState extends State<StockOutPage> {
           'updatedAt': now
         });
 
-        // 4. REKOD JUALAN (OFFICIAL SALES RECORD)
+        // 4. REKOD JUALAN
         final salesRef = _db.collection('sales').doc();
         batchWrite.set(salesRef, {
           'salesID': salesRef.id,
@@ -669,7 +725,6 @@ class _StockOutPageState extends State<StockOutPage> {
           'user': userId
         });
 
-        // 6. Delete dari pending
         batchWrite.delete(saleDoc.reference);
       }
 
@@ -691,19 +746,28 @@ class _StockOutPageState extends State<StockOutPage> {
     }
   }
 
+  // ======================== CORE LOGIC: MANUAL REMOVAL ========================
+
   Future<void> _saveOthersStockOutToFirebase() async {
     setState(() => _isProcessing = true);
     try {
       final batch = _db.batch();
       final now = Timestamp.now();
-      for (var item in _cartItems) {
+
+      // [FIX] Loop items dari Manager
+      for (var item in _cartManager.items) {
         batch.update(_db.collection('batches').doc(item.batchId), {'currentQuantity': FieldValue.increment(-item.quantity), 'updatedAt': now});
         batch.update(_db.collection('products').doc(item.productId), {'currentStock': FieldValue.increment(-item.quantity), 'updatedAt': now});
         final movementRef = _db.collection('stockMovements').doc();
         batch.set(movementRef, {'movementId': movementRef.id, 'productId': item.productId, 'productName': item.productName, 'quantity': -item.quantity, 'type': 'Manual Adjustment', 'reason': _selectedReason.toUpperCase(), 'notes': _notesController.text.trim(), 'timestamp': now, 'user': 'Staff'});
       }
       await batch.commit();
-      setState(() { _cartItems.clear(); _notesController.clear(); _isProcessing = false; });
+
+      setState(() {
+        _cartManager.clearCart(); // Clear lepas save
+        _notesController.clear();
+        _isProcessing = false;
+      });
       _showAlert("Manual Removal Success", "Stock adjustment for manual reasons has been recorded.", isError: false);
     } catch (e) {
       if (mounted) setState(() => _isProcessing = false);
@@ -715,43 +779,145 @@ class _StockOutPageState extends State<StockOutPage> {
     showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))), builder: (context) => _ProductSelector(onProductSelected: (product) => _showQuantityAndBatchDialog(product)));
   }
 
+  // --- [KEMASKINI: LOGIC VALIDASI & MERGE & ERROR TEXT] ---
   void _showQuantityAndBatchDialog(DocumentSnapshot productDoc) {
     final data = productDoc.data() as Map<String, dynamic>;
     final qtyController = TextEditingController(text: '1');
-    String? selectedBatchId; String selectedBatchNum = ''; int maxQuantity = 0;
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (context, setModalState) {
-      return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Remove: ${data['productName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          StreamBuilder<QuerySnapshot>(
-            stream: _db.collection('batches').where('productId', isEqualTo: productDoc.id).where('currentQuantity', isGreaterThan: 0).snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const LinearProgressIndicator();
-              final batches = snapshot.data!.docs;
-              if (batches.isEmpty) return const Text("OUT OF STOCK IN BATCHES", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
-              return DropdownButtonFormField<String>(
-                isExpanded: true, value: selectedBatchId, hint: const Text("Choose Batch"),
-                items: batches.map((b) => DropdownMenuItem(value: b.id, child: Text("${b['batchNumber']} (Bal: ${b['currentQuantity']})"), onTap: () { selectedBatchNum = b['batchNumber']; maxQuantity = b['currentQuantity']; })).toList(),
-                onChanged: (v) => setModalState(() => selectedBatchId = v),
-                decoration: InputDecoration(filled: true, fillColor: scaffoldBg, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+
+    String? selectedBatchId;
+    String selectedBatchNum = '';
+    int dbBatchStock = 0;
+    String? inputErrorText;
+
+    showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+            builder: (context, setModalState) {
+
+              // [FIX] Check qty dalam Manager (Bukan local list)
+              int existingInCart = 0;
+              if (selectedBatchId != null) {
+                existingInCart = _cartManager.getQuantityForBatch(selectedBatchId!);
+              }
+
+              int availableToAdd = dbBatchStock - existingInCart;
+
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: Text("Remove: ${data['productName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _db.collection('batches')
+                            .where('productId', isEqualTo: productDoc.id)
+                            .where('currentQuantity', isGreaterThan: 0)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const LinearProgressIndicator();
+                          final batches = snapshot.data!.docs;
+
+                          if (batches.isEmpty) return const Text("OUT OF STOCK IN BATCHES", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
+
+                          return DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: selectedBatchId,
+                            hint: const Text("Choose Batch"),
+                            items: batches.map((b) => DropdownMenuItem(
+                                value: b.id,
+                                child: Text("${b['batchNumber']} (Bal: ${b['currentQuantity']})"),
+                                onTap: () {
+                                  selectedBatchNum = b['batchNumber'];
+                                  dbBatchStock = b['currentQuantity'];
+                                  setModalState(() => inputErrorText = null);
+                                }
+                            )).toList(),
+                            onChanged: (v) => setModalState(() => selectedBatchId = v),
+                            decoration: InputDecoration(filled: true, fillColor: scaffoldBg, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 15),
+
+                      TextField(
+                          controller: qtyController,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) {
+                            if (inputErrorText != null) {
+                              setModalState(() => inputErrorText = null);
+                            }
+                          },
+                          decoration: InputDecoration(
+                              labelText: "Quantity",
+                              // [FIX] Error Text akan muncul di sini (Tak tertutup dialog)
+                              errorText: inputErrorText,
+                              errorMaxLines: 3,
+
+                              helperText: selectedBatchId != null
+                                  ? "Database: $dbBatchStock | In Cart: $existingInCart"
+                                  : null,
+                              helperStyle: TextStyle(
+                                  color: availableToAdd == 0 ? Colors.red : Colors.grey,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11
+                              ),
+                              border: const OutlineInputBorder()
+                          )
+                      ),
+                    ]
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+                  ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: mainBlue),
+                      onPressed: selectedBatchId == null ? null : () {
+                        int inputQty = int.tryParse(qtyController.text) ?? 0;
+
+                        if (inputQty <= 0) {
+                          setModalState(() => inputErrorText = "Enter valid quantity");
+                          return;
+                        }
+
+                        // [FIX] Check limit menggunakan Manager
+                        int currentCartQty = _cartManager.getQuantityForBatch(selectedBatchId!);
+
+                        if ((inputQty + currentCartQty) > dbBatchStock) {
+                          setModalState(() {
+                            inputErrorText = "Over limit! Max add: ${dbBatchStock - currentCartQty}";
+                          });
+                          return;
+                        }
+
+                        // [FIX] Tambah ke Manager & Refresh UI
+                        setState(() {
+                          _cartManager.addItem(StockOutItem(
+                              productId: productDoc.id,
+                              productName: data['productName'],
+                              imageUrl: data['imageUrl'],
+                              quantity: inputQty,
+                              batchId: selectedBatchId!,
+                              batchNumber: selectedBatchNum
+                          ));
+                        });
+
+                        Navigator.pop(ctx);
+
+                        // [FIX] Tunjuk feedback item dah masuk list
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text("Added ${data['productName']} to list"),
+                                duration: const Duration(milliseconds: 800),
+                                behavior: SnackBarBehavior.floating
+                            )
+                        );
+                      },
+                      child: const Text("Add to List", style: TextStyle(color: Colors.white))
+                  ),
+                ],
               );
-            },
-          ),
-          const SizedBox(height: 15),
-          TextField(controller: qtyController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: "Quantity", helperText: selectedBatchId != null ? "Available: $maxQuantity" : null, border: const OutlineInputBorder())),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: mainBlue), onPressed: selectedBatchId == null ? null : () {
-            int q = int.tryParse(qtyController.text) ?? 0;
-            if (q <= 0 || q > maxQuantity) return;
-            setState(() => _cartItems.add(StockOutItem(productId: productDoc.id, productName: data['productName'], imageUrl: data['imageUrl'], quantity: q, batchId: selectedBatchId!, batchNumber: selectedBatchNum)));
-            Navigator.pop(ctx); Navigator.pop(context);
-          }, child: const Text("Add to List", style: TextStyle(color: Colors.white))),
-        ],
-      );
-    }));
+            }
+        )
+    );
   }
 
   Widget _rowSummary(String l, String v) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l, style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w700, fontSize: 13)), Text(v, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))]));
