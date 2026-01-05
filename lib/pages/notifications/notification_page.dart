@@ -161,18 +161,17 @@ class _NotificationPageState extends State<NotificationPage>
         final alerts = alertSnap.data!.docs.where((doc) {
           final alert = doc.data() as Map<String, dynamic>;
           final type = alert['alertType'] ?? 'expiry';
-          final bool isDoneInDb = alert['isDone'] ?? false; // 🔹 Check DB status
+          final bool isDoneInDb = alert['isDone'] ?? false; // 🔹 Current DB status
 
-          // 1. Filter by alert type if specified (Expiry or Risk tabs)
-          if (filterType != null && type != filterType) return false;
-
-          // 2. Strict Unread Logic
+          // 1. If we are in the "Unread" tab (unreadOnly = true)
           if (unreadOnly) {
-            // Display only if:
-            // - It is NOT marked as done in Firestore AND
-            // - It has NOT been clicked in this session
-            return isDoneInDb == false && !readNotifications.contains(doc.id);
+            // Only show if it's NOT done in DB AND hasn't been clicked in this session
+            bool isUnread = isDoneInDb == false && !readNotifications.contains(doc.id);
+            if (!isUnread) return false;
           }
+
+          // 2. Filter by alert type if specific tab is selected (Expiry or Risk)
+          if (filterType != null && type != filterType) return false;
 
           return true;
         }).toList();
