@@ -8,8 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // Import the shared pages
 import 'pages/notifications/notification_page.dart';
-import 'pages/notifications/expiry_alert_detail_page.dart'; // 🔹 Re-added
-import 'pages/notifications/risk_alert_detail_page.dart';   // 🔹 Re-added
+import 'pages/notifications/expiry_alert_detail_page.dart';
+import 'pages/notifications/risk_alert_detail_page.dart';
 import 'pages/login_page.dart';
 import 'firebase_options.dart';
 
@@ -97,13 +97,13 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
+  // 🔹 Robust Handler: Navigates only if the user is verified as logged in
   Future<void> _handleNotificationClick(RemoteMessage message) async {
     final data = message.data;
     final user = FirebaseAuth.instance.currentUser;
 
-    // 1. If not logged in, force navigation to LoginPage ONLY
+    // 1. Strict Security: If no user, immediately force Login and stop
     if (user == null) {
-      debugPrint("Not logged in: Navigating to LoginPage");
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
             (route) => false,
@@ -112,26 +112,25 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
-      // 2. Fetch role from Firestore
+      // 2. Fetch role for detail pages
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final String role = userDoc.data()?['role'] ?? 'staff';
+      if (!userDoc.exists) return; // Guard against deleted users
 
-      // 3. Navigation Logic based on Alert Type
+      final String role = userDoc.data()?['role'] ?? 'staff';
       final String type = data['alertType'] ?? '';
 
+      // 3. Direct Navigation Logic
       if (type == 'risk') {
-        final String riskId = data['riskAnalysisId'] ?? data['riskId'] ?? "";
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (_) => RiskAlertDetailPage(
-              riskAnalysisId: riskId,
+              riskAnalysisId: data['riskAnalysisId'] ?? data['riskId'] ?? "",
               alertId: "",
               userRole: role,
             ),
           ),
         );
-      }
-      else if (type == 'expiry') {
+      } else if (type == 'expiry') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (_) => ExpiryAlertDetailPage(
@@ -142,19 +141,13 @@ class _MyAppState extends State<MyApp> {
             ),
           ),
         );
-      }
-      else {
-        // Fallback to Notification List if type is missing or different
+      } else {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => NotificationPage(userRole: role)),
         );
       }
     } catch (e) {
       debugPrint("Routing Error: $e");
-      navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-            (route) => false,
-      );
     }
   }
 
@@ -208,7 +201,19 @@ class _MyAppState extends State<MyApp> {
             colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF233E99)),
           ),
           themeMode: currentThemeMode,
-          home: const LoginPage(),
+          // 🔹 Use StreamBuilder to handle initial landing page
+          home: StreamBuilder<User?>(
+            stream: FirebaseAuth.instance.authStateChanges(),
+            builder: (context, snapshot) {
+              // While waiting for Firebase to verify session, show loading
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              // If user exists, we stay on the default entry point (handled by notifications later)
+              // If user is null, we strictly show the LoginPage
+              return const LoginPage();
+            },
+          ),
         );
       },
     );
