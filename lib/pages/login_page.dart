@@ -259,76 +259,75 @@ class _LoginPageState extends State<LoginPage> {
   // --- UI SECTION ---
   @override
   Widget build(BuildContext context) {
-    // Detect jika keyboard terbuka
+    // Detect keyboard visibility
     final bool isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: Colors.white,
-        // PENTING: Ini membenarkan UI ditolak ke atas oleh keyboard
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  // Padding dinamik: Bila keyboard buka, kita tambah padding bawah supaya boleh scroll
-                  padding: EdgeInsets.only(
-                    left: 24.0,
-                    right: 24.0,
-                    bottom: isKeyboardVisible ? MediaQuery.of(context).viewInsets.bottom + 20 : 20,
-                  ),
+                  // Bouncing physics memberikan feedback scroll yang lebih natural
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Kurangkan jarak atas bila keyboard buka supaya logo tak hilang terus
+                      // Jarak atas mengecil bila keyboard buka
                       SizedBox(height: isKeyboardVisible ? 10 : 40),
 
-                      // 1. LOGO MENGECIL (Animasi Halus)
+                      // 1. LOGO MENGECIL & ANIMATED
+                      // Bila keyboard naik: height jadi 60 (kecil)
+                      // Bila biasa: height jadi 180 (besar)
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeOut,
-                        height: isKeyboardVisible ? 100 : 180, // Kecilkan logo bila menaip
+                        height: isKeyboardVisible ? 60.0 : 180.0,
                         child: Image.asset("assets/logo.png"),
                       ),
 
                       // Jarak antara logo dan tajuk
                       SizedBox(height: isKeyboardVisible ? 0 : 10),
 
-                      // 2. TAJUK (Font 42, #005A99)
-                      const Text(
-                        "InventryX",
+                      // 2. TAJUK (Font mengecil sikit bila keyboard naik supaya jimat ruang)
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 300),
                         style: TextStyle(
-                          fontSize: 42,
+                          fontSize: isKeyboardVisible ? 32 : 42,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF005A99),
+                          color: const Color(0xFF005A99),
                         ),
+                        child: const Text("InventryX"),
                       ),
 
-                      const SizedBox(height: 30),
+                      // Jarak antara tajuk dan input
+                      SizedBox(height: isKeyboardVisible ? 15 : 40),
 
-                      // 3. INPUT FIELDS
+                      // 3. INPUT FIELDS (Jarak antara input pun dirapatkan)
                       _buildModernField(usernameController, Icons.person_outline,
                           label: "Username"),
-                      const SizedBox(height: 20),
+                      SizedBox(height: isKeyboardVisible ? 10 : 20),
                       _buildModernField(passwordController, Icons.lock_outline,
                           label: "Password", isPassword: true),
 
-                      const SizedBox(height: 20),
+                      SizedBox(height: isKeyboardVisible ? 10 : 20),
 
                       // 4. REMEMBER ME & FORGOT PASSWORD
                       _buildUtilsRow(),
 
-                      const SizedBox(height: 30),
+                      SizedBox(height: isKeyboardVisible ? 20 : 30),
 
                       // 5. SIGN IN BUTTON
                       _buildLoginButton(),
 
-                      // Ruang ekstra di bawah supaya butang tak rapat sangat dengan keyboard
-                      const SizedBox(height: 20),
+                      // Ruang bawah tambahan supaya butang naik lebih tinggi dari keyboard
+                      SizedBox(height: isKeyboardVisible ? 20 : 30),
                     ],
                   ),
                 ),
