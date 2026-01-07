@@ -196,7 +196,6 @@ class _StockPageState extends State<StockPage> {
             }
           }
 
-          // --- LOGIC KIRA EXPIRED ---
           if (batchSnap.hasData) {
             DateTime now = DateTime.now();
             for (var d in batchSnap.data!.docs) {
@@ -204,7 +203,6 @@ class _StockPageState extends State<StockPage> {
               Timestamp? expTimestamp = b['expiryDate'] as Timestamp?;
               int qty = int.tryParse(b['currentQuantity']?.toString() ?? '0') ?? 0;
 
-              // Kira expired JIKA (Ada Tarikh) DAN (Stok > 0) DAN (Tarikh < Sekarang)
               if (expTimestamp != null && qty > 0) {
                 if (expTimestamp.toDate().isBefore(now)) {
                   expired++;
@@ -226,7 +224,6 @@ class _StockPageState extends State<StockPage> {
               children: [
                 _SummaryItem(value: '$total', label: 'Total SKUs', color: primaryBlue),
                 _SummaryItem(value: '$low', label: 'Low Stock', color: Colors.orange),
-                _SummaryItem(value: '$expired', label: 'Expired', color: Colors.red),
               ],
             ),
           );
@@ -281,7 +278,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- [UPDATED] LIST BUILDER DENGAN BARCODE SEARCH ---
+  // --- [FIXED] LIST BUILDER WITH SAFE BARCODE PARSING ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -291,28 +288,22 @@ class _StockPageState extends State<StockPage> {
         List<QueryDocumentSnapshot> docs = snapshot.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
 
-          // [FIX] Ambil Nama & Barcode untuk Search
           final name = (d['productName'] ?? '').toString().toLowerCase();
-          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase();
+          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase(); // Safe conversion
           final query = searchQuery.toLowerCase();
 
-          // Check Category
           bool catMatch = (selectedCategory == 'All' || d['category'] == selectedCategory);
-
-          // Check Search (Name ATAU Barcode)
           bool searchMatch = name.contains(query) || barcode.contains(query);
 
           return catMatch && searchMatch;
         }).toList();
 
-        // Sort Data (High Stock -> Low Stock)
         docs.sort((a, b) {
           int stockA = int.tryParse((a.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
           int stockB = int.tryParse((b.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
           return stockB.compareTo(stockA);
         });
 
-        // Logic Responsif Saiz
         final screenWidth = MediaQuery.of(context).size.width;
         final isSmall = screenWidth < 360;
         final isTablet = screenWidth >= 600;
@@ -326,6 +317,11 @@ class _StockPageState extends State<StockPage> {
             final data = docs[index].data() as Map<String, dynamic>;
             int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
             int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+
+            double price = double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0;
+
+            // ✅ [FIX UTAMA] Pastikan barcode sentiasa ditukar ke String
+            String barcode = data['barcodeNo']?.toString() ?? '-';
 
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -354,20 +350,48 @@ class _StockPageState extends State<StockPage> {
                     ),
                     const SizedBox(width: 15),
                     Expanded(
-                      child: Text(
-                        data['productName'] ?? 'Unknown',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data['productName'] ?? 'Unknown',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                "SN: $barcode",
+                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                "RM ${price.toStringAsFixed(2)}",
+                                style: TextStyle(color: primaryBlue.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                        '$stock',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: stock <= reorderPoint ? Colors.red : primaryBlue
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                            '$stock',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: stock <= reorderPoint ? Colors.red : primaryBlue
+                            )
+                        ),
+                        Text(
+                          data['unit'] ?? 'pcs',
+                          style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.bold),
                         )
+                      ],
                     ),
                   ],
                 ),
@@ -404,7 +428,8 @@ class _StockPageState extends State<StockPage> {
   void _showProductDetails(Map<String, dynamic> data, String productId) {
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
     int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
-    final double imgSize = 70;
+    double price = double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0;
+    final double imgSize = 75;
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -429,11 +454,17 @@ class _StockPageState extends State<StockPage> {
                     const SizedBox(width: 20),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                      Text("SKU: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                      Text("SKU/Barcode: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
                     ]))
                   ]),
                   const SizedBox(height: 30),
-                  _buildQuickStats(data, stock, reorderPoint),
+                  Row(children: [
+                    _infoBox("Status", stock <= reorderPoint ? "Low Stock" : "Healthy", stock <= reorderPoint ? Colors.orange : Colors.green),
+                    const SizedBox(width: 10),
+                    _infoBox("Price", "RM ${price.toStringAsFixed(2)}", primaryBlue),
+                    const SizedBox(width: 10),
+                    _infoBox("Supplier", data['supplier'] ?? 'N/A', Colors.grey.shade700),
+                  ]),
                   const SizedBox(height: 35),
                   const Text("Active Stock Batches", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                   const SizedBox(height: 15),
@@ -445,15 +476,6 @@ class _StockPageState extends State<StockPage> {
         ),
       ),
     );
-  }
-
-  Widget _buildQuickStats(Map<String, dynamic> data, int stock, int reorderPoint) {
-    Color c = stock <= reorderPoint ? Colors.orange : Colors.green;
-    return Row(children: [
-      _infoBox("Status", stock <= reorderPoint ? "Low Stock" : "Healthy", c),
-      const SizedBox(width: 12),
-      _infoBox("Supplier", data['supplier'] ?? 'N/A', primaryBlue),
-    ]);
   }
 
   Widget _infoBox(String t, String v, Color c) {

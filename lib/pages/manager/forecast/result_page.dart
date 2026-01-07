@@ -390,6 +390,7 @@ class _ResultPageState extends State<ResultPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header: Nama Produk & Trend
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -408,11 +409,11 @@ class _ResultPageState extends State<ResultPage> {
             ],
           ),
           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+
+          // Body: Hanya Papar Predicted Unit sahaja (Method dibuang)
           Row(
             children: [
               _buildStatColumn("Predicted", "${forecast.predictedDemand.round()} units", primaryColor),
-              const Spacer(),
-              _buildStatColumn("Method", forecast.forecastMethod, Colors.grey.shade600),
             ],
           ),
         ],

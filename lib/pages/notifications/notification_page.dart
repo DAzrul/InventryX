@@ -68,7 +68,7 @@ class _NotificationPageState extends State<NotificationPage>
         }
 
         return Tab(
-          child: Row( // Gunakan Row untuk centering yang lebih baik
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(label),
@@ -92,12 +92,10 @@ class _NotificationPageState extends State<NotificationPage>
 
   // ================= FILTER DIALOG =================
   void _showFilterDialog() async {
-    // Tunjuk loading indicator sementara data dimuat turun
     showDialog(context: context, builder: (_) => const Center(child: CircularProgressIndicator()));
 
     final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
 
-    // Tutup loading indicator
     if (mounted) Navigator.pop(context);
 
     final allSubCategories = productSnapshot.docs
@@ -131,9 +129,9 @@ class _NotificationPageState extends State<NotificationPage>
                         onChanged: (value) {
                           setStateDialog(() {
                             if (value == true) {
-                              tempSelected = [subCat]; // Single select logic based on original code style (or add to list for multi)
+                              tempSelected = [subCat];
                             } else {
-                              tempSelected.remove(subCat); // Fix: allow unchecking
+                              tempSelected.remove(subCat);
                             }
                           });
                         },
@@ -233,11 +231,11 @@ class _NotificationPageState extends State<NotificationPage>
 
   // ================= CARD BUILDERS =================
   Widget _buildExpiryCard(Map<String, dynamic> alert, String alertId) {
-    final batchId = alert['batchId'];
-    final productId = alert['productId'];
-    final stage = alert['expiryStage'];
-    final isDone = alert['isDone'] ?? false;
-    final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final String batchId = alert['batchId'] ?? '';
+    final String productId = alert['productId'] ?? '';
+    final String stage = alert['expiryStage']?.toString() ?? '0';
+    final bool isDone = alert['isDone'] ?? false;
+    final DateTime notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
     Color statusColor;
     Color statusBgColor;
@@ -246,31 +244,31 @@ class _NotificationPageState extends State<NotificationPage>
     switch (stage) {
       case "expired":
         statusText = "EXPIRED";
-        statusColor = const Color(0xFFB91C1C); // Dark Red
-        statusBgColor = const Color(0xFFFEE2E2); // Light Red
+        statusColor = const Color(0xFFB91C1C);
+        statusBgColor = const Color(0xFFFEE2E2);
         break;
       case "3":
         statusText = "Expiring in 3 Days";
-        statusColor = const Color(0xFFC2410C); // Dark Orange
-        statusBgColor = const Color(0xFFFFEDD5); // Light Orange
+        statusColor = const Color(0xFFC2410C);
+        statusBgColor = const Color(0xFFFFEDD5);
         break;
       case "5":
         statusText = "Expiring in 5 Days";
-        statusColor = const Color(0xFFA16207); // Dark Yellow
-        statusBgColor = const Color(0xFFFEF9C3); // Light Yellow
+        statusColor = const Color(0xFFA16207);
+        statusBgColor = const Color(0xFFFEF9C3);
         break;
       default:
         statusText = "Expiring in $stage Days";
-        statusColor = const Color(0xFF1D4ED8); // Blue
-        statusBgColor = const Color(0xFFDBEAFE); // Light Blue
+        statusColor = const Color(0xFF1D4ED8);
+        statusBgColor = const Color(0xFFDBEAFE);
     }
+
+    if (productId.isEmpty) return const SizedBox();
 
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
       builder: (context, productSnap) {
         if (!productSnap.hasData) return const SizedBox();
-
-        // Handle document not found gracefully
         if (!productSnap.data!.exists) return const SizedBox();
 
         final product = productSnap.data!.data() as Map<String, dynamic>;
@@ -281,39 +279,66 @@ class _NotificationPageState extends State<NotificationPage>
 
         final String category = product['category'] ?? "N/A";
         final String subCategory = product['subCategory'] ?? "N/A";
+        final String productName = product['productName'] ?? 'Unknown Product';
+
+        if (batchId.isEmpty) {
+          return _cardWrapper(
+              alertId: alertId,
+              isDone: isDone,
+              accentColor: Colors.grey,
+              onTap: (){},
+              child: Text("Error: Batch ID missing for $productName")
+          );
+        }
 
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance.collection('batches').doc(batchId).get(),
           builder: (context, batchSnap) {
-            if (!batchSnap.hasData) return const SizedBox();
-            if (!batchSnap.data!.exists) return const SizedBox();
+            String batchNumber = "Loading...";
+            DateTime expiryDate = DateTime.now();
 
-            final batch = batchSnap.data!.data() as Map<String, dynamic>;
-            final expiryDate = (batch['expiryDate'] as Timestamp).toDate();
+            if (batchSnap.hasData && batchSnap.data!.exists) {
+              final batch = batchSnap.data!.data() as Map<String, dynamic>;
+              batchNumber = batch['batchNumber'] ?? "Unknown";
+              expiryDate = (batch['expiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+            } else if (batchSnap.connectionState == ConnectionState.done && !batchSnap.hasData) {
+              batchNumber = "Batch Not Found";
+            }
 
             return _cardWrapper(
               alertId: alertId,
               isDone: isDone,
               accentColor: infoColor,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ExpiryAlertDetailPage(
-                    batchId: batchId,
-                    productId: productId,
-                    stage: stage,
-                    userRole: widget.userRole,
-                  ),
-                ),
-              ),
+              onTap: () {
+                if (batchId.isNotEmpty && productId.isNotEmpty) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ExpiryAlertDetailPage(
+                        batchId: batchId,
+                        productId: productId,
+                        stage: stage,
+                        userRole: widget.userRole,
+                      ),
+                    ),
+                  );
+                }
+              },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Row: Status Badge & Date
+                  // --- HEADER ROW (Anti-Overflow) ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildStatusBadge(statusText, statusColor, statusBgColor, Icons.timer_outlined),
+                      // Guna Expanded supaya badge tidak menolak tarikh keluar skrin
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _buildStatusBadge(statusText, statusColor, statusBgColor, Icons.timer_outlined),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
                         "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
@@ -322,32 +347,45 @@ class _NotificationPageState extends State<NotificationPage>
                   ),
                   const SizedBox(height: 8),
 
-                  // Product Name
+                  // --- PRODUCT NAME (Multi-line) ---
                   Text(
-                    product['productName'] ?? 'Unknown Product',
+                    productName,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                    maxLines: 2, // Limit baris
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
 
-                  // Category Info
+                  // --- CATEGORY ROW (Anti-Overflow) ---
                   Row(
                     children: [
                       Icon(Icons.category_outlined, size: 14, color: Colors.grey.shade600),
                       const SizedBox(width: 4),
-                      Text(
-                        "$subCategory • $category",
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      Expanded(
+                        child: Text(
+                          "$subCategory • $category",
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   const Divider(height: 12, thickness: 0.5),
 
-                  // Batch & Expiry Info Row
+                  // --- FOOTER ROW (Batch & Exp Anti-Overflow) ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Batch: ${batch['batchNumber']}", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                      Expanded(
+                        child: Text(
+                          "Batch: $batchNumber",
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
                         "Exp: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}",
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.redAccent),
@@ -367,11 +405,11 @@ class _NotificationPageState extends State<NotificationPage>
     final isDone = alert['isDone'] ?? false;
     final riskLevel = alert['riskLevel'] ?? 'Medium';
     final riskValue = alert['riskValue'] ?? 0;
-    final productName = alert['productName'] ?? 'Unknown';
+    final productName = alert['productName'] ?? 'Unknown Product';
     final riskAnalysisId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
-    Color riskColor = riskLevel == "High" ? const Color(0xFFB91C1C) : const Color(0xFFC2410C); // Red or Dark Orange
+    Color riskColor = riskLevel == "High" ? const Color(0xFFB91C1C) : const Color(0xFFC2410C);
     Color riskBgColor = riskLevel == "High" ? const Color(0xFFFEE2E2) : const Color(0xFFFFEDD5);
     IconData riskIcon = riskLevel == "High" ? Icons.local_fire_department : Icons.warning_amber_rounded;
 
@@ -384,17 +422,21 @@ class _NotificationPageState extends State<NotificationPage>
         if (productSnap.hasData && productSnap.data!.docs.isNotEmpty) {
           try {
             final matchingDoc = productSnap.data!.docs.firstWhere(
-                    (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
+                    (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName,
+                orElse: () => productSnap.data!.docs.first
             );
-            final productData = matchingDoc.data() as Map<String, dynamic>;
-            category = productData['category'] ?? "N/A";
-            subCategory = productData['subCategory'] ?? "N/A";
 
-            if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
-              return const SizedBox.shrink();
+            if ((matchingDoc.data() as Map<String, dynamic>)['productName'] == productName) {
+              final productData = matchingDoc.data() as Map<String, dynamic>;
+              category = productData['category'] ?? "N/A";
+              subCategory = productData['subCategory'] ?? "N/A";
+
+              if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+                return const SizedBox.shrink();
+              }
             }
           } catch (e) {
-            // No matching product found, proceed with defaults
+            // Ignore error
           }
         }
 
@@ -402,24 +444,32 @@ class _NotificationPageState extends State<NotificationPage>
           alertId: alertId,
           isDone: isDone,
           accentColor: riskColor,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => RiskAlertDetailPage(
-                riskAnalysisId: riskAnalysisId,
-                alertId: alertId,
-                userRole: widget.userRole,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RiskAlertDetailPage(
+                  riskAnalysisId: riskAnalysisId,
+                  alertId: alertId,
+                  userRole: widget.userRole,
+                ),
               ),
-            ),
-          ),
+            );
+          },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // --- HEADER ROW (Anti-Overflow) ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildStatusBadge("${riskLevel.toUpperCase()} RISK", riskColor, riskBgColor, riskIcon),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildStatusBadge("${riskLevel.toUpperCase()} RISK", riskColor, riskBgColor, riskIcon),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Text(
                     "${notifiedAt.day}/${notifiedAt.month}/${notifiedAt.year}",
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
@@ -428,21 +478,30 @@ class _NotificationPageState extends State<NotificationPage>
               ),
               const SizedBox(height: 8),
 
-              // Product Name
+              // --- PRODUCT NAME (Multi-line) ---
               Text(
                 productName,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
 
-              // Category
-              Text(
-                "$subCategory ($category)",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              // --- CATEGORY ROW (Anti-Overflow) ---
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "$subCategory ($category)",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
 
-              // Risk Score Progress
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -455,7 +514,7 @@ class _NotificationPageState extends State<NotificationPage>
                   ),
                   const SizedBox(height: 4),
                   LinearProgressIndicator(
-                    value: riskValue / 100,
+                    value: (riskValue is int ? riskValue.toDouble() : (riskValue as double)) / 100,
                     backgroundColor: Colors.grey.shade200,
                     color: riskColor,
                     minHeight: 6,
@@ -470,7 +529,7 @@ class _NotificationPageState extends State<NotificationPage>
     );
   }
 
-  // 🔹 Helper Widget untuk Status Badge
+  // 🔹 Helper Widget untuk Status Badge (Anti-Overflow)
   Widget _buildStatusBadge(String text, Color textColor, Color bgColor, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -483,9 +542,14 @@ class _NotificationPageState extends State<NotificationPage>
         children: [
           Icon(icon, size: 14, color: textColor),
           const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
+          // Guna Flexible supaya teks boleh potong jika terlalu panjang
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
         ],
       ),
@@ -506,7 +570,7 @@ class _NotificationPageState extends State<NotificationPage>
         onTap();
       },
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), // Margin lebih jarak
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
           color: isDone ? const Color(0xFFF8F9FA) : Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -540,7 +604,7 @@ class _NotificationPageState extends State<NotificationPage>
               // 🔹 Konten Utama
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(16), // Padding dalam kad lebih luas
+                  padding: const EdgeInsets.all(16),
                   child: child,
                 ),
               ),
@@ -554,13 +618,12 @@ class _NotificationPageState extends State<NotificationPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6), // Background sedikit kelabu
+      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        // 🔹 ICON BACK DI SINI:
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: Colors.black87), // Icon <
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: Colors.black87),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),

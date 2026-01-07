@@ -8,6 +8,9 @@ import 'user_list_page.dart';
 import 'admin_features/product_list_page.dart';
 import 'admin_features/supplier_list_page.dart';
 
+// [PENTING] Pastikan anda sudah create file cmd_page.dart
+import 'cmd_page.dart';
+
 class AdminDashboardPage extends StatelessWidget {
   final String loggedInUsername;
   final String userId;
@@ -126,7 +129,6 @@ class AdminDashboardPage extends StatelessWidget {
                   ],
                 ),
               ),
-              // TIADA BUTANG DI SINI (KOSONG)
             ],
           ),
         );

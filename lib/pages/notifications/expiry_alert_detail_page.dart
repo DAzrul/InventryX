@@ -21,15 +21,23 @@ class ExpiryAlertDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🔹 FIX 1: Check awal. Jika ID kosong (dari notifikasi error), tunjuk error screen.
+    if (batchId.isEmpty || productId.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Error"), backgroundColor: Colors.white),
+        body: const Center(
+          child: Text("Invalid Data: Batch ID or Product ID is missing."),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: bgGrey,
       appBar: AppBar(
-        // --- [SIMBOL ANAK PANAH (<) DI SINI] ---
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        // ---------------------------------------
         title: const Text(
           "Expiry Alert Detail",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
@@ -41,30 +49,58 @@ class ExpiryAlertDetailPage extends StatelessWidget {
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('batches').doc(batchId).get(),
         builder: (context, batchSnap) {
-          if (!batchSnap.hasData) return const Center(child: CircularProgressIndicator());
+          if (batchSnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // 🔹 FIX 2: Handle jika Batch dah kena delete
+          if (!batchSnap.hasData || !batchSnap.data!.exists) {
+            return const Center(child: Text("Batch details not found (Deleted?)"));
+          }
 
           final batch = batchSnap.data!.data() as Map<String, dynamic>;
 
           return FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance.collection('products').doc(productId).get(),
             builder: (context, productSnap) {
-              if (!productSnap.hasData) return const Center(child: CircularProgressIndicator());
+              if (productSnap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              // 🔹 FIX 3: Handle jika Product dah kena delete
+              if (!productSnap.hasData || !productSnap.data!.exists) {
+                return const Center(child: Text("Product details not found."));
+              }
 
               final product = productSnap.data!.data() as Map<String, dynamic>;
 
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('supplier')
-                    .doc(product['supplierId'])
-                    .get(),
+              // 🔹 FIX 4: Safety Check untuk Supplier ID
+              // Jika supplierId null/kosong, kita tak boleh panggil .doc()
+              final String supplierId = product['supplierId'] ?? '';
+
+              Future<DocumentSnapshot?> supplierFuture;
+              if (supplierId.isNotEmpty) {
+                supplierFuture = FirebaseFirestore.instance.collection('supplier').doc(supplierId).get();
+              } else {
+                // Return null future immediately if no ID
+                supplierFuture = Future.value(null);
+              }
+
+              return FutureBuilder<DocumentSnapshot?>(
+                future: supplierFuture,
                 builder: (context, supplierSnap) {
-                  if (!supplierSnap.hasData) return const Center(child: CircularProgressIndicator());
+                  // Tak perlu loading spinner utk supplier, papar data sedia ada dulu
 
-                  final supplier = supplierSnap.data!.data() as Map<String, dynamic>;
+                  String supplierName = "Unknown Supplier";
+                  if (supplierSnap.hasData && supplierSnap.data != null && supplierSnap.data!.exists) {
+                    final supplier = supplierSnap.data!.data() as Map<String, dynamic>;
+                    supplierName = supplier['supplierName'] ?? "Unknown Supplier";
+                  }
 
-                  // --- LOGIC TARIKH ---
-                  final expiryRaw = (batch['expiryDate'] as Timestamp).toDate();
-                  final createdAt = (batch['createdAt'] as Timestamp).toDate();
+                  // --- LOGIC TARIKH (Dengan Safety Null) ---
+                  final expiryRaw = (batch['expiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+                  final createdAt = (batch['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+
                   final today = DateTime.now();
                   final todayDate = DateTime(today.year, today.month, today.day);
                   final expiryDate = DateTime(expiryRaw.year, expiryRaw.month, expiryRaw.day);
@@ -148,7 +184,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                "${product['subCategory']} • ${product['category']}",
+                                "${product['subCategory'] ?? '-'} • ${product['category'] ?? '-'}",
                                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                               ),
 
@@ -157,7 +193,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                               const SizedBox(height: 10),
 
                               // BUTIRAN
-                              _buildDetailRow("Supplier", supplier['supplierName']),
+                              _buildDetailRow("Supplier", supplierName),
                               _buildDetailRow("Stock In Date", "${createdAt.day}/${createdAt.month}/${createdAt.year}"),
                               const SizedBox(height: 10),
 
@@ -166,8 +202,8 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                                 decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
                                 child: Column(
                                   children: [
-                                    _buildDetailRow("Batch Number", batch['batchNumber'], isBold: true),
-                                    _buildDetailRow("Current Quantity", batch['currentQuantity'].toString(), isBold: true),
+                                    _buildDetailRow("Batch Number", batch['batchNumber'] ?? 'N/A', isBold: true),
+                                    _buildDetailRow("Current Quantity", (batch['currentQuantity'] ?? 0).toString(), isBold: true),
                                     const Divider(height: 20),
                                     _buildDetailRow(
                                         "Expiry Date",
@@ -268,6 +304,14 @@ class ExpiryAlertDetailPage extends StatelessWidget {
         _buildBulletPoint("Update stock status to 'Written Off'."),
         _urgencyBadge("CRITICAL", actionColor),
       ];
+    } else {
+      // Fallback untuk stage lain (contoh: 30 days)
+      actionTitle = "MONITOR STOCK";
+      actionColor = Colors.blue;
+      reasonWidgets = [
+        _buildBulletPoint("Monitor expiration closely."),
+        _urgencyBadge("LOW", actionColor),
+      ];
     }
 
     showModalBottomSheet(
@@ -275,6 +319,8 @@ class ExpiryAlertDetailPage extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        // 🔹 FIX 5: Gunakan logic FutureBuilder yang selamat
+        // Kita guna .where() supaya kalau batchId kosong, dia return empty list, BUKAN crash.
         return FutureBuilder<QuerySnapshot>(
           future: FirebaseFirestore.instance
               .collection('alerts')
@@ -283,11 +329,14 @@ class ExpiryAlertDetailPage extends StatelessWidget {
               .limit(1)
               .get(),
           builder: (context, alertSnap) {
-            if (!alertSnap.hasData) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+            // Tak perlu loading spinner, terus tunjuk UI
 
             bool isDone = false;
-            if (alertSnap.data!.docs.isNotEmpty) {
+            String? currentAlertId;
+
+            if (alertSnap.hasData && alertSnap.data!.docs.isNotEmpty) {
               isDone = alertSnap.data!.docs.first['isDone'] ?? false;
+              currentAlertId = alertSnap.data!.docs.first.id;
             }
 
             return Container(
@@ -341,16 +390,19 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: isDone
+                          // Disable button jika Alert ID tak jumpa atau sudah Done
+                          onPressed: (isDone || currentAlertId == null)
                               ? null
                               : () async {
-                            if (alertSnap.data!.docs.isNotEmpty) {
-                              await alertSnap.data!.docs.first.reference.update({'isDone': true});
+                            if (currentAlertId != null) {
+                              await FirebaseFirestore.instance.collection('alerts').doc(currentAlertId).update({'isDone': true});
                             }
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Action marked as completed ✅'), backgroundColor: Colors.green),
-                            );
+                            if(context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Action marked as completed ✅'), backgroundColor: Colors.green),
+                              );
+                            }
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isDone ? Colors.grey : primaryBlue,
