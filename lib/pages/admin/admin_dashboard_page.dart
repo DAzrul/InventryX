@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 
+// Imports Halaman
 import 'user_list_page.dart';
 import 'admin_features/product_list_page.dart';
 import 'admin_features/supplier_list_page.dart';
@@ -21,7 +22,9 @@ class AdminDashboardPage extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F9FD),
       body: Column(
         children: [
-          _buildHeader(),
+          // 1. Header (Tanpa Butang Logout)
+          _buildHeader(context),
+
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -29,25 +32,19 @@ class AdminDashboardPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
 
-                  // --- TOP SUMMARY ---
-                  Row(
-                    children: [
-                      Expanded(child: _buildLowStockCard()),
-                      const SizedBox(width: 15),
-                      Expanded(child: _buildExpiringSoonCard()),
-                    ],
-                  ),
+                  // --- SECTION 1: PENDAFTARAN UTAMA ---
+                  const Text("Registration Management", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))),
+                  const SizedBox(height: 5),
+                  Text("Manage access and master data", style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
 
-                  const SizedBox(height: 35),
-                  const Text("Quick Action", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 20),
 
                   _buildLargeButton(
                     context,
                     title: "Manage Users",
-                    subtitle: "Control staff & administrator access",
+                    subtitle: "Register staff & administrators",
                     icon: Icons.people_alt_rounded,
                     page: UserListPage(loggedInUsername: loggedInUsername),
                   ),
@@ -55,7 +52,7 @@ class AdminDashboardPage extends StatelessWidget {
                   _buildLargeButton(
                     context,
                     title: "Inventory Products",
-                    subtitle: "Stock levels and product database",
+                    subtitle: "Register new products",
                     icon: Icons.inventory_2_rounded,
                     page: const ProductListPage(),
                   ),
@@ -63,20 +60,22 @@ class AdminDashboardPage extends StatelessWidget {
                   _buildLargeButton(
                     context,
                     title: "Supplier Directory",
-                    subtitle: "Manage external product suppliers",
+                    subtitle: "Register & manage suppliers",
                     icon: Icons.local_shipping_rounded,
                     page: const SupplierListPage(),
                   ),
 
                   const SizedBox(height: 35),
-                  const Text("System Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+
+                  // --- SECTION 2: STATISTIK ---
+                  const Text("Database Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))),
                   const SizedBox(height: 15),
 
                   _buildActivityTile("Total Users", "users", Icons.person_search_rounded, Colors.blue),
                   _buildActivityTile("Total Products", "products", Icons.inventory_rounded, Colors.orange),
                   _buildActivityTile("Total Suppliers", "supplier", Icons.store_rounded, Colors.green),
 
-                  const SizedBox(height: 120),
+                  const SizedBox(height: 50),
                 ],
               ),
             ),
@@ -86,88 +85,9 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  // --- LOGIC 1: LOW STOCK (COMPARE CURRENT VS REORDER) ---
-  Widget _buildLowStockCard() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return _buildErrorCard("Low Stock");
-        int count = 0;
-        if (snapshot.hasData) {
-          count = snapshot.data!.docs.where((doc) {
-            var d = doc.data() as Map<String, dynamic>;
-            return (d['currentStock'] ?? 0) <= (d['reorderLevel'] ?? 0);
-          }).length;
-        }
-        return _buildBaseSummaryCard(label: "Low Stock", count: count, icon: Icons.arrow_downward_rounded, color: Colors.orange);
-      },
-    );
-  }
+  // --- WIDGETS ---
 
-  // --- LOGIC 2: EXPIRING SOON (LINKED TO BATCHES) ---
-  Widget _buildExpiringSoonCard() {
-    final DateTime now = DateTime.now();
-    final DateTime next30Days = now.add(const Duration(days: 30));
-
-    return StreamBuilder<QuerySnapshot>(
-      // Kita query koleksi 'batches' yang ada stok sahaja mat!
-      stream: FirebaseFirestore.instance
-          .collection('batches')
-          .where('currentQuantity', isGreaterThan: 0)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return _buildErrorCard("Expiring");
-
-        int count = 0;
-        if (snapshot.hasData) {
-          // Kita tapis batches yang expired dlm julat 30 hari
-          count = snapshot.data!.docs.where((doc) {
-            var d = doc.data() as Map<String, dynamic>;
-            if (d['expiryDate'] == null) return false;
-
-            DateTime exp = (d['expiryDate'] as Timestamp).toDate();
-            return exp.isAfter(now) && exp.isBefore(next30Days);
-          }).length;
-        }
-
-        return _buildBaseSummaryCard(
-            label: "Expiring Soon",
-            count: count,
-            icon: Icons.access_time_rounded,
-            color: Colors.redAccent
-        );
-      },
-    );
-  }
-
-  // --- UI COMPONENTS ---
-  Widget _buildBaseSummaryCard({required String label, required int count, required IconData icon, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 22),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 15, offset: const Offset(0, 8))],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 24, color: color),
-          const SizedBox(height: 8),
-          Text("$count", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorCard(String title) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 22),
-      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(25)),
-      child: Column(children: [const Icon(Icons.error_outline, color: Colors.red), const SizedBox(height: 8), Text(title, style: const TextStyle(fontSize: 12, color: Colors.red))]),
-    );
-  }
-
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
       builder: (context, snapshot) {
@@ -179,14 +99,19 @@ class AdminDashboardPage extends StatelessWidget {
           img = data['profilePictureUrl'];
         }
 
-        return Padding(
+        return Container(
           padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 5))],
+          ),
           child: Row(
             children: [
               Container(
                 decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)),
                 child: CircleAvatar(
-                  radius: 24, backgroundColor: Colors.white,
+                  radius: 24, backgroundColor: Colors.grey.shade100,
                   backgroundImage: img != null && img.isNotEmpty ? CachedNetworkImageProvider(img) : null,
                   child: (img == null || img.isEmpty) ? Icon(Icons.person_rounded, color: primaryBlue.withValues(alpha: 0.4)) : null,
                 ),
@@ -201,21 +126,11 @@ class AdminDashboardPage extends StatelessWidget {
                   ],
                 ),
               ),
-              _buildNotificationBadge(),
+              // TIADA BUTANG DI SINI (KOSONG)
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildNotificationBadge() {
-    return Stack(
-      alignment: Alignment.topRight,
-      children: [
-        const Icon(Icons.notifications_none_rounded, size: 28, color: Colors.black87),
-        Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-      ],
     );
   }
 
