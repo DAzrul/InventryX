@@ -11,46 +11,100 @@ class HistorySalesPage extends StatefulWidget {
 }
 
 class _HistorySalesPageState extends State<HistorySalesPage> {
-  // Warna tema aplikasi
   final Color primaryBlue = const Color(0xFF20338F);
-  String selectedFilter = "Last 7 Days";
+  final Color accentBlue = const Color(0xFF3B5BDB);
+  final Color bgLight = const Color(0xFFF8F9FD);
 
-  // --- LOGIC: QUERY FIREBASE ---
+  String selectedFilter = "Last 7 Days";
+  DateTime? customStartDate;
+  DateTime? customEndDate;
+
+  // --- LOGIC: DATE PICKERS ---
+  Future<void> _selectDateRange() async {
+    DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: customStartDate != null && customEndDate != null
+          ? DateTimeRange(start: customStartDate!, end: customEndDate!)
+          : null,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(primary: primaryBlue),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        customStartDate = DateTime(picked.start.year, picked.start.month, picked.start.day, 0, 0, 0);
+        customEndDate = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+        selectedFilter = "Custom";
+      });
+    }
+  }
+
+  Future<void> _selectMonth() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      helpText: "SELECT MONTH",
+      initialDatePickerMode: DatePickerMode.year,
+    );
+
+    if (picked != null) {
+      setState(() {
+        customStartDate = DateTime(picked.year, picked.month, 1);
+        customEndDate = DateTime(picked.year, picked.month + 1, 0, 23, 59, 59);
+        selectedFilter = "Monthly";
+      });
+    }
+  }
+
+  // --- LOGIC: FIREBASE QUERY (Matches your 'sales' collection) ---
   Query _getSalesQuery() {
-    // Pastikan collection name 'sales' sama dlm Firebase kau mat
     CollectionReference salesRef = FirebaseFirestore.instance.collection('sales');
     DateTime now = DateTime.now();
-    DateTime startOfPeriod;
+    DateTime start;
+    DateTime end = now;
 
     if (selectedFilter == "Today") {
-      startOfPeriod = DateTime(now.year, now.month, now.day);
+      start = DateTime(now.year, now.month, now.day);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59);
     } else if (selectedFilter == "Last 7 Days") {
-      startOfPeriod = now.subtract(const Duration(days: 7));
+      start = now.subtract(const Duration(days: 7));
+    } else if (selectedFilter == "Last 30 Days") {
+      start = now.subtract(const Duration(days: 30));
     } else {
-      // Last 30 Days
-      startOfPeriod = now.subtract(const Duration(days: 30));
+      start = customStartDate ?? now;
+      end = customEndDate ?? now;
     }
 
-    // Hanya ambil jualan yang 'completed' dan ikut tarikh filter
     return salesRef
-        .where('status', isEqualTo: 'completed')
-        .where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfPeriod))
+        .where('status', isEqualTo: 'completed') // Matches 'status' field
+        .where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start)) // Matches 'saleDate' field
+        .where('saleDate', isLessThanOrEqualTo: Timestamp.fromDate(end))
         .orderBy('saleDate', descending: true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD), // Background kelabu lembut sikit
+      backgroundColor: bgLight,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text("Sales History",
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: const Text("Sales Insights",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 18)),
         centerTitle: true,
       ),
       body: Column(
@@ -60,79 +114,66 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
             child: StreamBuilder<QuerySnapshot>(
               stream: _getSalesQuery().snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text("Fucked up mat: ${snapshot.error}"));
-                }
+                if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 final docs = snapshot.data!.docs;
-                if (docs.isEmpty) {
-                  return const Center(child: Text("No sales records found.", style: TextStyle(color: Colors.grey)));
-                }
+                if (docs.isEmpty) return _buildEmptyState();
 
-                // --- AGGREGATION: GROUP BY DATE ---
-                // Sebab jualan mungkin banyak dlm sehari, kita group-kan dlm Card harian
+                // Aggregation logic for Summary Header & Daily Cards
+                double totalRevenue = 0;
                 Map<String, Map<String, dynamic>> dailySummary = {};
 
                 for (var doc in docs) {
                   final data = doc.data() as Map<String, dynamic>;
+
+                  // Extracting fields exactly as they appear in your screenshot
                   DateTime date = (data['saleDate'] as Timestamp).toDate();
                   String dateKey = DateFormat('dd/MM/yyyy').format(date);
-
                   double amount = (data['totalAmount'] ?? 0).toDouble();
                   int qty = (data['quantitySold'] ?? 0).toInt();
-                  String productId = data['productID'] ?? 'Unknown';
+                  String pID = data['productID'] ?? 'Unknown';
+
+                  totalRevenue += amount;
 
                   if (dailySummary.containsKey(dateKey)) {
                     dailySummary[dateKey]!['totalAmount'] += amount;
                     dailySummary[dateKey]!['totalQty'] += qty;
                     dailySummary[dateKey]!['transactionCount'] += 1;
-                    (dailySummary[dateKey]!['uniqueProducts'] as Set<String>).add(productId);
+                    (dailySummary[dateKey]!['uniqueProducts'] as Set).add(pID);
                   } else {
                     dailySummary[dateKey] = {
                       'date': dateKey,
-                      'rawDate': date, // Simpan untuk sorting nanti
+                      'rawDate': date,
                       'totalAmount': amount,
                       'totalQty': qty,
                       'transactionCount': 1,
-                      'uniqueProducts': {productId},
+                      'uniqueProducts': {pID},
                     };
                   }
                 }
 
-                // Susun balik list ikut tarikh terbaru
                 List<Map<String, dynamic>> summaryList = dailySummary.values.toList();
                 summaryList.sort((a, b) => b['rawDate'].compareTo(a['rawDate']));
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: summaryList.length,
-                  itemBuilder: (context, index) {
-                    final item = summaryList[index];
-                    int productCount = (item['uniqueProducts'] as Set<String>).length;
-
-                    return GestureDetector(
-                      onTap: () {
-                        // Pass string date "dd/MM/yyyy" ke page details
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SalesDetailsPage(selectedDate: item['date']),
-                          ),
-                        );
-                      },
-                      child: _SummaryCard(
-                        date: item['date'],
-                        amount: "RM ${item['totalAmount'].toStringAsFixed(2)}",
-                        transactions: item['transactionCount'].toString(),
-                        unitsSold: item['totalQty'].toString(),
-                        itemsSold: productCount.toString(),
-                        primaryColor: primaryBlue,
-                      ),
-                    );
-                  },
+                return ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    _buildOverviewCard(totalRevenue, docs.length),
+                    const Row(
+                      children: [
+                        Icon(Icons.history_rounded, size: 16, color: Colors.grey),
+                        SizedBox(width: 8),
+                        Text("Daily History", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    ...summaryList.map((item) => _buildClickableListItem(context, item)).toList(),
+                    const SizedBox(height: 40),
+                  ],
                 );
               },
             ),
@@ -144,68 +185,159 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
 
   Widget _buildFilterSection() {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: ["Today", "Last 7 Days", "Last 30 Days"]
-            .map((label) => _buildFilterChip(label)).toList(),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 15),
+            child: Row(
+              children: [
+                _buildFilterChip("Today", Icons.today),
+                _buildFilterChip("Last 7 Days", Icons.date_range),
+                _buildFilterChip("Last 30 Days", Icons.calendar_view_month),
+                _buildFilterChip("Monthly", Icons.event_note, isAction: true),
+                _buildFilterChip("Custom", Icons.tune, isAction: true),
+              ],
+            ),
+          ),
+          if (selectedFilter == "Custom" || selectedFilter == "Monthly")
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(color: primaryBlue.withOpacity(0.08), borderRadius: BorderRadius.circular(20)),
+                child: Text(
+                  "${DateFormat('dd MMM').format(customStartDate!)} - ${DateFormat('dd MMM yyyy').format(customEndDate!)}",
+                  style: TextStyle(color: primaryBlue, fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildFilterChip(String label) {
-    bool isSelected = selectedFilter == label;
+  Widget _buildFilterChip(String label, IconData icon, {bool isAction = false}) {
+    bool isSel = selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => selectedFilter = label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      onTap: () {
+        if (label == "Custom") _selectDateRange();
+        else if (label == "Monthly") _selectMonth();
+        else {
+          setState(() {
+            selectedFilter = label;
+            customStartDate = null;
+            customEndDate = null;
+          });
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? primaryBlue : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: isSelected
-              ? [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
-              : null,
+          color: isSel ? primaryBlue : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isSel ? primaryBlue : Colors.grey.shade200),
+          boxShadow: isSel ? [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
         ),
-        child: Text(label,
-            style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black54,
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
-            )
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: isSel ? Colors.white : Colors.grey),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: isSel ? Colors.white : Colors.black87, fontSize: 13, fontWeight: isSel ? FontWeight.bold : FontWeight.w500)),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _buildOverviewCard(double total, int count) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [primaryBlue, accentBlue], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Total Period Revenue", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          Text("RM ${total.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 15),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+            child: Text("$count Transactions Found", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClickableListItem(BuildContext context, Map<String, dynamic> item) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () {
+          // Navigation to details page passing the selected date
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SalesDetailsPage(selectedDate: item['date']),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: _SummaryCard(
+          date: item['date'],
+          amount: "RM ${item['totalAmount'].toStringAsFixed(2)}",
+          transactions: item['transactionCount'].toString(),
+          unitsSold: item['totalQty'].toString(),
+          itemsSold: (item['uniqueProducts'] as Set).length.toString(),
+          primaryColor: primaryBlue,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey),
+          SizedBox(height: 16),
+          Text("No records found for this period.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String err) {
+    return Center(child: Text("Error: $err", textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)));
   }
 }
 
 class _SummaryCard extends StatelessWidget {
-  final String date;
-  final String amount;
-  final String transactions;
-  final String unitsSold;
-  final String itemsSold;
+  final String date, amount, transactions, unitsSold, itemsSold;
   final Color primaryColor;
-
-  const _SummaryCard({
-    required this.date,
-    required this.amount,
-    required this.transactions,
-    required this.unitsSold,
-    required this.itemsSold,
-    required this.primaryColor,
-  });
+  const _SummaryCard({required this.date, required this.amount, required this.transactions, required this.unitsSold, required this.itemsSold, required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: Column(
         children: [
@@ -215,23 +347,20 @@ class _SummaryCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Sales Date", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Text("Date", style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
                   Text(date, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
                 ],
               ),
-              Text(amount, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor)),
+              Text(amount, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: primaryColor)),
             ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 15),
-            child: Divider(height: 1, color: Color(0xFFEEEEEE)),
-          ),
+          const Divider(height: 30, color: Color(0xFFF1F3F5)),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _dataPoint("Transactions", transactions),
-              _dataPoint("Units Sold", unitsSold),
-              _dataPoint("Products", itemsSold),
+              _dataPoint("Trans.", transactions, Icons.shopping_bag_outlined),
+              _dataPoint("Units", unitsSold, Icons.layers_outlined),
+              _dataPoint("Items", itemsSold, Icons.category_outlined),
             ],
           ),
         ],
@@ -239,12 +368,18 @@ class _SummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _dataPoint(String label, String value) {
-    return Column(
+  Widget _dataPoint(String label, String value, IconData icon) {
+    return Row(
       children: [
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+        Icon(icon, size: 14, color: Colors.grey.shade400),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+            Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
+          ],
+        ),
       ],
     );
   }

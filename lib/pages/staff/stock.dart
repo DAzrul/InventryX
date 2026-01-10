@@ -163,10 +163,10 @@ class _StockPageState extends State<StockPage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
       color: Colors.white,
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text("Inventory Management", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          Text("Inventory Management", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
         ],
       ),
     );
@@ -180,34 +180,14 @@ class _StockPageState extends State<StockPage> {
         builder: (context, batchSnap) {
           int total = 0;
           int low = 0;
-          int expired = 0;
 
           if (prodSnap.hasData) {
             total = prodSnap.data!.docs.length;
-
             for (var d in prodSnap.data!.docs) {
               var data = d.data() as Map<String, dynamic>;
               int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
               int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
-
-              if (stock <= reorderPoint) {
-                low++;
-              }
-            }
-          }
-
-          if (batchSnap.hasData) {
-            DateTime now = DateTime.now();
-            for (var d in batchSnap.data!.docs) {
-              var b = d.data() as Map<String, dynamic>;
-              Timestamp? expTimestamp = b['expiryDate'] as Timestamp?;
-              int qty = int.tryParse(b['currentQuantity']?.toString() ?? '0') ?? 0;
-
-              if (expTimestamp != null && qty > 0) {
-                if (expTimestamp.toDate().isBefore(now)) {
-                  expired++;
-                }
-              }
+              if (stock <= reorderPoint) low++;
             }
           }
 
@@ -278,7 +258,6 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- LIST BUILDER ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -287,22 +266,13 @@ class _StockPageState extends State<StockPage> {
 
         List<QueryDocumentSnapshot> docs = snapshot.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
-
           final name = (d['productName'] ?? '').toString().toLowerCase();
-          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase(); // Safe conversion
+          final barcode = (d['barcodeNo'] ?? '').toString().toLowerCase();
           final query = searchQuery.toLowerCase();
-
           bool catMatch = (selectedCategory == 'All' || d['category'] == selectedCategory);
           bool searchMatch = name.contains(query) || barcode.contains(query);
-
           return catMatch && searchMatch;
         }).toList();
-
-        docs.sort((a, b) {
-          int stockA = int.tryParse((a.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
-          int stockB = int.tryParse((b.data() as Map<String, dynamic>)['currentStock']?.toString() ?? '0') ?? 0;
-          return stockB.compareTo(stockA);
-        });
 
         final screenWidth = MediaQuery.of(context).size.width;
         final isSmall = screenWidth < 360;
@@ -317,10 +287,7 @@ class _StockPageState extends State<StockPage> {
             final data = docs[index].data() as Map<String, dynamic>;
             int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
             int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
-
             double price = double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0;
-
-            // ✅ FIX: Barcode safety
             String barcode = data['barcodeNo']?.toString() ?? '-';
 
             return Container(
@@ -339,42 +306,23 @@ class _StockPageState extends State<StockPage> {
                       borderRadius: BorderRadius.circular(15),
                       child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
                           ? CachedNetworkImage(
-                        imageUrl: data['imageUrl'],
-                        width: imgSize,
-                        height: imgSize,
-                        fit: BoxFit.cover,
+                        imageUrl: data['imageUrl'], width: imgSize, height: imgSize, fit: BoxFit.cover,
                         placeholder: (_, __) => _buildPlaceholder(imgSize),
                         errorWidget: (_, __, ___) => _buildPlaceholder(imgSize),
-                      )
-                          : _buildPlaceholder(imgSize),
+                      ) : _buildPlaceholder(imgSize),
                     ),
                     const SizedBox(width: 15),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            data['productName'] ?? 'Unknown',
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              // 🔹 FIX: Flexible supaya teks barcode tak overflow
-                              Flexible(
-                                child: Text(
-                                  "SN: $barcode",
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                              Flexible(child: Text("SN: $barcode", style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                               const SizedBox(width: 10),
-                              Text(
-                                "RM ${price.toStringAsFixed(2)}",
-                                style: TextStyle(color: primaryBlue.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
+                              Text("RM ${price.toStringAsFixed(2)}", style: TextStyle(color: primaryBlue.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ],
@@ -384,18 +332,8 @@ class _StockPageState extends State<StockPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                            '$stock',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: stock <= reorderPoint ? Colors.red : primaryBlue
-                            )
-                        ),
-                        Text(
-                          data['unit'] ?? 'pcs',
-                          style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.bold),
-                        )
+                        Text('$stock', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: stock <= reorderPoint ? Colors.red : primaryBlue)),
+                        Text(data['unit'] ?? 'pcs', style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontWeight: FontWeight.bold))
                       ],
                     ),
                   ],
@@ -410,23 +348,9 @@ class _StockPageState extends State<StockPage> {
 
   Widget _buildPlaceholder(double size) {
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: primaryBlue.withOpacity(0.1),
-          width: 1.5,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.inventory_2_rounded,
-          color: primaryBlue.withOpacity(0.3),
-          size: size * 0.5,
-        ),
-      ),
+      width: size, height: size,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5)),
+      child: Center(child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: size * 0.5)),
     );
   }
 
@@ -434,7 +358,6 @@ class _StockPageState extends State<StockPage> {
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
     int reorderPoint = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
     double price = double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0;
-    final double imgSize = 75;
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -449,43 +372,30 @@ class _StockPageState extends State<StockPage> {
               child: ListView(
                 padding: const EdgeInsets.all(24),
                 children: [
-                  // --- HEADER: IMAGE & NAME ---
                   Row(children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(15),
                       child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
-                          ? CachedNetworkImage(imageUrl: data['imageUrl'], width: imgSize, height: imgSize, fit: BoxFit.cover)
-                          : _buildPlaceholder(imgSize),
+                          ? CachedNetworkImage(imageUrl: data['imageUrl'], width: 75, height: 75, fit: BoxFit.cover)
+                          : _buildPlaceholder(75),
                     ),
                     const SizedBox(width: 20),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                      Text("SKU/Barcode: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                      Text("SKU: ${data['barcodeNo'] ?? '-'}", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
                     ]))
                   ]),
-
                   const SizedBox(height: 30),
-
-                  // --- BARIS 1: STATUS & PRICE ---
                   Row(children: [
                     _infoBox("Status", stock <= reorderPoint ? "Low Stock" : "Healthy", stock <= reorderPoint ? Colors.orange : Colors.green),
                     const SizedBox(width: 10),
                     _infoBox("Price", "RM ${price.toStringAsFixed(2)}", primaryBlue),
                   ]),
-
-                  const SizedBox(height: 12), // Jarak antara baris atas dan bawah
-
-                  // --- BARIS 2: SUPPLIER (HORIZONTAL PENUH) ---
-                  // Kita letak dalam Row supaya Expanded dalam _infoBox berfungsi memenuhkan lebar
-                  Row(children: [
-                    _infoBox("Supplier", data['supplier'] ?? 'N/A', Colors.grey.shade700),
-                  ]),
-
+                  const SizedBox(height: 12),
+                  _infoBox("Supplier", data['supplier'] ?? 'N/A', Colors.grey.shade700),
                   const SizedBox(height: 35),
-
                   const Text("Active Stock Batches", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                   const SizedBox(height: 15),
-
                   _buildBatchStream(productId, data['unit'] ?? 'pcs'),
                 ],
               ),
@@ -500,7 +410,6 @@ class _StockPageState extends State<StockPage> {
     return Expanded(child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: c.withOpacity(0.05), borderRadius: BorderRadius.circular(18), border: Border.all(color: c.withOpacity(0.1))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: TextStyle(fontSize: 10, color: c.withOpacity(0.6), fontWeight: FontWeight.w800)), Text(v, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c))])));
   }
 
-  // --- [FIXED] BATCH LIST BUILDER (ANTI-OVERFLOW) ---
   Widget _buildBatchStream(String pid, String unit) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('batches')
@@ -510,68 +419,38 @@ class _StockPageState extends State<StockPage> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const LinearProgressIndicator();
         final docs = snapshot.data!.docs;
-
-        if (docs.isEmpty) {
-          return const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text("No active batches.", style: TextStyle(color: Colors.grey))
-              )
-          );
-        }
+        if (docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active batches.", style: TextStyle(color: Colors.grey))));
 
         return Column(
             children: docs.map((doc) {
               final b = doc.data() as Map<String, dynamic>;
               final exp = b['expiryDate'] != null ? (b['expiryDate'] as Timestamp).toDate() : null;
+              // ✅ New: Displaying the stockId (Shipment ID)
+              final stockId = b['stockId'] ?? 'N/A';
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white, borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.grey.shade100),
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)]
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start, // Align text ke atas supaya kemas
                   children: [
-                    // 🔹 BAHAGIAN BATCH (Kiri)
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Batch #${b['batchNumber'] ?? '-'}",
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                height: 1.3 // Jarak antara baris supaya mudah baca
-                            ),
-                            // ❌ Kita BUANG maxLines & overflow supaya dia boleh turun baris
-                          ),
-                          if (exp != null) ...[
-                            const SizedBox(height: 4), // Jarak sikit antara Batch & Exp
-                            Text(
-                                "Exp: ${DateFormat('dd/MM/yyyy').format(exp)}",
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)
-                            ),
-                          ]
+                          Text("Batch #${b['batchNumber'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 4),
+                          Text("Shipment: $stockId", style: TextStyle(fontSize: 11, color: primaryBlue.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                          if (exp != null) Text("Exp: ${DateFormat('dd/MM/yyyy').format(exp)}", style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                         ],
                       ),
                     ),
-
-                    const SizedBox(width: 12), // Jarak antara teks kiri dan kanan
-
-                    // 🔹 BAHAGIAN KUANTITI (Kanan)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2), // Align sikit dengan teks batch
-                      child: Text(
-                          "${b['currentQuantity']} $unit",
-                          style: TextStyle(fontWeight: FontWeight.w900, color: primaryBlue, fontSize: 15)
-                      ),
-                    ),
+                    Text("${b['currentQuantity']} $unit", style: TextStyle(fontWeight: FontWeight.w900, color: primaryBlue, fontSize: 15)),
                   ],
                 ),
               );

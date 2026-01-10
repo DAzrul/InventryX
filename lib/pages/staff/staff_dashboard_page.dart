@@ -15,148 +15,74 @@ class StaffDashboardPage extends StatefulWidget {
 }
 
 class _StaffDashboardPageState extends State<StaffDashboardPage> {
-  String _selectedHistoryFilter = "Last 7 Days";
   final Color primaryBlue = const Color(0xFF203288);
 
-  // --- LOGIC 1: QUERY HISTORY ---
+  // Advanced Filter States
+  String _selectedHistoryFilter = "Last 7 Days";
+  String _selectedMainType = "All";
+  String _selectedStockOutReason = "All";
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+
+  // --- LOGIC: DATE PICKER ---
+  Future<void> _selectDateRange(StateSetter setModalState) async {
+    DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: primaryBlue)),
+        child: child!,
+      ),
+    );
+
+    if (picked != null) {
+      setModalState(() {
+        _customStartDate = DateTime(picked.start.year, picked.start.month, picked.start.day, 0, 0, 0);
+        _customEndDate = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+        _selectedHistoryFilter = "Custom";
+      });
+      setState(() {});
+    }
+  }
+
+  // --- LOGIC: QUERY FIREBASE ---
   Query _getHistoryQuery() {
     CollectionReference moveRef = FirebaseFirestore.instance.collection('stockMovements');
     DateTime now = DateTime.now();
-    DateTime startOfPeriod;
+    DateTime start;
+    DateTime end = now;
 
     if (_selectedHistoryFilter == "Today") {
-      startOfPeriod = DateTime(now.year, now.month, now.day);
+      start = DateTime(now.year, now.month, now.day);
     } else if (_selectedHistoryFilter == "Last 7 Days") {
-      startOfPeriod = now.subtract(const Duration(days: 7));
+      start = now.subtract(const Duration(days: 7));
+    } else if (_selectedHistoryFilter == "Last 30 Days") {
+      start = now.subtract(const Duration(days: 30));
     } else {
-      startOfPeriod = now.subtract(const Duration(days: 30));
+      start = _customStartDate ?? now;
+      end = _customEndDate ?? now;
     }
 
-    return moveRef
-        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfPeriod))
-        .orderBy('timestamp', descending: true);
-  }
+    // 1. Time Range Filter (Base Query)
+    Query query = moveRef.where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(end));
 
-  // --- [FIXED] LOGIC 2: SCAN BARCODE (String & Number Check) ---
-  Future<void> _scanAndShowDetails() async {
-    final scannedCode = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
-    );
-
-    if (scannedCode != null && scannedCode.isNotEmpty) {
-
-      // 1. Cuba cari sebagai STRING dulu (e.g., "955...")
-      var snapshot = await FirebaseFirestore.instance
-          .collection('products')
-          .where('barcodeNo', isEqualTo: scannedCode)
-          .limit(1)
-          .get();
-
-      // 2. Kalau tak jumpa, cuba cari sebagai NUMBER (e.g., 955...)
-      if (snapshot.docs.isEmpty) {
-        int? numericCode = int.tryParse(scannedCode);
-        if (numericCode != null) {
-          snapshot = await FirebaseFirestore.instance
-              .collection('products')
-              .where('barcodeNo', isEqualTo: numericCode)
-              .limit(1)
-              .get();
-        }
-      }
-
-      if (!mounted) return;
-
-      if (snapshot.docs.isNotEmpty) {
-        _showProductDetailPopup(snapshot.docs.first.data());
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Product not found for barcode: $scannedCode"),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+    // 2. Main Type Filter (e.g., Stock In or Stock Out)
+    if (_selectedMainType != "All") {
+      query = query.where('type', isEqualTo: _selectedMainType);
     }
+
+    // 3. FIX: Check 'reason' field for specific Stock Out types
+    // Based on your DB, these are stored in the 'reason' field.
+    if (_selectedMainType == "Stock Out" && _selectedStockOutReason != "All") {
+      query = query.where('reason', isEqualTo: _selectedStockOutReason);
+    }
+
+    return query.orderBy('timestamp', descending: true);
   }
 
-  // --- UI: POPUP PRODUCT DETAILS ---
-  void _showProductDetailPopup(Map<String, dynamic> data) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.55,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 15),
-            Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 25),
-
-            _buildProductImage(data['imageUrl'], size: 100),
-
-            const SizedBox(height: 20),
-            Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
-            Text("Barcode: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.w600)),
-
-            const SizedBox(height: 30),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildDetailInfoBox("Stock", "${data['currentStock']}", Colors.blue),
-                _buildDetailInfoBox("Price", "RM ${data['price']}", Colors.green),
-                _buildDetailInfoBox("Category", data['category'] ?? '-', Colors.orange),
-              ],
-            ),
-
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Close", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailInfoBox(String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.bold)),
-          const SizedBox(height: 5),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
-        ],
-      ),
-    );
-  }
-
-  // --- LOGIC: POPUP FULL HISTORY ---
+  // --- UI: MOVEMENT HISTORY POPUP ---
   void _showAllActivityPopup(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -177,50 +103,51 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 padding: EdgeInsets.all(20),
                 child: Text("Stock Movement History", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: ["Today", "Last 7 Days", "Last 30 Days"].map((label) {
-                    bool isSel = _selectedHistoryFilter == label;
-                    return GestureDetector(
-                      onTap: () {
-                        setModalState(() => _selectedHistoryFilter = label);
-                        setState(() {});
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSel ? primaryBlue : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: isSel ? Colors.transparent : Colors.grey.shade300),
-                          boxShadow: isSel ? [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : [],
-                        ),
-                        child: Text(label, style: TextStyle(color: isSel ? Colors.white : Colors.black54, fontSize: 13, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
+
+              _buildFilterRow(["Today", "Last 7 Days", "Last 30 Days", "Custom"], _selectedHistoryFilter, (val) {
+                if (val == "Custom") _selectDateRange(setModalState);
+                else setModalState(() { _selectedHistoryFilter = val; });
+              }),
+
+              _buildFilterRow(["All", "Stock In", "Stock Out"], _selectedMainType, (val) {
+                setModalState(() {
+                  _selectedMainType = val;
+                  if (val != "Stock Out") _selectedStockOutReason = "All";
+                });
+              }),
+
+              if (_selectedMainType == "Stock Out")
+                _buildFilterRow(["All", "Sold", "Damaged", "Expired", "Returned", "Theft", "Adjustment"], _selectedStockOutReason, (val) {
+                  setModalState(() => _selectedStockOutReason = val);
+                }, isSmall: true),
+
+              const Divider(height: 30),
+
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: _getHistoryQuery().snapshots(),
                   builder: (context, snapshot) {
+                    if (snapshot.hasError) return _buildErrorState();
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
                     final docs = snapshot.data!.docs;
-                    if (docs.isEmpty) return const Center(child: Text("No movements found."));
+                    if (docs.isEmpty) return const Center(child: Text("No records found for current filters."));
+
                     return ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       itemCount: docs.length,
                       itemBuilder: (context, index) {
                         final data = docs[index].data() as Map<String, dynamic>;
-                        final int qty = data['quantity'] ?? 0;
+                        final int qty = (data['quantity'] ?? 0).toInt();
+                        final String type = data['type'] ?? '';
+                        final String reason = data['reason'] ?? '';
+
                         return _buildActivityItem(
-                          title: "${data['type']}: ${data['productName']}",
-                          subtitle: DateFormat('dd MMM yyyy, hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
-                          trailingText: qty > 0 ? "+$qty" : "$qty",
-                          trailingColor: qty > 0 ? Colors.green : Colors.red,
-                          icon: qty > 0 ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                          title: "${data['productName'] ?? 'Unknown'}",
+                          subtitle: "$type • $reason\n${DateFormat('dd MMM, hh:mm a').format((data['timestamp'] as Timestamp).toDate())}",
+                          trailingText: (type == "Stock In") ? "+$qty" : "$qty",
+                          trailingColor: (type == "Stock In") ? Colors.green : _getReasonColor(reason),
+                          icon: (type == "Stock In") ? Icons.arrow_downward_rounded : _getReasonIcon(type, reason),
                         );
                       },
                     );
@@ -234,6 +161,73 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
+  // --- HELPERS ---
+  Widget _buildFilterRow(List<String> options, String currentVal, Function(String) onSelect, {bool isSmall = false}) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: Row(
+        children: options.map((label) {
+          bool isSel = currentVal == label;
+          return GestureDetector(
+            onTap: () => onSelect(label),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSel ? primaryBlue : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isSel ? Colors.transparent : Colors.grey.shade300),
+              ),
+              child: Text(label, style: TextStyle(color: isSel ? Colors.white : Colors.black54, fontSize: isSmall ? 11 : 13, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Color _getReasonColor(String r) {
+    switch (r.toLowerCase()) {
+      case 'sold': return Colors.red;
+      case 'damaged': return Colors.orange;
+      case 'theft': return Colors.black87;
+      case 'returned': return Colors.blue;
+      case 'expired': return Colors.deepOrange;
+      default: return Colors.redAccent;
+    }
+  }
+
+  IconData _getReasonIcon(String type, String reason) {
+    if (type == "Stock In") return Icons.arrow_downward_rounded;
+    switch (reason.toLowerCase()) {
+      case 'sold': return Icons.shopping_cart_checkout;
+      case 'damaged': return Icons.broken_image_rounded;
+      case 'theft': return Icons.person_off_rounded;
+      case 'expired': return Icons.event_busy_rounded;
+      case 'returned': return Icons.keyboard_return_rounded;
+      default: return Icons.arrow_upward_rounded;
+    }
+  }
+
+  Widget _buildErrorState() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: Colors.red, size: 40),
+            SizedBox(height: 10),
+            Text("Firebase Index Required", style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 5),
+            Text("Click the link in your Debug Console to create the required composite index.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -241,10 +235,9 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const SizedBox(height: 40),
           _buildHeaderSection(primaryBlue),
           const SizedBox(height: 30),
-
-          // --- STATS CARDS ---
           Row(
             children: [
               _buildStatCard(
@@ -264,32 +257,25 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 },
               ),
               const SizedBox(width: 16),
-              // [FIX] Update Logic Expired untuk sama dengan Stock Page
               _buildStatCard(
                 stream: FirebaseFirestore.instance.collection('batches').where('currentQuantity', isGreaterThan: 0).snapshots(),
                 icon: Icons.event_busy_rounded,
-                label: "Expired Items", // Tukar label supaya tepat
+                label: "Expired Items",
                 color: Colors.red,
                 calcLogic: (docs) {
                   final now = DateTime.now();
                   return docs.where((d) {
                     final data = d.data() as Map<String, dynamic>;
                     Timestamp? expT = data['expiryDate'] as Timestamp?;
-                    if (expT == null) return false;
-
-                    // Logic: Expired jika tarikh < sekarang
-                    return expT.toDate().isBefore(now);
+                    return expT != null && expT.toDate().isBefore(now);
                   }).length;
                 },
               ),
             ],
           ),
-
           const SizedBox(height: 30),
           const Text("Quick Action", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-
-          // --- QUICK ACTION BUTTONS ---
           _buildQuickActionButton(
               title: "Scan Item / Check Stock",
               subtitle: "Scan barcode to view details",
@@ -305,7 +291,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
               color: const Color(0xFF1E3A8A),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesPage()))
           ),
-
           const SizedBox(height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -314,7 +299,6 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
               TextButton(onPressed: () => _showAllActivityPopup(context), child: Text("View All", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.bold))),
             ],
           ),
-
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('stockMovements').orderBy('timestamp', descending: true).limit(5).snapshots(),
             builder: (context, snapshot) {
@@ -322,13 +306,15 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
               return Column(
                 children: snapshot.data!.docs.map((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final int qty = data['quantity'] ?? 0;
+                  final int qty = (data['quantity'] ?? 0).toInt();
+                  final String type = data['type'] ?? '';
+                  final String reason = data['reason'] ?? '';
                   return _buildActivityItem(
-                    title: "${data['type']}: ${data['productName']}",
+                    title: "${data['productName']}",
                     subtitle: DateFormat('hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
-                    trailingText: qty > 0 ? "+$qty" : "$qty",
-                    trailingColor: qty > 0 ? Colors.green : Colors.red,
-                    icon: qty > 0 ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                    trailingText: (type == "Stock In") ? "+$qty" : "$qty",
+                    trailingColor: (type == "Stock In") ? Colors.green : _getReasonColor(reason),
+                    icon: (type == "Stock In") ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
                   );
                 }).toList(),
               );
@@ -340,8 +326,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  // --- HELPERS ---
-
+  // --- UI HELPERS ---
   Widget _buildHeaderSection(Color primaryColor) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('users').where('username', isEqualTo: widget.username).limit(1).snapshots(),
@@ -361,15 +346,11 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor.withOpacity(0.2), width: 2)),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.white,
-                    backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null,
-                    child: (img == null || img.isEmpty) ? Icon(Icons.person_rounded, color: primaryColor.withOpacity(0.4)) : null,
-                  ),
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white,
+                  backgroundImage: (img != null && img.isNotEmpty) ? NetworkImage(img) : null,
+                  child: (img == null || img.isEmpty) ? Icon(Icons.person_rounded, color: primaryColor.withOpacity(0.4)) : null,
                 ),
                 const SizedBox(width: 12),
                 Column(
@@ -421,28 +402,17 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
           return Container(
             height: 140,
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))]
-            ),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))]),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-                    child: Icon(icon, size: 24, color: color),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("$count Items", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 4),
-                      Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
-                    ],
-                  )
+                  Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, size: 24, color: color)),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text("$count Items", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                  ])
                 ]
             ),
           );
@@ -457,29 +427,16 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         borderRadius: BorderRadius.circular(24),
         child: Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]
-            ),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))]),
             child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(15)),
-                    child: Icon(icon, color: Colors.white, size: 28),
-                  ),
+                  Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(15)), child: Icon(icon, color: Colors.white, size: 28)),
                   const SizedBox(width: 16),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                            const SizedBox(height: 4),
-                            Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600))
-                          ]
-                      )
-                  ),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600))
+                  ])),
                   const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16)
                 ]
             )
@@ -493,11 +450,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
         child: Row(children: [
-          Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: trailingColor.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: trailingColor, size: 20)
-          ),
+          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: trailingColor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: trailingColor, size: 20)),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -509,21 +462,36 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     );
   }
 
-  Widget _buildProductImage(String? url, {double size = 100}) {
-    if (url == null || url.isEmpty) {
-      return Container(
-        width: size, height: size,
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5)),
-        child: Center(child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: size * 0.5)),
-      );
+  Future<void> _scanAndShowDetails() async {
+    final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+    if (scanned != null) {
+      var snapshot = await FirebaseFirestore.instance.collection('products').where('barcodeNo', isEqualTo: scanned).limit(1).get();
+      if (snapshot.docs.isEmpty) {
+        int? num = int.tryParse(scanned);
+        if (num != null) snapshot = await FirebaseFirestore.instance.collection('products').where('barcodeNo', isEqualTo: num).limit(1).get();
+      }
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data();
+        showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+          builder: (_) => Container(
+            padding: const EdgeInsets.all(24),
+            height: 400,
+            child: Column(children: [
+              Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 20),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Barcode"), Text(data['barcodeNo'].toString())]),
+              const SizedBox(height: 10),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Stock"), Text(data['currentStock'].toString())]),
+              const SizedBox(height: 10),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Price"), Text("RM ${data['price']}")]),
+              const Spacer(),
+              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), child: const Text("Close", style: TextStyle(color: Colors.white))))
+            ]),
+          ),
+        );
+      }
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: CachedNetworkImage(
-        imageUrl: url, width: size, height: size, fit: BoxFit.cover,
-        placeholder: (_, __) => Container(width: size, height: size, decoration: BoxDecoration(color: Colors.grey[100])),
-        errorWidget: (_, __, ___) => Container(width: size, height: size, color: Colors.grey[100], child: Icon(Icons.error, color: Colors.grey)),
-      ),
-    );
   }
 }

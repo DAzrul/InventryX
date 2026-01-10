@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // Pastikan ada package ni
+import 'package:cached_network_image/cached_network_image.dart';
 import '../Features_app/barcode_scanner_page.dart';
 
 class AddIncomingStockPage extends StatefulWidget {
@@ -15,7 +15,7 @@ class AddIncomingStockPage extends StatefulWidget {
 }
 
 class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
-  final Color primaryBlue = const Color(0xFF1E3A8A); // Indigo Premium
+  final Color primaryBlue = const Color(0xFF1E3A8A);
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -184,7 +184,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
-  // --- [KEMASKINI] DIALOG PILIH PRODUK GUNA STYLE BARU ---
   void _showProductDialog() {
     showModalBottomSheet(
       context: context, isScrollControlled: true,
@@ -227,7 +226,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 5),
-                            // [FIX] Guna method gambar yang seragam
                             leading: _buildProductImage(d['imageUrl'], size: 55),
                             title: Text(d['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                             subtitle: Text('Current Stock: ${d['currentStock']}', style: const TextStyle(fontSize: 12)),
@@ -238,7 +236,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                                 d['productName'],
                                 d['barcodeNo'].toString(),
                                 d['imageUrl'],
-                                d['unitsPerCarton'] ?? 1, // default to 1 if null
+                                d['unitsPerCarton'] ?? 1,
                               );
                               Navigator.pop(context);
                             },
@@ -256,47 +254,23 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
-  // --- [UTAMA] WIDGET GAMBAR SERAGAM ---
   Widget _buildProductImage(String? url, {double size = 55}) {
-    // 1. Kotak Placeholder Cantik (Putih + Border Biru Pudar)
-    if (url == null || url.isEmpty) {
-      return _buildPlaceholder(size);
-    }
-
-    // 2. Gambar Sebenar (Cached)
+    if (url == null || url.isEmpty) return _buildPlaceholder(size);
     return ClipRRect(
       borderRadius: BorderRadius.circular(15),
       child: CachedNetworkImage(
-        imageUrl: url,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
+        imageUrl: url, width: size, height: size, fit: BoxFit.cover,
         placeholder: (_, __) => _buildPlaceholder(size),
         errorWidget: (_, __, ___) => _buildPlaceholder(size),
       ),
     );
   }
 
-  // --- [UTAMA] WIDGET PLACEHOLDER ---
   Widget _buildPlaceholder(double size) {
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: primaryBlue.withOpacity(0.1),
-          width: 1.5,
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.inventory_2_rounded,
-          color: primaryBlue.withOpacity(0.3),
-          size: size * 0.5,
-        ),
-      ),
+      width: size, height: size,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5)),
+      child: Center(child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: size * 0.5)),
     );
   }
 
@@ -309,13 +283,12 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
         imageUrl: url,
         supplierName: selectedSupplierName!,
         supplierId: selectedSupplierId!,
-        quantity: 0, // start at 0 cartons
-        unitsPerCarton: unitsPerCarton, // assign
+        quantity: 0,
+        unitsPerCarton: unitsPerCarton,
         expiryDate: DateTime.now().add(const Duration(days: 180)),
       ));
     });
   }
-
 
   Widget _batchList() {
     if (batchItems.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(40), child: Column(children: [Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey.shade300), const SizedBox(height: 10), Text('No batches added yet', style: TextStyle(color: Colors.grey.shade400))])));
@@ -337,9 +310,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
             children: [
               Row(
                 children: [
-                  // [FIX] Guna method gambar baru (Saiz 55 sama dgn list lain)
                   _buildProductImage(item.imageUrl, size: 55),
-
                   const SizedBox(width: 15),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -386,7 +357,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              // --- DETAIL LINE ---
               Text(
                 "${item.quantity} x ${item.unitsPerCarton} = ${item.totalUnits} units",
                 style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
@@ -458,7 +428,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.orange));
   }
 
-  // --- LOGIC SAVE (Kekal Sama) ---
+  // --- [UPDATED LOGIC] Unified stockId for stockIn and batches ---
   Future<void> _saveStockToFirebase() async {
     final user = _auth.currentUser;
     if (user == null || batchItems.isEmpty) return;
@@ -468,6 +438,13 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     try {
       final batchWrite = _db.batch();
       final now = Timestamp.now();
+
+      // 1. Generate a formatted Unified stockId (SI-YYYYMMDD-SUFFIX)
+      String datePart = DateFormat('yyyyMMdd').format(DateTime.now());
+      // Take the last 3 digits of the timestamp for a unique suffix
+      String suffix = DateTime.now().microsecondsSinceEpoch.toString().substring(10);
+      String sessionStockId = "SI-$datePart-$suffix";
+
       Map<String, List<StockItem>> grouped = {};
       for (var item in batchItems) {
         if (item.quantity <= 0) continue;
@@ -475,54 +452,88 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       }
 
       for (var entry in grouped.entries) {
-        final sId = entry.key; final items = entry.value; final sName = items.first.supplierName;
-        final stockInRef = _db.collection('stockIn').doc();
+        final sId = entry.key;
+        final items = entry.value;
+        final sName = items.first.supplierName;
 
-        // totalQuantity = sum of totalUnits (cartons * unitsPerCarton)
+        // Use the sessionStockId as the document ID for stockIn
+        final stockInRef = _db.collection('stockIn').doc(sessionStockId);
+
         final totalQuantityUnits = items.fold(0, (sum, i) => sum + i.totalUnits);
 
+        // Header data
         batchWrite.set(stockInRef, {
-          'stockInId': stockInRef.id, 'supplierId': sId, 'supplierName': sName,
-          'receivedDate': now, 'createdBy': user.uid, 'notes': _notesController.text.trim(),
-          'totalItems': items.length, 'totalQuantity': totalQuantityUnits,
-        });
+          'stockId': sessionStockId, // Use session ID here
+          'supplierId': sId,
+          'supplierName': sName,
+          'receivedDate': now,
+          'createdBy': user.uid,
+          'notes': _notesController.text.trim(),
+          'totalItems': items.length,
+          'totalQuantity': totalQuantityUnits,
+        }, SetOptions(merge: true)); // Use merge if multiple suppliers in one session
 
         for (var item in items) {
           final dateStr = DateFormat('yyyyMMdd').format(DateTime.now());
-          final randomSuffix = DateTime.now().microsecondsSinceEpoch.toString().substring(8);
+          final randomSuffix = DateTime.now().microsecondsSinceEpoch.toString().substring(10);
           final batchNumber = "BATCH-$dateStr-$randomSuffix";
+
           final stockInItemRef = stockInRef.collection('items').doc();
           batchWrite.set(stockInItemRef, {
-            'itemId': stockInItemRef.id, 'productId': item.productId, 'productName': item.productName,
-            'batchNumber': batchNumber, 'expiryDate': Timestamp.fromDate(item.expiryDate), 'quantity': item.totalUnits,
+            'itemId': stockInItemRef.id,
+            'productId': item.productId,
+            'productName': item.productName,
+            'batchNumber': batchNumber,
+            'expiryDate': Timestamp.fromDate(item.expiryDate),
+            'quantity': item.totalUnits,
           });
 
+          // Connect Batch collection using the same stockId
           final batchRef = _db.collection('batches').doc();
           batchWrite.set(batchRef, {
-            'batchId': batchRef.id, 'batchNumber': batchNumber, 'productId': item.productId, 'productName': item.productName,
+            'batchId': batchRef.id,
+            'stockId': sessionStockId, // Shared ID
+            'batchNumber': batchNumber,
+            'productId': item.productId,
+            'productName': item.productName,
             'initialQuantity': item.totalUnits,
             'currentQuantity': item.totalUnits,
-            'expiryDate': Timestamp.fromDate(item.expiryDate), 'receivedDate': now,
-            'status': 'active', 'supplierId': sId, 'supplierName': sName, 'createdAt': now,
+            'expiryDate': Timestamp.fromDate(item.expiryDate),
+            'receivedDate': now,
+            'status': 'active',
+            'supplierId': sId,
+            'supplierName': sName,
+            'createdAt': now,
           });
 
           batchWrite.update(_db.collection('products').doc(item.productId), {
-            'currentStock': FieldValue.increment(item.totalUnits), 'updatedAt': now,
+            'currentStock': FieldValue.increment(item.totalUnits),
+            'updatedAt': now,
           });
 
           final movementRef = _db.collection('stockMovements').doc();
           batchWrite.set(movementRef, {
-            'movementId': movementRef.id, 'productId': item.productId, 'productName': item.productName,
-            'quantity': item.totalUnits, 'type': 'Stock In', 'reason': 'Inventory Received from $sName',
-            'timestamp': now, 'user': widget.username,
+            'movementId': movementRef.id,
+            'stockId': sessionStockId, // Unified ID
+            'productId': item.productId,
+            'productName': item.productName,
+            'quantity': item.totalUnits,
+            'type': 'Stock In',
+            'reason': 'Inventory Received - Session $sessionStockId',
+            'timestamp': now,
+            'user': widget.username,
           });
         }
       }
 
       await batchWrite.commit();
+
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Multi-supplier stock saved!'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Stock Confirmed! ID: $sessionStockId'),
+            backgroundColor: Colors.green
+        ));
         setState(() { batchItems.clear(); _notesController.clear(); selectedSupplierName = null; });
       }
     } catch (e) {
@@ -533,11 +544,23 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
   Future<void> _scanBarcode() async {
     final scannedBarcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
     if (scannedBarcode == null || scannedBarcode.isEmpty) return;
-    dynamic searchKey; int? intBarcode = int.tryParse(scannedBarcode); searchKey = intBarcode ?? scannedBarcode;
+
+    dynamic searchKey;
+    int? intBarcode = int.tryParse(scannedBarcode);
+    searchKey = intBarcode ?? scannedBarcode;
+
     final query = await _db.collection('products').where('barcodeNo', isEqualTo: searchKey).limit(1).get();
+
     if (query.docs.isEmpty) { _showError('Product not found!'); return; }
-    final doc = query.docs.first; final data = doc.data();
-    if (data['supplier'] != selectedSupplierName) { _showError('Product belongs to ${data['supplier']}'); return; }
+
+    final doc = query.docs.first;
+    final data = doc.data();
+
+    if (data['supplier'] != selectedSupplierName) {
+      _showError('Product belongs to ${data['supplier']}');
+      return;
+    }
+
     _addBatchItem(
       doc.id,
       data['productName'],
@@ -545,7 +568,6 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       data['imageUrl'],
       data['unitsPerCarton'] ?? 1,
     );
-
   }
 }
 
@@ -553,8 +575,9 @@ class StockItem {
   String productId, productName, barcodeNo, supplierName, supplierId;
   String? imageUrl;
   int quantity;
-  int unitsPerCarton; // NEW: units per carton
+  int unitsPerCarton;
   DateTime expiryDate;
+
   StockItem({
     required this.productId,
     required this.productName,
@@ -563,8 +586,8 @@ class StockItem {
     required this.supplierId,
     this.imageUrl,
     required this.quantity,
-    required this.unitsPerCarton, // NEW
+    required this.unitsPerCarton,
     required this.expiryDate});
 
-  int get totalUnits => quantity * unitsPerCarton; // NEW: total units
+  int get totalUnits => quantity * unitsPerCarton;
 }
