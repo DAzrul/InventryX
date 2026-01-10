@@ -20,9 +20,21 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
   bool _loading = false;
   final Color dangerRed = const Color(0xFFE53935);
 
-  // --- [UPDATE 1] LOGIC DELETE DENGAN PREMIUM MESSAGE ---
   Future<void> _deleteProduct() async {
+    // Parse current stock
+    int stock = int.tryParse(widget.productData['currentStock']?.toString() ?? '0') ?? 0;
+
+    if (stock > 0) {
+      // Product still has stock, show error Snackbar
+      _showStyledSnackBar(
+        "Cannot delete product! Stock remaining: $stock",
+        isError: true,
+      );
+      return; // STOP here, do not close dialog
+    }
+
     setState(() => _loading = true);
+
     try {
       await FirebaseFirestore.instance
           .collection('products')
@@ -31,24 +43,24 @@ class _ProductDeleteDialogState extends State<ProductDeleteDialog> {
 
       if (!mounted) return;
 
-      // 1. Show Success SnackBar (Hijau)
+      // Show success message
       _showStyledSnackBar("Product deleted successfully!");
 
-      // 2. Tunggu sekejap bagi user nampak message
+      // Wait a bit so user can see message
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // 3. Tutup Dialog & hantar signal 'true'
+      // Close dialog and send signal back
       if (mounted) Navigator.pop(context, true);
 
     } catch (e) {
       if (mounted) {
-        // 4. Show Error SnackBar (Merah) & JANGAN TUTUP DIALOG
         _showStyledSnackBar("Failed to delete product: $e", isError: true);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
 
   // --- [UPDATE 2] WIDGET SNACKBAR PREMIUM (REUSABLE) ---
   void _showStyledSnackBar(String message, {bool isError = false}) {
