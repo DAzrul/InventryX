@@ -21,7 +21,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🔹 FIX 1: Check awal. Jika ID kosong (dari notifikasi error), tunjuk error screen.
+    // 🔹 FIX 1: Safety Check Awal
     if (batchId.isEmpty || productId.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text("Error"), backgroundColor: Colors.white),
@@ -53,7 +53,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // 🔹 FIX 2: Handle jika Batch dah kena delete
           if (!batchSnap.hasData || !batchSnap.data!.exists) {
             return const Center(child: Text("Batch details not found (Deleted?)"));
           }
@@ -67,29 +66,24 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              // 🔹 FIX 3: Handle jika Product dah kena delete
               if (!productSnap.hasData || !productSnap.data!.exists) {
                 return const Center(child: Text("Product details not found."));
               }
 
               final product = productSnap.data!.data() as Map<String, dynamic>;
 
-              // 🔹 FIX 4: Safety Check untuk Supplier ID
-              // Jika supplierId null/kosong, kita tak boleh panggil .doc()
               final String supplierId = product['supplierId'] ?? '';
 
               Future<DocumentSnapshot?> supplierFuture;
               if (supplierId.isNotEmpty) {
                 supplierFuture = FirebaseFirestore.instance.collection('supplier').doc(supplierId).get();
               } else {
-                // Return null future immediately if no ID
                 supplierFuture = Future.value(null);
               }
 
               return FutureBuilder<DocumentSnapshot?>(
                 future: supplierFuture,
                 builder: (context, supplierSnap) {
-                  // Tak perlu loading spinner utk supplier, papar data sedia ada dulu
 
                   String supplierName = "Unknown Supplier";
                   if (supplierSnap.hasData && supplierSnap.data != null && supplierSnap.data!.exists) {
@@ -97,7 +91,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                     supplierName = supplier['supplierName'] ?? "Unknown Supplier";
                   }
 
-                  // --- LOGIC TARIKH (Dengan Safety Null) ---
                   final expiryRaw = (batch['expiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
                   final createdAt = (batch['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
 
@@ -106,7 +99,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                   final expiryDate = DateTime(expiryRaw.year, expiryRaw.month, expiryRaw.day);
                   final daysLeft = expiryDate.difference(todayDate).inDays;
 
-                  // --- LOGIC WARNA STATUS ---
                   Color statusColor;
                   String statusText;
                   IconData statusIcon;
@@ -134,7 +126,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // 1. STATUS BANNER
+                        // 1. STATUS BANNER (Anti-Overflow)
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                           decoration: BoxDecoration(
@@ -146,10 +138,13 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                             children: [
                               Icon(statusIcon, color: statusColor),
                               const SizedBox(width: 12),
+                              // 🔹 FIX: Guna Expanded supaya text panjang tak tolak icon keluar
                               Expanded(
                                 child: Text(
                                   statusText,
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: statusColor),
+                                  overflow: TextOverflow.ellipsis, // Potong jika terlalu panjang
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -177,22 +172,30 @@ class ExpiryAlertDetailPage extends StatelessWidget {
 
                               const SizedBox(height: 16),
 
+                              // 🔹 FIX: Text Nama Produk Responsif
                               Text(
                                 product['productName'] ?? 'Unknown Product',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E)),
+                                maxLines: 2, // Benarkan 2 baris maksimum
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
+
+                              // 🔹 FIX: Text Kategori Responsif
                               Text(
                                 "${product['subCategory'] ?? '-'} • ${product['category'] ?? '-'}",
                                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
 
                               const SizedBox(height: 20),
                               const Divider(),
                               const SizedBox(height: 10),
 
-                              // BUTIRAN
+                              // BUTIRAN (Row anti-overflow)
                               _buildDetailRow("Supplier", supplierName),
                               _buildDetailRow("Stock In Date", "${createdAt.day}/${createdAt.month}/${createdAt.year}"),
                               const SizedBox(height: 10),
@@ -251,21 +254,31 @@ class ExpiryAlertDetailPage extends StatelessWidget {
     );
   }
 
-  // --- HELPER UNTUK ROW BIASA ---
+  // --- HELPER UNTUK ROW BIASA (RESPONSIF) ---
   Widget _buildDetailRow(String label, String value, {bool isBold = false, Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start, // Align top jika text panjang
         children: [
+          // Label (Kiri)
           Text(label, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-          Text(
+          const SizedBox(width: 8), // Gap
+
+          // Value (Kanan) - 🔹 FIX: Guna Flexible & TextAlign.right
+          Flexible(
+            child: Text(
               value,
+              textAlign: TextAlign.right,
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
                   color: valueColor ?? Colors.black87
-              )
+              ),
+              maxLines: 2, // Benarkan value panjang turun baris (cth: Nama Supplier panjang)
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -305,7 +318,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
         _urgencyBadge("CRITICAL", actionColor),
       ];
     } else {
-      // Fallback untuk stage lain (contoh: 30 days)
       actionTitle = "MONITOR STOCK";
       actionColor = Colors.blue;
       reasonWidgets = [
@@ -319,8 +331,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        // 🔹 FIX 5: Gunakan logic FutureBuilder yang selamat
-        // Kita guna .where() supaya kalau batchId kosong, dia return empty list, BUKAN crash.
         return FutureBuilder<QuerySnapshot>(
           future: FirebaseFirestore.instance
               .collection('alerts')
@@ -329,7 +339,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
               .limit(1)
               .get(),
           builder: (context, alertSnap) {
-            // Tak perlu loading spinner, terus tunjuk UI
 
             bool isDone = false;
             String? currentAlertId;
@@ -352,7 +361,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                   Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
                   const SizedBox(height: 20),
 
-                  const Center(child: Text("Recommended Action", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                  Center(child: Text("Recommended Action", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
                   const SizedBox(height: 20),
 
                   Container(
@@ -374,7 +383,7 @@ class ExpiryAlertDetailPage extends StatelessWidget {
 
                   const SizedBox(height: 30),
 
-                  // Action Buttons
+                  // Action Buttons (Responsive)
                   Row(
                     children: [
                       Expanded(
@@ -390,7 +399,6 @@ class ExpiryAlertDetailPage extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
-                          // Disable button jika Alert ID tak jumpa atau sudah Done
                           onPressed: (isDone || currentAlertId == null)
                               ? null
                               : () async {

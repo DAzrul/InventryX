@@ -21,8 +21,18 @@ class _ProductAddPageState extends State<ProductAddPage> {
   final TextEditingController productNameController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
-  final TextEditingController unitController = TextEditingController(text: "pcs");
   final TextEditingController reorderLevelController = TextEditingController(text: "10");
+  final TextEditingController unitsPerCartonController = TextEditingController(text: "1");
+
+  String selectedUnit = "pcs";
+  final List<String> unitList = [
+    "pcs",
+    "can",
+    "bottle",
+    "box",
+    "pack"
+  ];
+
 
   // --- STATE VARIABLES ---
   bool loading = false;
@@ -70,7 +80,7 @@ class _ProductAddPageState extends State<ProductAddPage> {
     productNameController.clear();
     priceController.clear();
     barcodeController.clear();
-    unitController.text = "pcs";
+    selectedUnit = "pcs";
     reorderLevelController.text = "10";
 
     setState(() {
@@ -82,16 +92,6 @@ class _ProductAddPageState extends State<ProductAddPage> {
     });
 
     _showStyledSnackBar("Form cleared successfully!");
-  }
-
-  // --- B. LOGIC AUTO-GENERATE BARCODE ---
-  void _generateBarcode() {
-    // Guna timestamp (unik) untuk elak duplicate
-    String uniqueCode = DateTime.now().millisecondsSinceEpoch.toString().substring(3);
-    setState(() {
-      barcodeController.text = uniqueCode;
-    });
-    _showStyledSnackBar("Generated Barcode: $uniqueCode");
   }
 
   // --- C. LOGIC ADD PRODUCT ---
@@ -152,7 +152,8 @@ class _ProductAddPageState extends State<ProductAddPage> {
         "supplier": supplierMap[selectedSupplierId],
         "barcodeNo": barcodeInt, // Boleh jadi null jika kosong
         "price": price,
-        "unit": unitController.text.trim(),
+        "unit": selectedUnit,
+        "unitsPerCarton": int.tryParse(unitsPerCartonController.text.trim()) ?? 1,
         "currentStock": 0, // Produk baru stok mesti 0
         "reorderLevel": int.tryParse(reorderLevelController.text.trim()) ?? 10,
         "imageUrl": imgUrl, // URL gambar atau string kosong
@@ -277,11 +278,21 @@ class _ProductAddPageState extends State<ProductAddPage> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _buildModernField(priceController, "Price (RM)", Icons.attach_money, isNumber: true)),
+                      Expanded(
+                        child: _buildModernField(
+                          priceController,
+                          "Price per Unit (RM)",
+                          Icons.attach_money,
+                          isNumber: true,
+                        ),
+                      ),
                       const SizedBox(width: 10),
-                      Expanded(child: _buildModernField(unitController, "Unit", Icons.scale_outlined)),
+                      Expanded(child: _buildUnitDropdown()),
                     ],
                   ),
+                  const SizedBox(height: 15),
+                  _buildUnitsPerCartonField(),
+
                   const SizedBox(height: 15),
                   _buildSupplierDropdown(),
                   const SizedBox(height: 15),
@@ -333,6 +344,37 @@ class _ProductAddPageState extends State<ProductAddPage> {
     );
   }
 
+  Widget _buildUnitDropdown() {
+    return DropdownButtonFormField<String>(
+      value: selectedUnit,
+      decoration: _dropdownDecoration("Unit", Icons.scale_outlined),
+      items: unitList
+          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+          .toList(),
+      onChanged: (v) => setState(() => selectedUnit = v!),
+    );
+  }
+
+  Widget _buildUnitsPerCartonField() {
+    return TextFormField(
+      controller: unitsPerCartonController,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: "Units per Carton",
+        hintText: "e.g. 24",
+        prefixIcon: const Icon(Icons.inventory_2_outlined),
+        filled: true,
+        fillColor: Colors.grey[50],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+
+
   // [BARU] Barcode Section dengan Scan & Auto-Generate
   Widget _buildBarcodeSection() {
     return Column(
@@ -340,22 +382,14 @@ class _ProductAddPageState extends State<ProductAddPage> {
       children: [
         Row(
           children: [
-            Expanded(child: _buildModernField(barcodeController, "Barcode (Optional)", Icons.qr_code, isNumber: true)),
+            Expanded(child: _buildModernField(barcodeController, "Barcode", Icons.qr_code, isNumber: true)),
             const SizedBox(width: 8),
             // Butang Scan
             _iconBtn(Icons.qr_code_scanner_rounded, primaryBlue, () async {
               final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
               if (scanned != null) setState(() => barcodeController.text = scanned);
             }),
-            const SizedBox(width: 8),
-            // Butang Auto Generate
-            _iconBtn(Icons.autorenew_rounded, Colors.orange, _generateBarcode),
           ],
-        ),
-        const SizedBox(height: 6),
-        const Padding(
-          padding: EdgeInsets.only(left: 4),
-          child: Text(" *Tap orange icon to auto-generate code", style: TextStyle(fontSize: 11, color: Colors.grey)),
         ),
       ],
     );

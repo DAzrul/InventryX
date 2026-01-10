@@ -8,6 +8,7 @@ class ProductEditPage extends StatefulWidget {
   final String productId;
   final Map<String, dynamic> productData;
 
+
   const ProductEditPage({
     super.key,
     required this.productId,
@@ -25,6 +26,15 @@ class _ProductEditPageState extends State<ProductEditPage> {
   final TextEditingController unitController = TextEditingController();
   final TextEditingController reorderLevelController = TextEditingController();
   final TextEditingController stockController = TextEditingController();
+
+  List<String> unitOptions = ["pcs",
+    "can",
+    "bottle",
+    "box",
+    "pack"]; // add more if needed
+  String? selectedUnit;
+  final TextEditingController unitPerCartonController = TextEditingController();
+
 
   File? pickedImage;
   String? imageUrl;
@@ -53,7 +63,8 @@ class _ProductEditPageState extends State<ProductEditPage> {
     productNameController.text = data['productName'] ?? '';
     priceController.text = (data['price'] ?? 0).toString();
     barcodeController.text = (data['barcodeNo'] ?? '').toString();
-    unitController.text = data['unit'] ?? 'pcs';
+    selectedUnit = data['unit'] ?? 'pcs';
+    unitPerCartonController.text = (data['unitsPerCarton'] ?? '').toString(); // new
     reorderLevelController.text = (data['reorderLevel'] ?? 0).toString();
     stockController.text = (data['currentStock'] ?? 0).toString();
 
@@ -132,7 +143,8 @@ class _ProductEditPageState extends State<ProductEditPage> {
         'price': double.tryParse(priceController.text.trim()) ?? 0,
         'category': selectedCategory,
         'subCategory': selectedSubCategory,
-        'unit': unitController.text.trim(),
+        'unit': selectedUnit, // updated
+        'unitsPerCarton': int.tryParse(unitPerCartonController.text.trim()) ?? 0, //un new
         'reorderLevel': int.tryParse(reorderLevelController.text.trim()) ?? 0,
         'supplierId': selectedSupplierId,
         'supplier': supplierMap[selectedSupplierId],
@@ -306,8 +318,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
                   children: [
                     Expanded(child: _buildModernField(priceController, "Price (RM)", Icons.payments_rounded, isNumber: true)),
                     const SizedBox(width: 12),
-                    Expanded(child: _buildModernField(unitController, "Unit", Icons.straighten_rounded)),
+                    Expanded(
+                      child: _buildModernDropdown(
+                        label: "Unit",
+                        value: selectedUnit,
+                        items: unitOptions,
+                        onChanged: (v) => setState(() => selectedUnit = v),
+                      ),
+                    ),
                   ],
+                ),
+                const SizedBox(height: 15),
+                _buildModernField(
+                  unitPerCartonController,
+                  "Unit per Carton",
+                  Icons.format_list_numbered_rounded,
+                  isNumber: true,
                 ),
                 const SizedBox(height: 15),
                 _buildModernField(reorderLevelController, "Reorder Level", Icons.notifications_active_rounded, isNumber: true),
