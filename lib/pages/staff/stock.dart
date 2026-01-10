@@ -278,7 +278,7 @@ class _StockPageState extends State<StockPage> {
     );
   }
 
-  // --- [FIXED] LIST BUILDER WITH SAFE BARCODE PARSING ---
+  // --- LIST BUILDER ---
   Widget _buildProductStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('products').snapshots(),
@@ -320,7 +320,7 @@ class _StockPageState extends State<StockPage> {
 
             double price = double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0;
 
-            // ✅ [FIX UTAMA] Pastikan barcode sentiasa ditukar ke String
+            // ✅ FIX: Barcode safety
             String barcode = data['barcodeNo']?.toString() ?? '-';
 
             return Container(
@@ -362,9 +362,13 @@ class _StockPageState extends State<StockPage> {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              Text(
-                                "SN: $barcode",
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600),
+                              // 🔹 FIX: Flexible supaya teks barcode tak overflow
+                              Flexible(
+                                child: Text(
+                                  "SN: $barcode",
+                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Text(
@@ -376,6 +380,7 @@ class _StockPageState extends State<StockPage> {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -468,6 +473,7 @@ class _StockPageState extends State<StockPage> {
                   const SizedBox(height: 35),
                   const Text("Active Stock Batches", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                   const SizedBox(height: 15),
+                  // Panggil fungsi batch dengan design baru
                   _buildBatchStream(productId, data['unit'] ?? 'pcs'),
                 ],
               ),
@@ -482,28 +488,83 @@ class _StockPageState extends State<StockPage> {
     return Expanded(child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: c.withOpacity(0.05), borderRadius: BorderRadius.circular(18), border: Border.all(color: c.withOpacity(0.1))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(t, style: TextStyle(fontSize: 10, color: c.withOpacity(0.6), fontWeight: FontWeight.w800)), Text(v, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c))])));
   }
 
+  // --- [FIXED] BATCH LIST BUILDER (ANTI-OVERFLOW) ---
   Widget _buildBatchStream(String pid, String unit) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('batches').where('productId', isEqualTo: pid).where('currentQuantity', isGreaterThan: 0).snapshots(),
+      stream: _db.collection('batches')
+          .where('productId', isEqualTo: pid)
+          .where('currentQuantity', isGreaterThan: 0)
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const LinearProgressIndicator();
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No active batches.", style: TextStyle(color: Colors.grey))));
-        return Column(children: docs.map((doc) {
-          final b = doc.data() as Map<String, dynamic>;
-          final exp = b['expiryDate'] != null ? (b['expiryDate'] as Timestamp).toDate() : null;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade100), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)]),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text("Batch #${b['batchNumber'] ?? '-'}", style: const TextStyle(fontWeight: FontWeight.w800)),
-                if (exp != null) Text("Exp: ${DateFormat('dd/MM/yyyy').format(exp)}", style: TextStyle(fontSize: 12, color: Colors.grey)),
-              ]),
-              Text("${b['currentQuantity']} $unit", style: TextStyle(fontWeight: FontWeight.w900, color: primaryBlue)),
-            ]),
+
+        if (docs.isEmpty) {
+          return const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text("No active batches.", style: TextStyle(color: Colors.grey))
+              )
           );
-        }).toList());
+        }
+
+        return Column(
+            children: docs.map((doc) {
+              final b = doc.data() as Map<String, dynamic>;
+              final exp = b['expiryDate'] != null ? (b['expiryDate'] as Timestamp).toDate() : null;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade100),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)]
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start, // Align text ke atas supaya kemas
+                  children: [
+                    // 🔹 BAHAGIAN BATCH (Kiri)
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Batch #${b['batchNumber'] ?? '-'}",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                height: 1.3 // Jarak antara baris supaya mudah baca
+                            ),
+                            // ❌ Kita BUANG maxLines & overflow supaya dia boleh turun baris
+                          ),
+                          if (exp != null) ...[
+                            const SizedBox(height: 4), // Jarak sikit antara Batch & Exp
+                            Text(
+                                "Exp: ${DateFormat('dd/MM/yyyy').format(exp)}",
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)
+                            ),
+                          ]
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(width: 12), // Jarak antara teks kiri dan kanan
+
+                    // 🔹 BAHAGIAN KUANTITI (Kanan)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2), // Align sikit dengan teks batch
+                      child: Text(
+                          "${b['currentQuantity']} $unit",
+                          style: TextStyle(fontWeight: FontWeight.w900, color: primaryBlue, fontSize: 15)
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList()
+        );
       },
     );
   }
