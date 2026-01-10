@@ -27,7 +27,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
   String? selectedSupplierId;
   List<StockItem> batchItems = [];
 
-  int get totalQuantity => batchItems.fold(0, (sum, item) => sum + item.quantity);
+  int get totalQuantity => batchItems.fold(0, (sum, item) => sum + item.totalUnits);
   bool get hasQuantity => batchItems.any((item) => item.quantity > 0);
 
   @override
@@ -233,7 +233,13 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                             subtitle: Text('Current Stock: ${d['currentStock']}', style: const TextStyle(fontSize: 12)),
                             trailing: Icon(Icons.add_circle_rounded, color: primaryBlue),
                             onTap: () {
-                              _addBatchItem(list[i].id, d['productName'], d['barcodeNo'].toString(), d['imageUrl']);
+                              _addBatchItem(
+                                list[i].id,
+                                d['productName'],
+                                d['barcodeNo'].toString(),
+                                d['imageUrl'],
+                                d['unitsPerCarton'] ?? 1, // default to 1 if null
+                              );
                               Navigator.pop(context);
                             },
                           ),
@@ -294,15 +300,22 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
-  void _addBatchItem(String pid, String? name, String bc, String? url) {
+  void _addBatchItem(String pid, String? name, String bc, String? url, int unitsPerCarton) {
     setState(() {
       batchItems.add(StockItem(
-        productId: pid, productName: name ?? 'Unknown', barcodeNo: bc,
-        imageUrl: url, supplierName: selectedSupplierName!, supplierId: selectedSupplierId!,
-        quantity: 0, expiryDate: DateTime.now().add(const Duration(days: 180)),
+        productId: pid,
+        productName: name ?? 'Unknown',
+        barcodeNo: bc,
+        imageUrl: url,
+        supplierName: selectedSupplierName!,
+        supplierId: selectedSupplierId!,
+        quantity: 0, // start at 0 cartons
+        unitsPerCarton: unitsPerCarton, // assign
+        expiryDate: DateTime.now().add(const Duration(days: 180)),
       ));
     });
   }
+
 
   Widget _batchList() {
     if (batchItems.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(40), child: Column(children: [Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey.shade300), const SizedBox(height: 10), Text('No batches added yet', style: TextStyle(color: Colors.grey.shade400))])));
@@ -371,6 +384,12 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              // --- DETAIL LINE ---
+              Text(
+                "${item.quantity} x ${item.unitsPerCarton} = ${item.totalUnits} units",
+                style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -458,10 +477,14 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       for (var entry in grouped.entries) {
         final sId = entry.key; final items = entry.value; final sName = items.first.supplierName;
         final stockInRef = _db.collection('stockIn').doc();
+
+        // totalQuantity = sum of totalUnits (cartons * unitsPerCarton)
+        final totalQuantityUnits = items.fold(0, (sum, i) => sum + i.totalUnits);
+
         batchWrite.set(stockInRef, {
           'stockInId': stockInRef.id, 'supplierId': sId, 'supplierName': sName,
           'receivedDate': now, 'createdBy': user.uid, 'notes': _notesController.text.trim(),
-          'totalItems': items.length, 'totalQuantity': items.fold(0, (sum, i) => sum + i.quantity),
+          'totalItems': items.length, 'totalQuantity': totalQuantityUnits,
         });
 
         for (var item in items) {
@@ -471,25 +494,26 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
           final stockInItemRef = stockInRef.collection('items').doc();
           batchWrite.set(stockInItemRef, {
             'itemId': stockInItemRef.id, 'productId': item.productId, 'productName': item.productName,
-            'batchNumber': batchNumber, 'expiryDate': Timestamp.fromDate(item.expiryDate), 'quantity': item.quantity,
+            'batchNumber': batchNumber, 'expiryDate': Timestamp.fromDate(item.expiryDate), 'quantity': item.totalUnits,
           });
 
           final batchRef = _db.collection('batches').doc();
           batchWrite.set(batchRef, {
             'batchId': batchRef.id, 'batchNumber': batchNumber, 'productId': item.productId, 'productName': item.productName,
-            'initialQuantity': item.quantity, 'currentQuantity': item.quantity,
+            'initialQuantity': item.totalUnits,
+            'currentQuantity': item.totalUnits,
             'expiryDate': Timestamp.fromDate(item.expiryDate), 'receivedDate': now,
             'status': 'active', 'supplierId': sId, 'supplierName': sName, 'createdAt': now,
           });
 
           batchWrite.update(_db.collection('products').doc(item.productId), {
-            'currentStock': FieldValue.increment(item.quantity), 'updatedAt': now,
+            'currentStock': FieldValue.increment(item.totalUnits), 'updatedAt': now,
           });
 
           final movementRef = _db.collection('stockMovements').doc();
           batchWrite.set(movementRef, {
             'movementId': movementRef.id, 'productId': item.productId, 'productName': item.productName,
-            'quantity': item.quantity, 'type': 'Stock In', 'reason': 'Inventory Received from $sName',
+            'quantity': item.totalUnits, 'type': 'Stock In', 'reason': 'Inventory Received from $sName',
             'timestamp': now, 'user': widget.username,
           });
         }
@@ -514,12 +538,33 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     if (query.docs.isEmpty) { _showError('Product not found!'); return; }
     final doc = query.docs.first; final data = doc.data();
     if (data['supplier'] != selectedSupplierName) { _showError('Product belongs to ${data['supplier']}'); return; }
-    _addBatchItem(doc.id, data['productName'], (data['barcodeNo'] ?? '-').toString(), data['imageUrl']);
+    _addBatchItem(
+      doc.id,
+      data['productName'],
+      (data['barcodeNo'] ?? '-').toString(),
+      data['imageUrl'],
+      data['unitsPerCarton'] ?? 1,
+    );
+
   }
 }
 
 class StockItem {
   String productId, productName, barcodeNo, supplierName, supplierId;
-  String? imageUrl; int quantity; DateTime expiryDate;
-  StockItem({required this.productId, required this.productName, required this.barcodeNo, required this.supplierName, required this.supplierId, this.imageUrl, required this.quantity, required this.expiryDate});
+  String? imageUrl;
+  int quantity;
+  int unitsPerCarton; // NEW: units per carton
+  DateTime expiryDate;
+  StockItem({
+    required this.productId,
+    required this.productName,
+    required this.barcodeNo,
+    required this.supplierName,
+    required this.supplierId,
+    this.imageUrl,
+    required this.quantity,
+    required this.unitsPerCarton, // NEW
+    required this.expiryDate});
+
+  int get totalUnits => quantity * unitsPerCarton; // NEW: total units
 }
