@@ -553,7 +553,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 }
 
-// --- ITEM PRODUK LIST ---
 class _ProductListItem extends StatelessWidget {
   final ProductLocalState product;
   final Function(int) onQtyChanged;
@@ -562,12 +561,11 @@ class _ProductListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const Color primaryBlue = Color(0xFF203288);
-    // [LOGIC UI] Kalau stok 0 (sebab expired), disable butang tambah
     final bool isOutOfStock = product.currentStock <= 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Reduced horizontal padding
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -575,46 +573,75 @@ class _ProductListItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _buildProductImage(product.imageUrl, size: 55, primaryColor: primaryBlue),
-          const SizedBox(width: 15),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              if(product.isExpiringToday)
-                Container(
-                  margin: const EdgeInsets.only(left: 5),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                  child: const Text("Exp Today", style: TextStyle(fontSize: 9, color: Colors.orange, fontWeight: FontWeight.bold)),
-                ),
-              if(isOutOfStock)
-                Container(
-                  margin: const EdgeInsets.only(left: 5),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                  child: const Text("Expired/No Stock", style: TextStyle(fontSize: 9, color: Colors.red, fontWeight: FontWeight.bold)),
-                ),
-            ]),
-            const SizedBox(height: 4),
-            Row(children: [
-              Text("Stock: ${product.currentStock}", style: TextStyle(fontSize: 11, color: isOutOfStock ? Colors.red : Colors.grey.shade600, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              Text("RM ${product.price.toStringAsFixed(2)}", style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w900)),
-            ]),
-          ])),
-          Row(children: [
-            IconButton(
-                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 24),
-                onPressed: () => onQtyChanged(max(0, product.soldQty - 1))
+          _buildProductImage(product.imageUrl, size: 50, primaryColor: primaryBlue),
+          const SizedBox(width: 10), // Reduced gap
+
+          // Use Expanded to ensure the text section takes up only available middle space
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap( // Use Wrap instead of Row to prevent "Exp Today" from overflowing
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
+                    children: [
+                      Text(
+                          product.name,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis
+                      ),
+                      if(product.isExpiringToday)
+                        _buildBadge("Exp Today", Colors.orange),
+                      if(isOutOfStock)
+                        _buildBadge("Expired", Colors.red),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text("Stk: ${product.currentStock}", style: TextStyle(fontSize: 10, color: isOutOfStock ? Colors.red : Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      Text("RM ${product.price.toStringAsFixed(2)}", style: const TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.w900)),
+                    ],
+                  ),
+                ]
             ),
-            Container(width: 30, alignment: Alignment.center, child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: product.soldQty > 0 ? primaryBlue : Colors.black))),
-            IconButton(
-                icon: Icon(Icons.add_circle_outline, color: isOutOfStock ? Colors.grey : Colors.green, size: 24),
-                onPressed: isOutOfStock ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
-            ),
-          ]),
+          ),
+
+          // Control section with constrained width
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                  constraints: const BoxConstraints(), // Removes default padding
+                  padding: const EdgeInsets.all(4),
+                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
+                  onPressed: () => onQtyChanged(max(0, product.soldQty - 1))
+              ),
+              Container(
+                  width: 28,
+                  alignment: Alignment.center,
+                  child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: product.soldQty > 0 ? primaryBlue : Colors.black))
+              ),
+              IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                  icon: Icon(Icons.add_circle_outline, color: isOutOfStock ? Colors.grey : Colors.green, size: 22),
+                  onPressed: isOutOfStock ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+      child: Text(text, style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.bold)),
     );
   }
 
