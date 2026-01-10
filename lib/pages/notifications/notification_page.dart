@@ -70,6 +70,7 @@ class _NotificationPageState extends State<NotificationPage>
         return Tab(
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center, // Centerkan content
             children: [
               Text(label),
               if (hasUnread) ...[
@@ -628,9 +629,12 @@ class _NotificationPageState extends State<NotificationPage>
         ),
         title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
         centerTitle: true,
+        // ✅ FIX 1: TUKAR KE SCROLLABLE TAB BAR
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: false,
+          isScrollable: true, // INI YANG PENTING UNTUK SKRIN KECIL
+          padding: EdgeInsets.zero,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 16), // Jarak selesa
           indicatorSize: TabBarIndicatorSize.label,
           labelColor: primaryColor,
           unselectedLabelColor: Colors.grey,

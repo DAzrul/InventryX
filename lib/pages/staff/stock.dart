@@ -449,6 +449,7 @@ class _StockPageState extends State<StockPage> {
               child: ListView(
                 padding: const EdgeInsets.all(24),
                 children: [
+                  // --- HEADER: IMAGE & NAME ---
                   Row(children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(15),
@@ -462,18 +463,29 @@ class _StockPageState extends State<StockPage> {
                       Text("SKU/Barcode: ${data['barcodeNo'] ?? '-'}", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
                     ]))
                   ]),
+
                   const SizedBox(height: 30),
+
+                  // --- BARIS 1: STATUS & PRICE ---
                   Row(children: [
                     _infoBox("Status", stock <= reorderPoint ? "Low Stock" : "Healthy", stock <= reorderPoint ? Colors.orange : Colors.green),
                     const SizedBox(width: 10),
                     _infoBox("Price", "RM ${price.toStringAsFixed(2)}", primaryBlue),
-                    const SizedBox(width: 10),
+                  ]),
+
+                  const SizedBox(height: 12), // Jarak antara baris atas dan bawah
+
+                  // --- BARIS 2: SUPPLIER (HORIZONTAL PENUH) ---
+                  // Kita letak dalam Row supaya Expanded dalam _infoBox berfungsi memenuhkan lebar
+                  Row(children: [
                     _infoBox("Supplier", data['supplier'] ?? 'N/A', Colors.grey.shade700),
                   ]),
+
                   const SizedBox(height: 35),
+
                   const Text("Active Stock Batches", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                   const SizedBox(height: 15),
-                  // Panggil fungsi batch dengan design baru
+
                   _buildBatchStream(productId, data['unit'] ?? 'pcs'),
                 ],
               ),
