@@ -8,14 +8,18 @@ import 'user_list_page.dart';
 import 'admin_features/product_list_page.dart';
 import 'admin_features/supplier_list_page.dart';
 
-// [PENTING] Pastikan anda sudah create file cmd_page.dart
+// [PENTING] Pastikan file ni wujud, kalau tak error
 import 'cmd_page.dart';
 
 class AdminDashboardPage extends StatelessWidget {
   final String loggedInUsername;
   final String userId;
 
-  const AdminDashboardPage({super.key, required this.loggedInUsername, required this.userId});
+  const AdminDashboardPage({
+    super.key,
+    required this.loggedInUsername,
+    required this.userId
+  });
 
   final Color primaryBlue = const Color(0xFF233E99);
 
@@ -38,9 +42,15 @@ class AdminDashboardPage extends StatelessWidget {
                   const SizedBox(height: 20),
 
                   // --- SECTION 1: PENDAFTARAN UTAMA ---
-                  const Text("Registration Management", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))),
+                  const Text(
+                      "Registration Management",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))
+                  ),
                   const SizedBox(height: 5),
-                  Text("Manage access and master data", style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  Text(
+                      "Manage access and master data",
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600)
+                  ),
 
                   const SizedBox(height: 20),
 
@@ -68,10 +78,46 @@ class AdminDashboardPage extends StatelessWidget {
                     page: const SupplierListPage(),
                   ),
 
+                  // --- [RESTRICTED ACCESS START] ---
+                  // Button ni hanya muncul kalau email user = datuazrul04@gmail.com
+                  const SizedBox(height: 15),
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || !snapshot.data!.exists) {
+                        return const SizedBox.shrink();
+                      }
+
+                      var data = snapshot.data!.data() as Map<String, dynamic>;
+                      String email = data['email'] ?? '';
+                      String username = data['username'] ?? '';
+
+                      // THE CHECK: Kalau email match atau username match, baru tunjuk button
+                      bool isTheBoss = email == 'datuazrul04@gmail.com' || username == 'D.AZRUL';
+
+                      if (isTheBoss) {
+                        return _buildLargeButton(
+                          context,
+                          title: "CMD Control",
+                          subtitle: "Simulation Data (Datu Only)",
+                          icon: Icons.terminal_rounded, // Icon stylo sikit
+                          page: const CmdPage(),
+                        );
+                      }
+
+                      // Kalau bukan boss, return kosong (hidden)
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                  // --- [RESTRICTED ACCESS END] ---
+
                   const SizedBox(height: 35),
 
                   // --- SECTION 2: STATISTIK ---
-                  const Text("Database Overview", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))),
+                  const Text(
+                      "Database Overview",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))
+                  ),
                   const SizedBox(height: 15),
 
                   _buildActivityTile("Total Users", "users", Icons.person_search_rounded, Colors.blue),
@@ -107,12 +153,21 @@ class AdminDashboardPage extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 5))],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5)
+              )
+            ],
           ),
           child: Row(
             children: [
               Container(
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: primaryBlue.withValues(alpha: 0.1), width: 2)
+                ),
                 child: CircleAvatar(
                   radius: 24, backgroundColor: Colors.grey.shade100,
                   backgroundImage: img != null && img.isNotEmpty ? CachedNetworkImageProvider(img) : null,
@@ -124,8 +179,15 @@ class AdminDashboardPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(DateFormat('EEEE, d MMM').format(DateTime.now()), style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
-                    Text("Hi, $name", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)), overflow: TextOverflow.ellipsis),
+                    Text(
+                        DateFormat('EEEE, d MMM').format(DateTime.now()),
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)
+                    ),
+                    Text(
+                        "Hi, $name",
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
+                        overflow: TextOverflow.ellipsis
+                    ),
                   ],
                 ),
               ),
@@ -144,7 +206,9 @@ class AdminDashboardPage extends StatelessWidget {
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           color: primaryBlue, borderRadius: BorderRadius.circular(22),
-          boxShadow: [BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))],
+          boxShadow: [
+            BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))
+          ],
         ),
         child: Row(
           children: [
@@ -175,10 +239,20 @@ class AdminDashboardPage extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.only(bottom: 15),
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+          decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
+              ]
+          ),
           child: Row(
             children: [
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
+              Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 18)
+              ),
               const SizedBox(width: 15),
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
               const Spacer(),
