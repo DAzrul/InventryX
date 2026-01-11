@@ -617,24 +617,47 @@ class _StockOutPageState extends State<StockOutPage> {
     );
   }
 
+  // ======================== [UPDATED] CLEAR PENDING SALES & UNLOCK ========================
   Future<void> _clearPendingSales() async {
     bool confirm = await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text("Clear List?"),
-          content: const Text("Do you want to discard all pending entries?"),
+          title: const Text("Clear List & Unlock?"),
+          content: const Text("This will discard all pending entries and UNLOCK daily sales for staff. Confirm?"),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("No")),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes, Clear")),
           ],
         )) ?? false;
+
     if (!confirm) return;
     setState(() => _isProcessing = true);
-    final salesQ = await _db.collection('pending_sales').get();
-    final batch = _db.batch();
-    for (var doc in salesQ.docs) batch.delete(doc.reference);
-    await batch.commit();
-    setState(() => _isProcessing = false);
+
+    try {
+      final batch = _db.batch();
+
+      // 1. Delete all pending sales (Macam biasa)
+      final salesQ = await _db.collection('pending_sales').get();
+      for (var doc in salesQ.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 2. [TAMBAHAN PENTING] Delete LOCK LOG hari ini
+      // Ini akan membolehkan DailySalesPage dibuka semula
+      final String todayDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final logRef = _db.collection('daily_sales_log').doc(todayDocId);
+      batch.delete(logRef);
+
+      await batch.commit();
+
+      if (mounted) {
+        _showAlert("Cleared & Unlocked", "Pending list cleared. Daily Sales input is now UNLOCKED for all staff.", isError: false);
+      }
+    } catch (e) {
+      _showAlert("Error", e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   // ======================== CORE LOGIC: APPLY & DEDUCT (SALES) ========================

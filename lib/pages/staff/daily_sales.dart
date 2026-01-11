@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 // --- MODEL PRODUK LOCAL ---
 class ProductLocalState {
@@ -14,8 +15,8 @@ class ProductLocalState {
   final int currentStock;
   final String category;
   final String? imageUrl;
-  final bool isExpiringToday; // Barang nak expired hari ini
-  final bool hasBatches;      // [BARU] Penanda adakah produk ini guna sistem batch
+  final bool isExpiringToday;
+  final bool hasBatches;
   int soldQty;
 
   ProductLocalState({
@@ -41,6 +42,12 @@ class DailySalesPage extends StatefulWidget {
 
 class _DailySalesPageState extends State<DailySalesPage> {
   bool _isLoading = true;
+  bool _isCheckingStatus = true; // [BARU] Status loading check firebase
+
+  // [BARU] Status Kunci
+  bool _isSalesAlreadySubmitted = false;
+  String _submittedByWho = "";
+
   List<ProductLocalState> _allProducts = [];
   List<String> _uniqueCategories = ["All"];
   String _selectedCategory = "All";
@@ -49,7 +56,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
   final Color primaryColor = const Color(0xFF203288);
 
-  // Getters
   double get _totalSalesAmount => _allProducts.fold(0, (sum, p) => sum + (p.price * p.soldQty));
   int get _totalItemsSold => _allProducts.fold(0, (sum, p) => sum + p.soldQty);
   List<ProductLocalState> get _cartItems => _allProducts.where((p) => p.soldQty > 0).toList();
@@ -57,26 +63,59 @@ class _DailySalesPageState extends State<DailySalesPage> {
   @override
   void initState() {
     super.initState();
+    // 1. Check dulu status hari ini
+    _checkTodayStatus();
+    // 2. Load produk
     _fetchAndRandomizeData();
   }
 
   // ==========================================================
-  // 1. FETCH DATA (LOGIC FIX: STRICT BATCH CHECKING)
+  // 0. CHECK TODAY'S STATUS (LOCK SYSTEM) [BARU]
+  // ==========================================================
+  Future<void> _checkTodayStatus() async {
+    try {
+      final String todayDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      final doc = await FirebaseFirestore.instance.collection('daily_sales_log').doc(todayDocId).get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _isSalesAlreadySubmitted = true;
+            _submittedByWho = data['submittedByUsername'] ?? 'Someone';
+            _isCheckingStatus = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isSalesAlreadySubmitted = false;
+            _isCheckingStatus = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error checking status: $e");
+      if (mounted) setState(() => _isCheckingStatus = false);
+    }
+  }
+
+  // ==========================================================
+  // 1. FETCH DATA
   // ==========================================================
   Future<void> _fetchAndRandomizeData() async {
-    setState(() => _isLoading = true);
+    // Jangan ubah _isLoading kepada true di sini sebab init state dah handle
     try {
       final DateTime now = DateTime.now();
-      // "Expired Hari Ini" bermaksud expired antara SEKARANG hingga ESOK PAGI
       final DateTime startOfTomorrow = DateTime(now.year, now.month, now.day + 1);
 
-      Map<String, int> validStockMap = {};   // Simpan stok yang sah
-      Set<String> productsWithBatches = {};  // Simpan ID produk yang ada batch (walaupun expired)
-      Set<String> expiringTodayIds = {};     // Simpan ID yang expired hari ini
-      Map<String, int> pendingSalesMap = {}; // Simpan cart lama
+      Map<String, int> validStockMap = {};
+      Set<String> productsWithBatches = {};
+      Set<String> expiringTodayIds = {};
+      Map<String, int> pendingSalesMap = {};
 
-      // A. Tarik SEMUA Batch yang ada stok (> 0) tanpa filter tarikh expiry di query
-      //    Kita akan filter tarikh dalam kod supaya kita tahu batch tu wujud.
+      // A. Batch Logic
       try {
         final batchSnapshot = await FirebaseFirestore.instance
             .collection('batches')
@@ -88,24 +127,15 @@ class _DailySalesPageState extends State<DailySalesPage> {
           int qty = int.tryParse(doc['currentQuantity'].toString()) ?? 0;
           Timestamp? expTs = doc['expiryDate'];
 
-          // Tanda bahawa produk ini menggunakan sistem batch
           productsWithBatches.add(pid);
 
           if (expTs != null) {
             DateTime expiryDate = expTs.toDate();
-
             if (expiryDate.isAfter(now)) {
-              // Batch BELUM Expired -> Masuk dalam stok valid
               validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
-
-              // Check kalau expired hari ini (Sebelum esok pagi)
               if (expiryDate.isBefore(startOfTomorrow)) {
                 expiringTodayIds.add(pid);
               }
-            } else {
-              // Batch SUDAH Expired -> JANGAN TAMBAH KE validStockMap
-              // Tapi sebab kita dah add ke 'productsWithBatches', sistem tahu stok dia patut 0.
-              debugPrint("Skipped Expired Batch for $pid: $expiryDate");
             }
           }
         }
@@ -113,7 +143,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
         debugPrint("Batch Index Error: $e");
       }
 
-      // B. Tarik Pending Sales
+      // B. Pending Sales Logic
       try {
         final pendingSnapshot = await FirebaseFirestore.instance.collection('pending_sales').get();
         for (var doc in pendingSnapshot.docs) {
@@ -125,7 +155,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
         debugPrint("Pending Sales Error: $e");
       }
 
-      // C. Tarik Produk Utama & Gabung Data
+      // C. Product Logic
       final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
       List<ProductLocalState> tempList = [];
       Set<String> categoriesSet = {"All"};
@@ -139,18 +169,10 @@ class _DailySalesPageState extends State<DailySalesPage> {
         double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
         int productMasterStock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
-        // [LOGIC PENENTU STOK]
         int finalStock;
-
         if (productsWithBatches.contains(pid)) {
-          // KES 1: Produk ada batch (Active atau Expired).
-          // Kita MESTI guna stok dari batch valid.
-          // Kalau semua batch expired, validStockMap[pid] akan jadi 0 (atau null).
-          // Kita ABAIKAN master stock (14 tu) sebab ia tak update.
           finalStock = validStockMap[pid] ?? 0;
         } else {
-          // KES 2: Produk tak ada batch langsung (Legacy item).
-          // Baru kita guna master stock.
           finalStock = productMasterStock;
         }
 
@@ -161,7 +183,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
           id: pid,
           name: data['productName'] ?? 'Unknown',
           sku: data['barcodeNo']?.toString() ?? data['sku'] ?? '-',
-          currentStock: finalStock, // Stok yang dah ditapis
+          currentStock: finalStock,
           category: cat,
           price: price,
           imageUrl: data['imageUrl'] ?? data['image'],
@@ -185,19 +207,21 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 2. AUTO GENERATE SALES (SKIP BARANG EXPIRED / ZERO STOCK)
+  // 2. AUTO GENERATE SALES
   // ==========================================================
   void _randomizeAllSales() {
+    // [BARU] Check Lock
+    if (_isSalesAlreadySubmitted) {
+      _showAlreadySubmittedDialog();
+      return;
+    }
+
     final Random random = Random();
     int itemsUpdated = 0;
 
     setState(() {
       for (var product in _allProducts) {
-        // Syarat:
-        // 1. Stok mesti lebih dari 0 (Barang expired akan jadi 0 stok automatik dlm logic atas)
-        // 2. Bukan barang yang expired hari ini (!product.isExpiringToday)
         if (product.currentStock > 0 && product.currentStock > product.soldQty && !product.isExpiringToday) {
-
           if (random.nextDouble() < 0.5) {
             int remaining = product.currentStock - product.soldQty;
             int maxToAdd = remaining > 5 ? 5 : remaining;
@@ -211,7 +235,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(itemsUpdated > 0 ? "Sales Generated! (Skipped expired items)" : "No eligible stock found."),
+          content: Text(itemsUpdated > 0 ? "Sales Generated!" : "No eligible stock found."),
           backgroundColor: itemsUpdated > 0 ? primaryColor : Colors.orange,
           duration: const Duration(milliseconds: 1500),
         )
@@ -222,6 +246,12 @@ class _DailySalesPageState extends State<DailySalesPage> {
   // 3. BARCODE SCANNER
   // ==========================================================
   void _openBarcodeScanner() {
+    // [BARU] Check Lock
+    if (_isSalesAlreadySubmitted) {
+      _showAlreadySubmittedDialog();
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -261,7 +291,6 @@ class _DailySalesPageState extends State<DailySalesPage> {
   void _processScannedCode(String code) {
     int index = _allProducts.indexWhere((p) => p.sku == code);
     if (index != -1) {
-      // Check stok sebelum tambah
       if (_allProducts[index].currentStock <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Item Expired or Out of Stock!"), backgroundColor: Colors.red)
@@ -291,9 +320,15 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 4. SAVE TO FIREBASE
+  // 4. SAVE TO FIREBASE (WITH LOCK LOGIC)
   // ==========================================================
   Future<void> _saveToFirebase() async {
+    // 1. Final Check: Is Locked?
+    if (_isSalesAlreadySubmitted) {
+      _showAlreadySubmittedDialog();
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -305,13 +340,18 @@ class _DailySalesPageState extends State<DailySalesPage> {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
 
     try {
+      // 2. Fetch current username first
+      String username = "Staff";
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if(userDoc.exists) username = userDoc.data()?['username'] ?? "Staff";
+
       final batchWrite = FirebaseFirestore.instance.batch();
-      final pendingRef = FirebaseFirestore.instance.collection('pending_sales');
       final now = Timestamp.now();
 
+      // A. Save Pending Sales
+      final pendingRef = FirebaseFirestore.instance.collection('pending_sales');
       for (var item in _cartItems) {
         var docRef = pendingRef.doc(item.id);
-
         batchWrite.set(docRef, {
           'productID': item.id,
           'userID': user.uid,
@@ -325,11 +365,31 @@ class _DailySalesPageState extends State<DailySalesPage> {
         }, SetOptions(merge: true));
       }
 
+      // B. Create LOCK Record (One Time Per Day)
+      final String todayDocId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final logRef = FirebaseFirestore.instance.collection('daily_sales_log').doc(todayDocId);
+
+      batchWrite.set(logRef, {
+        'dateId': todayDocId,
+        'submittedAt': now,
+        'submittedByUid': user.uid,
+        'submittedByUsername': username,
+        'totalItems': _totalItemsSold,
+        'totalValue': _totalSalesAmount,
+      });
+
       await batchWrite.commit();
 
       if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sales list updated in Stock Out!"), backgroundColor: Colors.green));
+        Navigator.pop(context); // Close loading
+
+        // Update Local State to Locked
+        setState(() {
+          _isSalesAlreadySubmitted = true;
+          _submittedByWho = username;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sales Submitted & Locked for Today!"), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
@@ -339,11 +399,27 @@ class _DailySalesPageState extends State<DailySalesPage> {
     }
   }
 
+  void _showAlreadySubmittedDialog() {
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Access Locked"),
+          content: Text("Daily sales for today have already been submitted by $_submittedByWho.\n\nOnly one submission is allowed per day."),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))
+          ],
+        )
+    );
+  }
+
   // ==========================================================
   // UI UTAMA
   // ==========================================================
   @override
   Widget build(BuildContext context) {
+    // Logic untuk disable input
+    final bool isLocked = _isSalesAlreadySubmitted;
+
     final filteredItems = _allProducts.where((p) {
       final matchesCat = _selectedCategory == "All" || p.category == _selectedCategory;
       final matchesSearch = p.name.toLowerCase().contains(_searchQuery.toLowerCase()) || p.sku.contains(_searchQuery);
@@ -359,29 +435,43 @@ class _DailySalesPageState extends State<DailySalesPage> {
         centerTitle: true,
         actions: [
           IconButton(
-            onPressed: _randomizeAllSales,
-            tooltip: "Auto Generate Sales",
-            icon: Icon(Icons.auto_fix_high_rounded, color: Colors.orange.shade800),
+            onPressed: isLocked ? _showAlreadySubmittedDialog : _randomizeAllSales,
+            icon: Icon(Icons.auto_fix_high_rounded, color: isLocked ? Colors.grey : Colors.orange.shade800),
           ),
           IconButton(
-            onPressed: _openBarcodeScanner,
+            onPressed: isLocked ? _showAlreadySubmittedDialog : _openBarcodeScanner,
             icon: Container(
               padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(Icons.qr_code_scanner_rounded, color: primaryColor, size: 20),
+              decoration: BoxDecoration(color: (isLocked ? Colors.grey : primaryColor).withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(Icons.qr_code_scanner_rounded, color: isLocked ? Colors.grey : primaryColor, size: 20),
             ),
           ),
           const SizedBox(width: 8),
         ],
       ),
 
-      body: _isLoading
+      body: (_isLoading || _isCheckingStatus)
           ? const Center(child: CircularProgressIndicator())
           : Stack(
         children: [
           // LAYER 1: Main Content
           Column(
             children: [
+              if (isLocked)
+                Container(
+                  width: double.infinity,
+                  color: Colors.redAccent.withOpacity(0.1),
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.lock, color: Colors.red, size: 16),
+                      const SizedBox(width: 8),
+                      Text("Locked: Submitted by $_submittedByWho", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+
               _buildSearchSection(),
               _buildCategorySection(),
               Expanded(
@@ -391,10 +481,17 @@ class _DailySalesPageState extends State<DailySalesPage> {
                   itemCount: filteredItems.length,
                   itemBuilder: (context, index) => _ProductListItem(
                     product: filteredItems[index],
-                    onQtyChanged: (val) => setState(() {
-                      int idx = _allProducts.indexWhere((p) => p.id == filteredItems[index].id);
-                      _allProducts[idx].soldQty = val;
-                    }),
+                    isLocked: isLocked, // Pass lock status
+                    onQtyChanged: (val) {
+                      if (isLocked) {
+                        _showAlreadySubmittedDialog();
+                        return;
+                      }
+                      setState(() {
+                        int idx = _allProducts.indexWhere((p) => p.id == filteredItems[index].id);
+                        _allProducts[idx].soldQty = val;
+                      });
+                    },
                   ),
                 ),
               ),
@@ -402,7 +499,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
           ),
 
           // LAYER 2: Draggable Bottom Sheet
-          _buildDraggableBottomSummary(),
+          _buildDraggableBottomSummary(isLocked),
         ],
       ),
     );
@@ -443,7 +540,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
     );
   }
 
-  Widget _buildDraggableBottomSummary() {
+  Widget _buildDraggableBottomSummary(bool isLocked) {
     return DraggableScrollableSheet(
       initialChildSize: 0.18,
       minChildSize: 0.18,
@@ -484,14 +581,14 @@ class _DailySalesPageState extends State<DailySalesPage> {
                             ],
                           ),
                           ElevatedButton(
-                            onPressed: _saveToFirebase,
+                            onPressed: isLocked ? null : _saveToFirebase,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
+                              backgroundColor: isLocked ? Colors.grey : primaryColor,
                               padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                              elevation: 5,
+                              elevation: isLocked ? 0 : 5,
                             ),
-                            child: const Text("Update List", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                            child: Text(isLocked ? "LOCKED" : "Update List", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                           ),
                         ],
                       ),
@@ -516,8 +613,9 @@ class _DailySalesPageState extends State<DailySalesPage> {
                           child: TextField(
                               controller: _remarksController,
                               maxLines: 2,
+                              enabled: !isLocked, // Disable remarks if locked
                               decoration: InputDecoration(
-                                  hintText: "Add remarks (optional)...",
+                                  hintText: isLocked ? "Submission locked." : "Add remarks (optional)...",
                                   filled: true, fillColor: Colors.grey.shade50,
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none)
                               )
@@ -555,8 +653,9 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
 class _ProductListItem extends StatelessWidget {
   final ProductLocalState product;
+  final bool isLocked;
   final Function(int) onQtyChanged;
-  const _ProductListItem({required this.product, required this.onQtyChanged});
+  const _ProductListItem({required this.product, required this.isLocked, required this.onQtyChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -565,29 +664,28 @@ class _ProductListItem extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Reduced horizontal padding
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
-          color: Colors.white,
+          color: isLocked ? Colors.grey.shade50 : Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
       ),
       child: Row(
         children: [
           _buildProductImage(product.imageUrl, size: 50, primaryColor: primaryBlue),
-          const SizedBox(width: 10), // Reduced gap
+          const SizedBox(width: 10),
 
-          // Use Expanded to ensure the text section takes up only available middle space
           Expanded(
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap( // Use Wrap instead of Row to prevent "Exp Today" from overflowing
+                  Wrap(
                     crossAxisAlignment: WrapCrossAlignment.center,
                     spacing: 4,
                     children: [
                       Text(
                           product.name,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: isLocked ? Colors.grey : Colors.black),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis
                       ),
@@ -609,26 +707,26 @@ class _ProductListItem extends StatelessWidget {
             ),
           ),
 
-          // Control section with constrained width
+          // Control section
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                  constraints: const BoxConstraints(), // Removes default padding
+                  constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(4),
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
-                  onPressed: () => onQtyChanged(max(0, product.soldQty - 1))
+                  icon: Icon(Icons.remove_circle_outline, color: isLocked ? Colors.grey : Colors.redAccent, size: 22),
+                  onPressed: isLocked ? null : () => onQtyChanged(max(0, product.soldQty - 1))
               ),
               Container(
                   width: 28,
                   alignment: Alignment.center,
-                  child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: product.soldQty > 0 ? primaryBlue : Colors.black))
+                  child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: (product.soldQty > 0 && !isLocked) ? primaryBlue : Colors.grey))
               ),
               IconButton(
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(4),
-                  icon: Icon(Icons.add_circle_outline, color: isOutOfStock ? Colors.grey : Colors.green, size: 22),
-                  onPressed: isOutOfStock ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
+                  icon: Icon(Icons.add_circle_outline, color: (isOutOfStock || isLocked) ? Colors.grey : Colors.green, size: 22),
+                  onPressed: (isOutOfStock || isLocked) ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
               ),
             ],
           ),
