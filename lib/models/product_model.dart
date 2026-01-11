@@ -6,6 +6,7 @@ class ProductModel {
   final String subCategory;
   final String imageUrl;
   final double price;
+  final int unitsPerCarton;
 
   ProductModel({
     required this.id,
@@ -13,7 +14,8 @@ class ProductModel {
     required this.category,
     required this.subCategory,
     required this.imageUrl,
-    required this.price
+    required this.price,
+    required this.unitsPerCarton,
   });
 
   factory ProductModel.fromMap(String id, Map<String, dynamic> map) {
@@ -23,7 +25,10 @@ class ProductModel {
       category: map['category'] ?? 'General',
       subCategory: map['subCategory'] ?? 'General',
       imageUrl: map['imageUrl'] ?? '',
-      price: (map['price'] is int) ? (map['price'] as int).toDouble() : (map['price'] ?? 0.0),
+      // Safely convert to double
+      price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      // Fix: Changed 'data' to 'map' to match parameter name
+      unitsPerCarton: (map['unitsPerCarton'] as num?)?.toInt() ?? 1,
     );
   }
 }
