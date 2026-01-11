@@ -19,7 +19,6 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
   DateTime? customStartDate;
   DateTime? customEndDate;
 
-  // --- LOGIC: DATE PICKERS ---
   Future<void> _selectDateRange() async {
     DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -31,9 +30,19 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(primary: primaryBlue),
+            useMaterial3: true,
+            colorScheme: ColorScheme.light(
+              primary: primaryBlue,
+              onPrimary: Colors.white,
+              onSurface: Colors.black87,
+            ),
           ),
-          child: child!,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 30),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
+            child: child!,
+          ),
         );
       },
     );
@@ -47,47 +56,26 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
     }
   }
 
-  Future<void> _selectMonth() async {
-    DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      helpText: "SELECT MONTH",
-      initialDatePickerMode: DatePickerMode.year,
-    );
-
-    if (picked != null) {
-      setState(() {
-        customStartDate = DateTime(picked.year, picked.month, 1);
-        customEndDate = DateTime(picked.year, picked.month + 1, 0, 23, 59, 59);
-        selectedFilter = "Monthly";
-      });
-    }
-  }
-
-  // --- LOGIC: FIREBASE QUERY (Matches your 'sales' collection) ---
   Query _getSalesQuery() {
     CollectionReference salesRef = FirebaseFirestore.instance.collection('sales');
     DateTime now = DateTime.now();
-    DateTime start;
-    DateTime end = now;
+    DateTime start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    if (selectedFilter == "Today") {
-      start = DateTime(now.year, now.month, now.day);
-      end = DateTime(now.year, now.month, now.day, 23, 59, 59);
-    } else if (selectedFilter == "Last 7 Days") {
-      start = now.subtract(const Duration(days: 7));
+    if (selectedFilter == "Last 7 Days") {
+      DateTime sevenDaysAgo = now.subtract(const Duration(days: 7));
+      start = DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day, 0, 0, 0);
     } else if (selectedFilter == "Last 30 Days") {
-      start = now.subtract(const Duration(days: 30));
-    } else {
-      start = customStartDate ?? now;
-      end = customEndDate ?? now;
+      DateTime thirtyDaysAgo = now.subtract(const Duration(days: 30));
+      start = DateTime(thirtyDaysAgo.year, thirtyDaysAgo.month, thirtyDaysAgo.day, 0, 0, 0);
+    } else if (selectedFilter == "Custom") {
+      start = customStartDate ?? start;
+      end = customEndDate ?? end;
     }
 
     return salesRef
-        .where('status', isEqualTo: 'completed') // Matches 'status' field
-        .where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start)) // Matches 'saleDate' field
+        .where('status', isEqualTo: 'completed')
+        .where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('saleDate', isLessThanOrEqualTo: Timestamp.fromDate(end))
         .orderBy('saleDate', descending: true);
   }
@@ -122,14 +110,11 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
                 final docs = snapshot.data!.docs;
                 if (docs.isEmpty) return _buildEmptyState();
 
-                // Aggregation logic for Summary Header & Daily Cards
                 double totalRevenue = 0;
                 Map<String, Map<String, dynamic>> dailySummary = {};
 
                 for (var doc in docs) {
                   final data = doc.data() as Map<String, dynamic>;
-
-                  // Extracting fields exactly as they appear in your screenshot
                   DateTime date = (data['saleDate'] as Timestamp).toDate();
                   String dateKey = DateFormat('dd/MM/yyyy').format(date);
                   double amount = (data['totalAmount'] ?? 0).toDouble();
@@ -160,7 +145,6 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
 
                 return ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
                   children: [
                     _buildOverviewCard(totalRevenue, docs.length),
                     const Row(
@@ -199,12 +183,11 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
                 _buildFilterChip("Today", Icons.today),
                 _buildFilterChip("Last 7 Days", Icons.date_range),
                 _buildFilterChip("Last 30 Days", Icons.calendar_view_month),
-                _buildFilterChip("Monthly", Icons.event_note, isAction: true),
                 _buildFilterChip("Custom", Icons.tune, isAction: true),
               ],
             ),
           ),
-          if (selectedFilter == "Custom" || selectedFilter == "Monthly")
+          if (selectedFilter == "Custom" && customStartDate != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Container(
@@ -226,7 +209,6 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
     return GestureDetector(
       onTap: () {
         if (label == "Custom") _selectDateRange();
-        else if (label == "Monthly") _selectMonth();
         else {
           setState(() {
             selectedFilter = label;
@@ -285,15 +267,7 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () {
-          // Navigation to details page passing the selected date
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => SalesDetailsPage(selectedDate: item['date']),
-            ),
-          );
-        },
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SalesDetailsPage(selectedDate: item['date']))),
         borderRadius: BorderRadius.circular(20),
         child: _SummaryCard(
           date: item['date'],
