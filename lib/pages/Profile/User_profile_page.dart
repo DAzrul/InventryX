@@ -154,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 // [BARU] Versi App di sini
                 const SizedBox(height: 20),
                 Text(
-                  "App Version 2.1.15", // <--- Tukar nombor ni bila kau update app nanti
+                  "App Version 2.1.19", // <--- Tukar nombor ni bila kau update app nanti
                   style: TextStyle(
                     color: Colors.grey[400],
                     fontSize: 12,

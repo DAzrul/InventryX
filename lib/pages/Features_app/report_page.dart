@@ -36,27 +36,67 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 
   // --- FILTER STATE ---
   String _selectedTimeframe = 'All Time';
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-
-    // Refresh UI bila tukar tab
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
   }
 
-  // --- HELPER: DAPATKAN TARIKH MULA ---
-  DateTime? _getStartDate() {
-    DateTime now = DateTime.now();
-    if (_selectedTimeframe == 'This Month') {
-      return DateTime(now.year, now.month, 1);
-    } else if (_selectedTimeframe == 'This Year') {
-      return DateTime(now.year, 1, 1);
+  // --- LOGIC: DATE PICKER ---
+  Future<void> _pickDateRange() async {
+    DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      currentDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(primary: primaryBlue, onPrimary: Colors.white),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start;
+        _customEndDate = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+        _selectedTimeframe = 'Custom Range';
+      });
+    } else {
+      setState(() => _selectedTimeframe = 'All Time');
     }
-    return null; // All Time
+  }
+
+  // --- HELPER: GET DATE RANGE ---
+  Map<String, Timestamp?> _getDateRange() {
+    DateTime now = DateTime.now();
+    DateTime? start;
+    DateTime? end;
+
+    if (_selectedTimeframe == 'This Month') {
+      start = DateTime(now.year, now.month, 1);
+      end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    } else if (_selectedTimeframe == 'This Year') {
+      start = DateTime(now.year, 1, 1);
+      end = DateTime(now.year, 12, 31, 23, 59, 59);
+    } else if (_selectedTimeframe == 'Custom Range') {
+      start = _customStartDate;
+      end = _customEndDate;
+    }
+
+    return {
+      'start': start != null ? Timestamp.fromDate(start) : null,
+      'end': end != null ? Timestamp.fromDate(end) : null
+    };
   }
 
   // ===========================================================================
@@ -72,13 +112,16 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       final String generatedBy = widget.loggedInUsername ?? "Administrator";
       final String generateDate = DateFormat('dd MMMM yyyy, HH:mm').format(DateTime.now());
 
-      // Filter Logic
-      DateTime? startDate = _getStartDate();
-      Timestamp? startTimestamp = startDate != null ? Timestamp.fromDate(startDate) : null;
+      final dateRange = _getDateRange();
+      Timestamp? startTimestamp = dateRange['start'];
+      Timestamp? endTimestamp = dateRange['end'];
 
       String reportTitle = "";
       String summaryText = "";
       String timeframeLabel = "Period: $_selectedTimeframe";
+      if (_selectedTimeframe == 'Custom Range' && _customStartDate != null && _customEndDate != null) {
+        timeframeLabel = "${DateFormat('dd/MM/yy').format(_customStartDate!)} - ${DateFormat('dd/MM/yy').format(_customEndDate!)}";
+      }
 
       List<String> tableHeaders = [];
       List<List<dynamic>> tableData = [];
@@ -87,20 +130,24 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       final PdfColor brandColor = PdfColors.blue900;
       final PdfColor accentColor = PdfColors.grey200;
 
-      // --- LOGIC DATA FETCHING ---
-
       if (tabIndex == 0) {
-        // --- 1. INVENTORY (SNAPSHOT) ---
-        reportTitle = "INVENTORY ASSET CATALOG";
-        timeframeLabel = "Period: Current Snapshot";
-        final snap = await _db.collection('products').orderBy('productName').get();
+        // --- 1. INVENTORY ---
+        reportTitle = "CURRENT STOCK REPORT";
+        timeframeLabel = "Snapshot: Today (Active)";
+
+        Query query = _db.collection('products').orderBy('productName');
+        if (startTimestamp != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: startTimestamp);
+        if (endTimestamp != null) query = query.where('updatedAt', isLessThanOrEqualTo: endTimestamp);
+
+        final snap = await query.get();
 
         double totalVal = 0;
         int lowStockCount = 0;
 
         for (var d in snap.docs) {
-          int s = int.tryParse(d['currentStock'].toString()) ?? 0;
-          double p = double.tryParse(d['price'].toString()) ?? 0;
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          int s = int.tryParse(data['currentStock'].toString()) ?? 0;
+          double p = double.tryParse(data['price'].toString()) ?? 0;
           double rowTot = s * p;
           totalVal += rowTot;
           if (s <= 10) lowStockCount++;
@@ -114,7 +161,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                     borderRadius: pw.BorderRadius.circular(6),
                   ),
                   child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                    pw.Text(d['productName']?.toString().toUpperCase() ?? '-', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.blue900), maxLines: 2, overflow: pw.TextOverflow.clip),
+                    pw.Text(data['productName']?.toString().toUpperCase() ?? '-', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.blue900), maxLines: 2, overflow: pw.TextOverflow.clip),
                     pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                       pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
                         pw.Text("STOCK", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
@@ -124,60 +171,58 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                         pw.Text("VALUE", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
                         pw.Text("RM ${rowTot.toStringAsFixed(0)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.green700)),
                       ]),
-                    ]
-                    )
-                  ]
-                  )
+                    ])
+                  ])
               )
           );
         }
-        summaryText = "Current inventory snapshot. Total valuation is RM ${totalVal.toStringAsFixed(2)}. Note: Inventory reports reflect real-time status.";
+        summaryText = "Inventory Valuation Report. Total Asset Value: RM ${totalVal.toStringAsFixed(2)}. Critical items: $lowStockCount.";
 
       } else if (tabIndex == 1) {
-        // --- 2. FORECAST (FILTERED) ---
-        reportTitle = "DEMAND PREDICTION ANALYSIS";
-        tableHeaders = ['Forecast Date', 'Product Item', 'Projected Demand', 'Growth Status'];
+        // --- 2. FORECAST ---
+        reportTitle = "FUTURE SALES FORECAST";
+        tableHeaders = ['Date', 'Product', 'Expected Sales', 'Status'];
 
-        final snap = await _db.collection('forecasts').orderBy('predictedDemand', descending: true).get();
+        Query query = _db.collection('forecasts').orderBy('predictedDemand', descending: true);
+        final snap = await query.get();
 
         for (var d in snap.docs) {
-          final data = d.data();
-          if (data['forecastDate'] != null && startTimestamp != null) {
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          if (data['forecastDate'] != null) {
             Timestamp t = data['forecastDate'];
-            if (t.compareTo(startTimestamp) < 0) continue;
+            if (startTimestamp != null && t.compareTo(startTimestamp) < 0) continue;
+            if (endTimestamp != null && t.compareTo(endTimestamp) > 0) continue;
           }
 
           String date = data['forecastDate'] != null ? DateFormat('yyyy-MM-dd').format((data['forecastDate'] as Timestamp).toDate()) : '-';
           double demand = double.tryParse(data['predictedDemand'].toString()) ?? 0;
-          tableData.add([date, data['productName'] ?? '-', "${demand.toInt()} Units", demand > 50 ? "HIGHER DEMAND" : "Stable"]);
+          tableData.add([date, data['productName'] ?? '-', "${demand.toInt()} Units", demand > 50 ? "High Demand" : "Normal"]);
         }
-        summaryText = "AI-driven forecast sorted by highest projected demand for $_selectedTimeframe.";
+        summaryText = "AI-driven forecast sorted by highest projected demand for selected period.";
 
       } else if (tabIndex == 2) {
-        // --- 3. RISK (SNAPSHOT) ---
-        reportTitle = "RISK ASSESSMENT LOG";
-        timeframeLabel = "Period: Current Snapshot";
-        tableHeaders = ['Product Name', 'Risk Level', 'Risk Score', 'Expiry Info'];
+        // --- 3. RISK ---
+        reportTitle = "EXPIRY & HEALTH CHECK";
+        timeframeLabel = "Snapshot: Today";
+        tableHeaders = ['Product Name', 'Risk Level', 'Days Left', 'Status'];
         final snap = await _db.collection('risk_analysis').orderBy('RiskValue', descending: true).get();
 
         for (var d in snap.docs) {
-          final data = d.data();
-          int score = int.tryParse(data['RiskValue'].toString()) ?? 0;
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
           String level = data['RiskLevel']?.toString().toUpperCase() ?? 'LOW';
           String expiryInfo = "${data['DaysToExpiry'] ?? 0} Days Left";
-          tableData.add([data['ProductName'] ?? '-', level, score.toString(), expiryInfo]);
+          tableData.add([data['ProductName'] ?? '-', level, expiryInfo, "Monitoring"]);
         }
-        summaryText = "Current risk assessment based on real-time expiry and stock data.";
+        summaryText = "Current risk assessment. Prioritize High Risk items for clearance.";
 
       } else if (tabIndex == 3) {
-        // --- 4. SALES (FILTERED - FULL VIEW) ---
+        // --- 4. SALES (FULL ACCESS) ---
         reportTitle = "SALES TRANSACTION LEDGER";
         tableHeaders = ['Transaction Date', 'Sale ID', 'Product Item', 'Revenue'];
 
         Query query = _db.collection('sales').orderBy('saleDate', descending: true);
-        if (startTimestamp != null) {
-          query = query.where('saleDate', isGreaterThanOrEqualTo: startTimestamp);
-        }
+        if (startTimestamp != null) query = query.where('saleDate', isGreaterThanOrEqualTo: startTimestamp);
+        if (endTimestamp != null) query = query.where('saleDate', isLessThanOrEqualTo: endTimestamp);
 
         final snap = await query.get();
         double totalRev = 0;
@@ -196,36 +241,28 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
             date,
             d.id.substring(0, 8).toUpperCase(),
             productName,
-            "RM ${rev.toStringAsFixed(2)}" // Admin nampak duit penuh
+            "RM ${rev.toStringAsFixed(2)}"
           ]);
         }
-        summaryText = "Sales transaction log for $_selectedTimeframe. Total revenue collected: RM ${totalRev.toStringAsFixed(2)}.";
+        summaryText = "Financial sales record. Total Revenue: RM ${totalRev.toStringAsFixed(2)}.";
       }
 
-      // --- GENERATE PDF ---
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(40),
           header: (context) => pw.Column(children: [
             pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-              pw.Text("INVENTRYX", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20, color: brandColor)),
+              pw.Text("INVENTRYX ADMIN", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20, color: brandColor)),
               pw.Container(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.red), borderRadius: pw.BorderRadius.circular(4)),
-                  child: pw.Text("CONFIDENTIAL", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.red))
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.green), borderRadius: pw.BorderRadius.circular(4)),
+                  child: pw.Text("FULL REPORT", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.green))
               ),
             ]),
             pw.SizedBox(height: 5),
             pw.Divider(color: brandColor, thickness: 1.5),
             pw.SizedBox(height: 10),
-          ]),
-          footer: (context) => pw.Column(children: [
-            pw.Divider(color: PdfColors.grey),
-            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-              pw.Text("Generated by InventryX System", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
-              pw.Text("Page ${context.pageNumber} of ${context.pagesCount}", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
-            ])
           ]),
           build: (pw.Context context) {
             return [
@@ -244,7 +281,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                   width: double.infinity, padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(color: accentColor, borderRadius: pw.BorderRadius.circular(6)),
                   child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text("SUMMARY", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: brandColor)),
+                    pw.Text("EXECUTIVE SUMMARY", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: brandColor)),
                     pw.SizedBox(height: 3),
                     pw.Text(summaryText, style: const pw.TextStyle(fontSize: 9), textAlign: pw.TextAlign.justify),
                   ])
@@ -258,31 +295,16 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                   headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
                   headerDecoration: pw.BoxDecoration(color: brandColor, borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(4))),
                   cellStyle: const pw.TextStyle(fontSize: 9),
-                  cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
-                  oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
                   cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerLeft, 2: pw.Alignment.center, 3: tabIndex == 3 ? pw.Alignment.centerRight : pw.Alignment.center},
                 ),
-              pw.SizedBox(height: 40),
-              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text("Approved By:", style: const pw.TextStyle(fontSize: 9)),
-                  pw.SizedBox(height: 25), pw.Container(width: 120, height: 1, color: PdfColors.black), pw.SizedBox(height: 2), pw.Text("( Manager )", style: const pw.TextStyle(fontSize: 8)),
-                ]),
-                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text("Verified By:", style: const pw.TextStyle(fontSize: 9)),
-                  pw.SizedBox(height: 25), pw.Container(width: 120, height: 1, color: PdfColors.black), pw.SizedBox(height: 2), pw.Text("( Director )", style: const pw.TextStyle(fontSize: 8)),
-                ]),
-              ]),
-              pw.SizedBox(height: 20),
-              pw.Text("*Disclaimer: Proprietary document.", style: pw.TextStyle(fontSize: 7, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic)),
             ];
           },
         ),
       );
 
       if (mounted) Navigator.pop(context);
-      await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'InventryX_Report');
+      await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'InventryX_Admin_Report');
 
     } catch (e) {
       if (mounted) Navigator.pop(context);
@@ -291,7 +313,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   }
 
   // ===========================================================================
-  // 2. EXPORT EXCEL (ADMIN - FULL ACCESS)
+  // 2. EXPORT EXCEL (ADMIN)
   // ===========================================================================
   Future<void> _generateAndSaveExcel() async {
     if (!mounted) return;
@@ -302,8 +324,9 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       final int tabIndex = _tabController.index;
       if (excel.sheets.containsKey("Sheet1")) excel.delete("Sheet1");
 
-      DateTime? startDate = _getStartDate();
-      Timestamp? startTimestamp = startDate != null ? Timestamp.fromDate(startDate) : null;
+      final dateRange = _getDateRange();
+      Timestamp? startTimestamp = dateRange['start'];
+      Timestamp? endTimestamp = dateRange['end'];
 
       String sheetName = "Report";
       List<String> headers = [];
@@ -312,11 +335,16 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       if (tabIndex == 0) {
         sheetName = "Inventory Valuation";
         headers = ['Product Name', 'Category', 'Stock Level', 'Price (RM)', 'Total'];
-        final snap = await _db.collection('products').get();
+        Query query = _db.collection('products');
+        if (startTimestamp != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: startTimestamp);
+        if (endTimestamp != null) query = query.where('updatedAt', isLessThanOrEqualTo: endTimestamp);
+
+        final snap = await query.get();
         for (var d in snap.docs) {
-          int s = int.tryParse(d['currentStock'].toString()) ?? 0;
-          double p = double.tryParse(d['price'].toString()) ?? 0;
-          rows.add([d['productName'] ?? '', d['category'] ?? '', s, p, s*p]);
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          int s = int.tryParse(data['currentStock'].toString()) ?? 0;
+          double p = double.tryParse(data['price'].toString()) ?? 0;
+          rows.add([data['productName'] ?? '', data['category'] ?? '', s, p, s*p]);
         }
       } else if (tabIndex == 1) {
         sheetName = "Demand Forecast";
@@ -325,32 +353,35 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         if (startTimestamp != null) query = query.where('forecastDate', isGreaterThanOrEqualTo: startTimestamp);
         final snap = await query.get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>;
-          rows.add([data['forecastDate'] != null ? DateFormat('yyyy-MM-dd').format((data['forecastDate'] as Timestamp).toDate()) : '-', data['productName'] ?? '', double.tryParse(data['predictedDemand'].toString()) ?? 0]);
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          if (data['forecastDate'] != null && endTimestamp != null) {
+            if ((data['forecastDate'] as Timestamp).compareTo(endTimestamp) > 0) continue;
+          }
+          rows.add([data['forecastDate'] != null ? DateFormat('yyyy-MM-dd').format((data['forecastDate'] as Timestamp).toDate()) : '-', data['productName'] ?? '', double.tryParse(data['predictedDemand'].toString())?.toInt() ?? 0]);
         }
       } else if (tabIndex == 2) {
         sheetName = "Risk Analysis";
-        headers = ['Product Name', 'Risk Level', 'Risk Value', 'Days To Expiry'];
+        headers = ['Product Name', 'Risk Level', 'Days To Expiry'];
         final snap = await _db.collection('risk_analysis').get();
         for (var d in snap.docs) {
-          final data = d.data();
-          rows.add([data['ProductName'] ?? '', data['RiskLevel'] ?? '', int.tryParse(data['RiskValue'].toString()) ?? 0, data['DaysToExpiry'] ?? 0]);
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          rows.add([data['ProductName'] ?? '', data['RiskLevel'] ?? '', data['DaysToExpiry'] ?? 0]);
         }
       } else if (tabIndex == 3) {
-        // --- SALES (FULL VIEW) ---
         sheetName = "Sales Transactions";
         headers = ['Date', 'Sale ID', 'Product', 'Quantity', 'Revenue'];
         Query query = _db.collection('sales').orderBy('saleDate', descending: true);
         if (startTimestamp != null) query = query.where('saleDate', isGreaterThanOrEqualTo: startTimestamp);
+        if (endTimestamp != null) query = query.where('saleDate', isLessThanOrEqualTo: endTimestamp);
         final snap = await query.get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>;
+          final data = d.data() as Map<String, dynamic>; // Explicit cast
           rows.add([
             data['saleDate'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((data['saleDate'] as Timestamp).toDate()) : '-',
             d.id,
             data['snapshotName'] ?? 'Unknown',
             data['quantitySold'] ?? 0,
-            double.tryParse(data['totalAmount'].toString()) ?? 0 // Admin nampak duit
+            double.tryParse(data['totalAmount'].toString()) ?? 0
           ]);
         }
       }
@@ -358,9 +389,6 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       ex.Sheet sheet = excel[sheetName];
       sheet.appendRow([ex.TextCellValue("INVENTRYX REPORT - $_selectedTimeframe")]);
       sheet.appendRow([ex.TextCellValue(sheetName.toUpperCase())]);
-      sheet.appendRow([ex.TextCellValue("Date: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}")]);
-      sheet.appendRow([ex.TextCellValue("")]);
-
       List<ex.CellValue> headerCells = headers.map((h) => ex.TextCellValue(h)).toList();
       sheet.appendRow(headerCells);
 
@@ -413,9 +441,15 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
             var d = snapshot.data!.data() as Map<String, dynamic>;
             currentUsername = d['username'] ?? currentUsername;
           }
+          // Calculate Date Range for UI components
+          final dateRange = _getDateRange();
+
           return Scaffold(
             backgroundColor: const Color(0xFFF8FAFF),
-            body: IndexedStack(index: _selectedIndex == 2 ? 1 : 0, children: [_buildReportUI(context), ProfilePage(username: currentUsername, userId: uid ?? '')]),
+            body: IndexedStack(index: _selectedIndex == 2 ? 1 : 0, children: [
+              _buildReportUI(context, dateRange),
+              ProfilePage(username: currentUsername, userId: uid ?? '')
+            ]),
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         });
@@ -433,7 +467,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
     return BottomNavigationBarItem(icon: Icon(inactiveIcon, size: 22), activeIcon: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(activeIcon, size: 22, color: primaryBlue)), label: label);
   }
 
-  Widget _buildReportUI(BuildContext context) {
+  Widget _buildReportUI(BuildContext context, Map<String, Timestamp?> dateRange) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFF),
       appBar: AppBar(
@@ -449,8 +483,11 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                 value: _selectedTimeframe,
                 icon: Icon(Icons.keyboard_arrow_down_rounded, color: primaryBlue, size: 20),
                 style: TextStyle(color: primaryBlue, fontWeight: FontWeight.bold, fontSize: 12),
-                onChanged: (String? newValue) { setState(() => _selectedTimeframe = newValue!); },
-                items: <String>['All Time', 'This Month', 'This Year'].map<DropdownMenuItem<String>>((String value) {
+                onChanged: (String? newValue) {
+                  if(newValue == 'Custom Range') _pickDateRange();
+                  else setState(() => _selectedTimeframe = newValue!);
+                },
+                items: <String>['All Time', 'This Month', 'This Year', 'Custom Range'].map<DropdownMenuItem<String>>((String value) {
                   return DropdownMenuItem<String>(value: value, child: Text(value));
                 }).toList(),
               ),
@@ -458,16 +495,16 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
           ),
           Padding(padding: const EdgeInsets.only(right: 12), child: IconButton(icon: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(Icons.file_download_outlined, color: primaryBlue, size: 22)), onPressed: () => _showExportOptions(context)))
         ],
-        bottom: PreferredSize(preferredSize: const Size.fromHeight(65), child: Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 12), padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(25)), child: TabBar(controller: _tabController, isScrollable: false, indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]), labelColor: primaryBlue, labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12), unselectedLabelColor: Colors.grey.shade500, unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12), dividerColor: Colors.transparent, tabs: const [Tab(text: "Stock"), Tab(text: "Trends"), Tab(text: "Risk"), Tab(text: "Sales")]))),
+        bottom: PreferredSize(preferredSize: const Size.fromHeight(65), child: Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 12), padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(25)), child: TabBar(controller: _tabController, isScrollable: false, indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]), labelColor: primaryBlue, labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12), unselectedLabelColor: Colors.grey.shade500, unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12), dividerColor: Colors.transparent, tabs: const [Tab(text: "Stock"), Tab(text: "Forecast"), Tab(text: "Health"), Tab(text: "Sales")]))),
       ),
       body: TabBarView(
           controller: _tabController,
           physics: const BouncingScrollPhysics(),
           children: [
-            _InventoryReportTab(db: _db),
-            _ForecastReportTab(db: _db, startDate: _getStartDate()),
+            _InventoryReportTab(db: _db, start: dateRange['start'], end: dateRange['end']),
+            _ForecastReportTab(db: _db, start: dateRange['start'], end: dateRange['end']),
             _RiskReportTab(db: _db),
-            _SalesReportTab(db: _db, startDate: _getStartDate())
+            _SalesReportTab(db: _db, start: dateRange['start'], end: dateRange['end'])
           ]
       ),
     );
@@ -476,7 +513,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   void _showExportOptions(BuildContext context) {
     List<String> tabNames = ["Stock", "Forecast", "Risk", "Sales"];
     String currentTab = tabNames[_tabController.index];
-    showModalBottomSheet(context: context, backgroundColor: Colors.transparent, builder: (ctx) => Container(padding: const EdgeInsets.all(24), decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(35))), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 45, height: 5, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 25), Text("Export $currentTab ($_selectedTimeframe)", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))), const SizedBox(height: 30), _exportTile(Icons.picture_as_pdf_rounded, "Print / Save PDF", Colors.red, () { Navigator.pop(ctx); _generateAndPrintPDF(); }), const SizedBox(height: 12), _exportTile(Icons.table_chart_rounded, "Download Excel", Colors.green, () { Navigator.pop(ctx); _generateAndSaveExcel(); }), const SizedBox(height: 25)])));
+    showModalBottomSheet(context: context, backgroundColor: Colors.transparent, builder: (ctx) => Container(padding: const EdgeInsets.all(24), decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(35))), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 45, height: 5, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 25), Text("Export $currentTab", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))), const SizedBox(height: 30), _exportTile(Icons.picture_as_pdf_rounded, "Print / Save PDF", Colors.red, () { Navigator.pop(ctx); _generateAndPrintPDF(); }), const SizedBox(height: 12), _exportTile(Icons.table_chart_rounded, "Download Excel", Colors.green, () { Navigator.pop(ctx); _generateAndSaveExcel(); }), const SizedBox(height: 25)])));
   }
 
   Widget _exportTile(IconData icon, String label, Color color, VoidCallback onTap) {
@@ -487,23 +524,37 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 // 1. INVENTORY TAB
 class _InventoryReportTab extends StatelessWidget {
   final FirebaseFirestore db;
-  const _InventoryReportTab({required this.db});
+  final Timestamp? start;
+  final Timestamp? end;
+  const _InventoryReportTab({required this.db, this.start, this.end});
+
   @override
   Widget build(BuildContext context) {
+    // Filter by Updated At
+    Query query = db.collection('products');
+    if (start != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: start);
+    if (end != null) query = query.where('updatedAt', isLessThanOrEqualTo: end);
+
     return StreamBuilder<QuerySnapshot>(
-      stream: db.collection('products').snapshots(),
+      stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         double totalValue = 0;
         Map<String, double> catData = {};
         final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const Center(child: Text("No stock activity in this period.", style: TextStyle(color: Colors.grey)));
+
         for (var doc in docs) {
-          double p = double.tryParse(doc['price']?.toString() ?? '0') ?? 0;
-          int s = int.tryParse(doc['currentStock']?.toString() ?? '0') ?? 0;
+          final data = doc.data() as Map<String, dynamic>; // Explicit cast
+          double p = double.tryParse(data['price']?.toString() ?? '0') ?? 0;
+          int s = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
           totalValue += (p * s);
-          catData[doc['category'] ?? 'Others'] = (catData[doc['category']] ?? 0) + s.toDouble();
+          catData[data['category'] ?? 'Others'] = (catData[data['category']] ?? 0) + s.toDouble();
         }
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildPremiumStatCard("Total Asset Value", "RM ${totalValue.toStringAsFixed(2)}", Icons.account_balance_wallet_outlined, const Color(0xFF233E99)), const SizedBox(height: 30), const Text("Category Distribution", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 15), _buildCleanBarChart(catData), const SizedBox(height: 30), const Text("Critical Stock Alerts", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.redAccent)), const SizedBox(height: 15), if (docs.where((d) => (int.tryParse(d['currentStock'].toString()) ?? 0) <= 10).isEmpty) _buildEmptyAlert() else ...docs.where((d) => (int.tryParse(d['currentStock'].toString()) ?? 0) <= 10).map((d) => _buildModernAlertTile(d['productName'], "${d['currentStock']} units left", Icons.warning_amber_rounded, Colors.red))]);
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildPremiumStatCard("Total Asset Value", "RM ${totalValue.toStringAsFixed(2)}", Icons.account_balance_wallet_outlined, const Color(0xFF233E99)), const SizedBox(height: 30), const Text("Category Distribution", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 15), _buildCleanBarChart(catData), const SizedBox(height: 30), const Text("Critical Stock Alerts", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.redAccent)), const SizedBox(height: 15), if (docs.where((d) => (int.tryParse((d.data() as Map<String, dynamic>)['currentStock'].toString()) ?? 0) <= 10).isEmpty) _buildEmptyAlert() else ...docs.where((d) => (int.tryParse((d.data() as Map<String, dynamic>)['currentStock'].toString()) ?? 0) <= 10).map((d) {
+          final data = d.data() as Map<String, dynamic>;
+          return _buildModernAlertTile(data['productName'] ?? 'Item', "${data['currentStock']} units left", Icons.warning_amber_rounded, Colors.red);
+        })]);
       },
     );
   }
@@ -516,38 +567,75 @@ class _InventoryReportTab extends StatelessWidget {
 // 2. FORECAST TAB (FILTERED)
 class _ForecastReportTab extends StatelessWidget {
   final FirebaseFirestore db;
-  final DateTime? startDate;
-  const _ForecastReportTab({required this.db, this.startDate});
+  final Timestamp? start;
+  final Timestamp? end;
+  const _ForecastReportTab({required this.db, this.start, this.end});
 
   @override
   Widget build(BuildContext context) {
     Query query = db.collection('forecasts').orderBy('forecastDate', descending: false);
-    if (startDate != null) query = query.where('forecastDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate!));
+    if (start != null) query = query.where('forecastDate', isGreaterThanOrEqualTo: start);
+    if (end != null) query = query.where('forecastDate', isLessThanOrEqualTo: end);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No forecast data for this period.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
+        if (docs.isEmpty || docs.length < 2) {
+          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.insights_rounded, size: 60, color: Colors.grey.shade300), const SizedBox(height: 15), const Text("Not enough data to show trends yet.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)), const Text("Run 'Forecast' in Utilities to generate.", style: TextStyle(color: Colors.grey, fontSize: 11))]));
+        }
+
         List<FlSpot> spots = [];
         double maxDemand = 0;
-        for (int i = 0; i < docs.length; i++) {
-          final data = docs[i].data() as Map<String, dynamic>;
+        final chartDocs = docs;
+
+        for (int i = 0; i < chartDocs.length; i++) {
+          final data = chartDocs[i].data() as Map<String, dynamic>; // Explicit cast
           double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
           if (val > maxDemand) maxDemand = val;
           spots.add(FlSpot(i.toDouble(), val));
         }
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildHeader("Demand Prediction Trend"), const SizedBox(height: 20), _buildLineChart(spots, maxDemand), const SizedBox(height: 35), _buildHeader("Upcoming Predictions"), const SizedBox(height: 15), ...docs.take(10).map((d) { final data = d.data() as Map<String, dynamic>; String dateStr = "N/A"; if (data['forecastDate'] is Timestamp) { dateStr = DateFormat('dd MMM yyyy').format((data['forecastDate'] as Timestamp).toDate()); } return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', data['predictedDemand']?.toString() ?? "0"); })]);
+
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [
+          _buildHeader("Sales Forecast Trend"),
+          const SizedBox(height: 20),
+          _buildLineChart(spots, maxDemand, chartDocs),
+          const SizedBox(height: 35),
+          _buildHeader("Expected Sales List"),
+          const SizedBox(height: 15),
+          ...docs.take(10).map((d) {
+            final data = d.data() as Map<String, dynamic>; // Explicit cast
+            String dateStr = "N/A";
+            if (data['forecastDate'] is Timestamp) {
+              dateStr = DateFormat('dd MMM').format((data['forecastDate'] as Timestamp).toDate());
+            }
+            double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
+            return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', val.toInt().toString());
+          })
+        ]);
       },
     );
   }
   Widget _buildHeader(String title) { return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))); }
-  Widget _buildLineChart(List<FlSpot> spots, double maxY) { return Container(height: 300, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 5))]), child: LineChart(LineChartData(minX: 0, maxX: (spots.length - 1).toDouble(), minY: 0, maxY: maxY * 1.2, lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.purpleAccent, barWidth: 4, isStrokeCapRound: true, dotData: FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.purpleAccent.withValues(alpha: 0.1)))], titlesData: FlTitlesData(bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey))))), gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)), borderData: FlBorderData(show: false)))); }
-  Widget _buildForecastTile(String date, String productName, String demand) { return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 2), Text("Date: $date", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.bold))])), const SizedBox(width: 10), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(demand, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.purple)), const Text("units", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey))])])); }
+  Widget _buildLineChart(List<FlSpot> spots, double maxY, List<QueryDocumentSnapshot> docs) {
+    return Container(height: 300, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 5))]), child: LineChart(LineChartData(minX: 0, maxX: (spots.length - 1).toDouble(), minY: 0, maxY: maxY * 1.2, lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.purpleAccent, barWidth: 4, isStrokeCapRound: true, dotData: FlDotData(show: true), belowBarData: BarAreaData(show: true, color: Colors.purpleAccent.withValues(alpha: 0.1)))], titlesData: FlTitlesData(
+        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: (docs.length / 5).ceil().toDouble(), getTitlesWidget: (value, meta) {
+          int index = value.toInt();
+          if (index >= 0 && index < docs.length) {
+            final data = docs[index].data() as Map<String, dynamic>; // Explicit cast
+            if (data['forecastDate'] is Timestamp) {
+              return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('d/M').format((data['forecastDate'] as Timestamp).toDate()), style: const TextStyle(fontSize: 10, color: Colors.grey)));
+            }
+          }
+          return const SizedBox();
+        })),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey))))), gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)), borderData: FlBorderData(show: false))));
+  }
+  Widget _buildForecastTile(String date, String productName, String demand) { return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 2), Text("Target Date: $date", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.bold))])), const SizedBox(width: 10), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(demand, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.purple)), const Text("units", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey))])])); }
 }
 
-// 3. RISK TAB
+// 3. RISK TAB (REMOVED SCORE)
 class _RiskReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   const _RiskReportTab({required this.db});
@@ -559,26 +647,26 @@ class _RiskReportTab extends StatelessWidget {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         if (snapshot.data!.docs.isEmpty) return Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown', "Expiry: ${data['DaysToExpiry'] ?? 0} days", "Risk Value: ${data['RiskValue'] ?? 0}", data['RiskLevel'] ?? 'Low'); })]);
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown', "Expires in ${data['DaysToExpiry'] ?? 0} days", data['RiskLevel'] ?? 'Low'); })]);
       },
     );
   }
   Widget _buildRiskHeader(int count) { return Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFFD32F2F).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.security_rounded, color: Colors.white, size: 28)), const SizedBox(width: 15), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Identified Risks", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)), Text("$count Items", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))])])); }
-  Widget _buildRiskTile(String productName, String subtitle, String impact, String probability) { Color riskColor = Colors.green; String prob = probability.toLowerCase(); if (prob.contains('high')) riskColor = const Color(0xFFD32F2F); else if (prob.contains('medium')) riskColor = Colors.orange; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: riskColor.withValues(alpha: 0.2), width: 1), boxShadow: [BoxShadow(color: riskColor.withValues(alpha: 0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: riskColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))), const Spacer(), Icon(Icons.info_outline_rounded, size: 18, color: Colors.grey[400])]), const SizedBox(height: 10), Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))), const SizedBox(height: 6), Row(children: [Icon(Icons.warning_amber_rounded, size: 14, color: riskColor), const SizedBox(width: 5), Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))]), const SizedBox(height: 4), Text(impact, style: TextStyle(fontSize: 12, color: Colors.grey[600], height: 1.4))])); }
+  Widget _buildRiskTile(String productName, String subtitle, String probability) { Color riskColor = Colors.green; String prob = probability.toLowerCase(); if (prob.contains('high')) riskColor = const Color(0xFFD32F2F); else if (prob.contains('medium')) riskColor = Colors.orange; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: riskColor.withValues(alpha: 0.2), width: 1), boxShadow: [BoxShadow(color: riskColor.withValues(alpha: 0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: riskColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))), const Spacer(), Icon(Icons.info_outline_rounded, size: 18, color: Colors.grey[400])]), const SizedBox(height: 10), Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))), const SizedBox(height: 6), Row(children: [Icon(Icons.warning_amber_rounded, size: 14, color: riskColor), const SizedBox(width: 5), Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))])])); }
 }
 
-// 4. SALES TAB (FILTERED + SHOW QTY)
+// 4. SALES TAB (FULL ACCESS - SHOW MONEY)
 class _SalesReportTab extends StatelessWidget {
   final FirebaseFirestore db;
-  final DateTime? startDate;
-  const _SalesReportTab({required this.db, this.startDate});
+  final Timestamp? start;
+  final Timestamp? end;
+  const _SalesReportTab({required this.db, this.start, this.end});
 
   @override
   Widget build(BuildContext context) {
     Query query = db.collection('sales').orderBy('saleDate', descending: true);
-    if (startDate != null) {
-      query = query.where('saleDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate!));
-    }
+    if (start != null) query = query.where('saleDate', isGreaterThanOrEqualTo: start);
+    if (end != null) query = query.where('saleDate', isLessThanOrEqualTo: end);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -592,7 +680,8 @@ class _SalesReportTab extends StatelessWidget {
 
         double totalSalesAmount = 0;
         for (var doc in docs) {
-          totalSalesAmount += double.tryParse(doc['totalAmount'].toString()) ?? 0;
+          final data = doc.data() as Map<String, dynamic>; // Explicit cast
+          totalSalesAmount += double.tryParse(data['totalAmount'].toString()) ?? 0;
         }
 
         return ListView(
@@ -608,7 +697,7 @@ class _SalesReportTab extends StatelessWidget {
             const Text("Recent Transactions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
             const SizedBox(height: 15),
             ...docs.map((d) {
-              final data = d.data() as Map<String, dynamic>;
+              final data = d.data() as Map<String, dynamic>; // Explicit cast
               String dateStr = 'Unknown';
               if (data['saleDate'] != null) { dateStr = DateFormat('dd MMM, HH:mm').format((data['saleDate'] as Timestamp).toDate()); }
               double amount = double.tryParse(data['totalAmount'].toString()) ?? 0;

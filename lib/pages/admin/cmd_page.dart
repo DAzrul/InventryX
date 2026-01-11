@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-// Class untuk track state setiap produk semasa simulasi berjalan
 class SimProduct {
   String id;
   Map<String, dynamic> data;
@@ -16,7 +15,9 @@ class SimProduct {
   int maxExpiry;
   String supplierName;
   String supplierId;
-  bool forceZeroStock;
+
+  // Logic Baru: Target stok akhir
+  bool isLowStockTarget; // Target 1-9 unit
 
   SimProduct({
     required this.id,
@@ -30,7 +31,7 @@ class SimProduct {
     required this.maxExpiry,
     required this.supplierName,
     required this.supplierId,
-    this.forceZeroStock = false,
+    this.isLowStockTarget = false,
   });
 }
 
@@ -38,9 +39,10 @@ class LocalBatch {
   String batchId;
   String batchNumber;
   int currentQty;
+  DateTime expiryDate; // Track expiry date in memory
   DocumentReference ref;
 
-  LocalBatch(this.batchId, this.batchNumber, this.currentQty, this.ref);
+  LocalBatch(this.batchId, this.batchNumber, this.currentQty, this.expiryDate, this.ref);
 }
 
 class CmdPage extends StatefulWidget {
@@ -56,6 +58,11 @@ class _CmdPageState extends State<CmdPage> {
 
   List<DocumentSnapshot> _selectedProducts = [];
 
+  // Helper untuk buang masa (00:00:00) supaya date compare tepat
+  DateTime normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
   void _showMultiProductDialog() {
     _selectedProducts = [];
     showDialog(
@@ -64,13 +71,13 @@ class _CmdPageState extends State<CmdPage> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text("Pilih Produk (Multi-Select)"),
+              title: const Text("Pilih Produk (Balanced Sales RM1k-3k)"),
               content: SizedBox(
                 width: double.maxFinite,
                 height: 400,
                 child: Column(
                   children: [
-                    const Padding(padding: EdgeInsets.only(bottom: 10), child: Text("Pilih produk untuk simulasi (Target Baki 20-50 & 5 Item Kosong).", style: TextStyle(fontSize: 12, color: Colors.grey))),
+                    const Padding(padding: EdgeInsets.only(bottom: 10), child: Text("Simulasi RM1000-RM3000 sehari. Baki 10-30 unit. Data hingga HARI INI.", style: TextStyle(fontSize: 12, color: Colors.grey))),
                     Expanded(
                       child: StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('products').snapshots(),
@@ -133,7 +140,7 @@ class _CmdPageState extends State<CmdPage> {
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: primaryBlue),
-                  onPressed: _selectedProducts.isEmpty ? null : () { Navigator.pop(context); _runGlobalSimulation(); },
+                  onPressed: _selectedProducts.isEmpty ? null : () { Navigator.pop(context); _runBalancedSimulation(); },
                   child: Text("Run Simulasi (${_selectedProducts.length} Items)", style: const TextStyle(color: Colors.white)),
                 )
               ],
@@ -144,10 +151,10 @@ class _CmdPageState extends State<CmdPage> {
     );
   }
 
-  Future<void> _runGlobalSimulation() async {
+  Future<void> _runBalancedSimulation() async {
     showDialog(
       context: context, barrierDismissible: false,
-      builder: (_) => const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Generating Data until TODAY...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])),
+      builder: (_) => const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Generating Balanced Ecosystem...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])),
     );
 
     try {
@@ -170,283 +177,211 @@ class _CmdPageState extends State<CmdPage> {
         String cat = (data['category'] ?? '').toString().toUpperCase();
         String pSupplierName = data['supplier'] ?? 'Unknown Supplier';
         String pSupplierId = data['supplierId'] ?? 'unknown_supp_id';
+        int upc = int.tryParse(data['unitsPerCarton']?.toString() ?? '1') ?? 1;
 
         int minExp = 180; int maxExp = 365;
-        if (pNameUpper.contains('ROTI') || pNameUpper.contains('GARDENIA') || pNameUpper.contains('BUN')) { minExp = 4; maxExp = 7; }
-        else if (pNameUpper.contains('MILK') || pNameUpper.contains('SUSU')) { minExp = 30; maxExp = 60; }
+        if (upc == 1 || pNameUpper.contains('ROTI') || pNameUpper.contains('GARDENIA') || pNameUpper.contains('BUN')) { minExp = 3; maxExp = 7; }
+        else if (pNameUpper.contains('MILK') || pNameUpper.contains('SUSU')) { minExp = 14; maxExp = 30; }
         else if (cat.contains('BEVERAGES') || cat.contains('CANNED')) { minExp = 365; maxExp = 730; }
 
-        simulationList.add(SimProduct(id: doc.id, data: data, name: pName, price: double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0, unitsPerCarton: int.tryParse(data['unitsPerCarton']?.toString() ?? '1') ?? 1, minExpiry: minExp, maxExpiry: maxExp, activeBatches: [], currentStock: 0, supplierName: pSupplierName, supplierId: pSupplierId));
+        simulationList.add(SimProduct(id: doc.id, data: data, name: pName, price: double.tryParse(data['price']?.toString() ?? '0.0') ?? 0.0, unitsPerCarton: upc, minExpiry: minExp, maxExpiry: maxExp, activeBatches: [], currentStock: 0, supplierName: pSupplierName, supplierId: pSupplierId));
       }
 
-      // 🔥 LOGIC: SELECT 5 RANDOM PRODUCTS TO BE ZERO STOCK 🔥
+      // 🔥 SELECT 5 PRODUCTS FOR LOW STOCK (1-9 UNITS) 🔥
       if (simulationList.length >= 5) {
         List<SimProduct> tempShuffle = List.from(simulationList)..shuffle();
-        for (int i = 0; i < 5; i++) tempShuffle[i].forceZeroStock = true;
+        for (int i = 0; i < 5; i++) tempShuffle[i].isLowStockTarget = true;
       } else if (simulationList.isNotEmpty) {
-        simulationList[0].forceZeroStock = true;
+        simulationList[0].isLowStockTarget = true;
       }
 
-      // 🔥 LOGIC: SET DATE RANGE (UNTIL TODAY) 🔥
-      DateTime today = DateTime.now();
+      DateTime today = normalizeDate(DateTime.now());
       DateTime currentDate = today.subtract(const Duration(days: 180));
       int daysSinceLastRestock = 0;
-      int globalRestockCount = 0;
 
-      // --- B. LOOP 180 HARI (HINGGA HARI INI) ---
-      // Loop selagi tarikh belum melepasi hari ini
-      while (currentDate.isBefore(today) || currentDate.isAtSameMomentAs(today)) {
-
-        currentDate = currentDate.add(const Duration(days: 1));
-        if (currentDate.isAfter(today)) break; // Safety break
+      // --- B. LOOP 180 HARI (DAY-BY-DAY) ---
+      while (!currentDate.isAfter(today)) {
 
         daysSinceLastRestock++;
+        bool isLastDay = currentDate.isAtSameMomentAs(today);
 
-        // >>> LOGIC 1: SMART RESTOCK (STOP 15 HARI SEBELUM HARI INI) <<<
-        // Kita stop restock 2 minggu sebelum hari ini supaya stok sempat susut secara natural
-        bool stopRestockPhase = currentDate.isAfter(today.subtract(const Duration(days: 15)));
-        bool isRestockDay = (daysSinceLastRestock > (7 + random.nextInt(3))) && !stopRestockPhase;
+        // >>> PHASE 1: RESTOCK CHECK (Untuk Semua Produk) <<<
+        // Restock jika stok < 100 atau setiap 7-9 hari.
+        // Penting: Kita restock banyak supaya boleh support sales tinggi.
+        bool forceRestockDay = (daysSinceLastRestock > (7 + random.nextInt(3)));
 
-        // Force restock hari pertama
-        if (simulationList.first.currentStock == 0 && globalRestockCount == 0) isRestockDay = true;
-
-        if (isRestockDay) {
+        if (forceRestockDay) {
           daysSinceLastRestock = 0;
-          globalRestockCount++;
           String dateStr = DateFormat('yyyyMMdd').format(currentDate);
 
+          // Group by supplier
           Map<String, List<SimProduct>> supplierGroups = {};
-          for (var prod in simulationList) {
-            if (!supplierGroups.containsKey(prod.supplierName)) supplierGroups[prod.supplierName] = [];
-            supplierGroups[prod.supplierName]!.add(prod);
+          for (var p in simulationList) {
+            // Logic restock: Kalau stok dah banyak (>300), tak payah restock hari ni, kecuali Roti (sebab expired cepat)
+            if (p.currentStock > 300 && p.unitsPerCarton > 1) continue;
+
+            if (!supplierGroups.containsKey(p.supplierName)) supplierGroups[p.supplierName] = [];
+            supplierGroups[p.supplierName]!.add(p);
           }
 
           for (var entry in supplierGroups.entries) {
             String supplierName = entry.key;
-            List<SimProduct> productsInLorry = entry.value;
-            String supplierId = productsInLorry.first.supplierId;
+            List<SimProduct> prods = entry.value;
             String globalStockInID = "SI-$dateStr-${random.nextInt(9999)}";
             DocumentReference stockInRef = db.collection('stockIn').doc(globalStockInID);
-            int totalQtyInBatch = 0; int totalItemsInBatch = 0;
+            int totalQty = 0; int totalItems = 0;
 
-            for (var prod in productsInLorry) {
-              // Volume restock sederhana
-              int cartonsIn; int qtyIn;
+            for (var prod in prods) {
+              int qtyIn; int cartonsIn;
+              // Restock Aggressive: 100 - 300 unit
+              if (prod.unitsPerCarton == 1) { qtyIn = 150 + random.nextInt(150); cartonsIn = qtyIn; }
+              else { cartonsIn = 5 + random.nextInt(10); qtyIn = cartonsIn * prod.unitsPerCarton; }
 
-              if (prod.unitsPerCarton == 1) {
-                qtyIn = 20 + random.nextInt(10);
-                cartonsIn = qtyIn;
-              } else {
-                cartonsIn = 2 + random.nextInt(3); // 2-4 karton
-                qtyIn = cartonsIn * prod.unitsPerCarton;
-              }
+              prod.currentStock += qtyIn; totalQty += qtyIn; totalItems++;
 
-              prod.currentStock += qtyIn; totalQtyInBatch += qtyIn; totalItemsInBatch++;
+              // Smart Expiry (Based on Current Loop Date)
               int daysToRot = prod.minExpiry + random.nextInt(prod.maxExpiry - prod.minExpiry + 1);
               DateTime expDate = currentDate.add(Duration(days: daysToRot));
               String batchNum = "BATCH-$dateStr-${random.nextInt(99999)}";
 
-              DocumentReference itemRef = stockInRef.collection('items').doc();
-              batch.set(itemRef, {'itemId': itemRef.id, 'productId': prod.id, 'productName': prod.name, 'batchNumber': batchNum, 'expiryDate': Timestamp.fromDate(expDate), 'quantity': qtyIn, 'cartons': cartonsIn});
-              await checkBatchLimit();
-
               DocumentReference batchRef = db.collection('batches').doc();
-              batch.set(batchRef, {'batchId': batchRef.id, 'batchNumber': batchNum, 'productId': prod.id, 'productName': prod.name, 'initialQuantity': qtyIn, 'currentQuantity': qtyIn, 'expiryDate': Timestamp.fromDate(expDate), 'receivedDate': Timestamp.fromDate(currentDate), 'status': 'active', 'supplierId': supplierId, 'supplierName': supplierName, 'createdAt': Timestamp.fromDate(currentDate), 'stockInId': globalStockInID});
+              batch.set(batchRef, {'batchId': batchRef.id, 'batchNumber': batchNum, 'productId': prod.id, 'productName': prod.name, 'initialQuantity': qtyIn, 'currentQuantity': qtyIn, 'expiryDate': Timestamp.fromDate(expDate), 'receivedDate': Timestamp.fromDate(currentDate), 'status': 'active', 'supplierId': prod.supplierId, 'supplierName': prod.supplierName, 'createdAt': Timestamp.fromDate(currentDate), 'stockInId': globalStockInID});
+              await checkBatchLimit();
+              prod.activeBatches.add(LocalBatch(batchRef.id, batchNum, qtyIn, expDate, batchRef));
+
+              batch.set(stockInRef.collection('items').doc(), {'productId': prod.id, 'productName': prod.name, 'batchNumber': batchNum, 'expiryDate': Timestamp.fromDate(expDate), 'quantity': qtyIn, 'cartons': cartonsIn});
               await checkBatchLimit();
 
-              prod.activeBatches.add(LocalBatch(batchRef.id, batchNum, qtyIn, batchRef));
-
-              DocumentReference moveRef = db.collection('stockMovements').doc();
-              batch.set(moveRef, {'movementId': moveRef.id, 'productId': prod.id, 'productName': prod.name, 'quantity': qtyIn, 'type': 'Stock In', 'reason': 'Restock from $supplierName', 'refId': globalStockInID, 'timestamp': Timestamp.fromDate(currentDate), 'user': _fixedUserId});
+              // Movement
+              batch.set(db.collection('stockMovements').doc(), {'movementId': db.collection('stockMovements').doc().id, 'productId': prod.id, 'productName': prod.name, 'quantity': qtyIn, 'type': 'Stock In', 'reason': 'Restock $supplierName', 'refId': globalStockInID, 'timestamp': Timestamp.fromDate(currentDate), 'user': _fixedUserId});
               await checkBatchLimit();
             }
-            batch.set(stockInRef, {'stockInId': globalStockInID, 'receivedDate': Timestamp.fromDate(currentDate), 'supplierId': supplierId, 'supplierName': supplierName, 'totalQuantity': totalQtyInBatch, 'totalItems': totalItemsInBatch, 'notes': 'Simulated Order from $supplierName', 'createdBy': _fixedUserId});
+            batch.set(stockInRef, {'stockInId': globalStockInID, 'receivedDate': Timestamp.fromDate(currentDate), 'supplierId': prods.first.supplierId, 'supplierName': supplierName, 'totalQuantity': totalQty, 'totalItems': totalItems, 'notes': 'Simulated Restock', 'createdBy': _fixedUserId});
             await checkBatchLimit();
           }
         }
 
-        // >>> LOGIC 2: SALES (HIGH FREQUENCY, SMALL QTY) <<<
-        for (var prod in simulationList) {
+        // >>> PHASE 2: TARGETED SALES (RM 1000 - RM 3000 Daily) <<<
+        double dailyTargetRevenue = 1000.0 + random.nextInt(2001); // Random RM1000 - RM3000
+        double currentDailyRevenue = 0.0;
+        int productsSoldTodayCount = 0;
+
+        // Shuffle product list daily to be fair
+        List<SimProduct> dailyProducts = List.from(simulationList)..shuffle();
+
+        for (var prod in dailyProducts) {
+          // Stop if revenue target hit AND we sold at least 10 types of products
+          if (currentDailyRevenue >= dailyTargetRevenue && productsSoldTodayCount >= 10) break;
+
           if (prod.currentStock > 0) {
+            // Jualan per produk: 10 - 50 unit (Supaya stok bergerak laju)
+            int qtyToSell = 10 + random.nextInt(41);
+            if (qtyToSell > prod.currentStock) qtyToSell = prod.currentStock;
 
-            // Demand Calculation
-            int minDemand = (prod.unitsPerCarton == 1) ? 5 : 15;
-            int maxDemand = (prod.unitsPerCarton == 1) ? 15 : 60;
-            if (prod.minExpiry < 10) { minDemand = 30; maxDemand = 80; }
+            // Harga check
+            double salesValue = qtyToSell * prod.price;
+            if (salesValue == 0) salesValue = qtyToSell * 5.0; // Fallback price
 
-            int totalDailyDemand = minDemand + random.nextInt(maxDemand - minDemand + 1);
-            if (totalDailyDemand > prod.currentStock) totalDailyDemand = prod.currentStock;
+            // Tolak Stock
+            prod.currentStock -= qtyToSell;
+            currentDailyRevenue += salesValue;
+            productsSoldTodayCount++;
 
-            if (totalDailyDemand <= 0) continue;
-
-            int remainingToSell = totalDailyDemand;
-
-            // Generate multiple small transactions
-            while (remainingToSell > 0) {
-              int txQty = 1 + random.nextInt(10);
-              if (txQty > remainingToSell) txQty = remainingToSell;
-
-              prod.currentStock -= txQty;
-              remainingToSell -= txQty;
-
-              int remainingToDeductBatch = txQty;
-              for (var b in prod.activeBatches) {
-                if (remainingToDeductBatch <= 0) break;
-                if (b.currentQty > 0) {
-                  int take = min(b.currentQty, remainingToDeductBatch);
-                  b.currentQty -= take;
-                  remainingToDeductBatch -= take;
-                }
-              }
-
-              int hour = 9 + random.nextInt(12);
-              int minute = random.nextInt(60);
-              DateTime txTime = DateTime(currentDate.year, currentDate.month, currentDate.day, hour, minute);
-
-              DocumentReference saleRef = db.collection('sales').doc();
-              batch.set(saleRef, {
-                'salesID': saleRef.id, 'productID': prod.id, 'snapshotName': prod.name,
-                'quantitySold': txQty, 'totalAmount': txQty * prod.price,
-                'saleDate': Timestamp.fromDate(txTime), 'status': 'completed',
-                'remarks': 'Walk-in Customer', 'userID': _fixedUserId
-              });
-              await checkBatchLimit();
-
-              DocumentReference moveRef = db.collection('stockMovements').doc();
-              batch.set(moveRef, {
-                'movementId': moveRef.id, 'productId': prod.id, 'productName': prod.name,
-                'quantity': -txQty, 'type': 'Sold', 'reason': 'Sales Order',
-                'timestamp': Timestamp.fromDate(txTime), 'user': _fixedUserId
-              });
-              await checkBatchLimit();
-            }
-          }
-        }
-
-        // >>> LOGIC 3: RANDOM STOCK LOSS <<<
-        for (var prod in simulationList) {
-          if (prod.currentStock > 10 && random.nextDouble() < 0.05) {
-            List<String> reasons = ['Expired', 'Damaged', 'Theft', 'Returned', 'Adjustment'];
-            String reasonType = reasons[random.nextInt(reasons.length)];
-            int lossQty = 1 + random.nextInt(3);
-            if (lossQty > prod.currentStock) lossQty = prod.currentStock;
-
-            prod.currentStock -= lossQty;
-            int remainingToDeductBatch = lossQty;
-            String affectedBatchId = "";
-            String affectedBatchNum = "";
-
+            // FIFO Deduct
+            int remainingToDeduct = qtyToSell;
             for (var b in prod.activeBatches) {
-              if (remainingToDeductBatch <= 0) break;
+              if (remainingToDeduct <= 0) break;
               if (b.currentQty > 0) {
-                int take = min(b.currentQty, remainingToDeductBatch);
-                b.currentQty -= take; remainingToDeductBatch -= take;
-                affectedBatchId = b.batchId; affectedBatchNum = b.batchNumber;
+                int take = min(b.currentQty, remainingToDeduct);
+                b.currentQty -= take; remainingToDeduct -= take;
               }
             }
 
-            DocumentReference moveRef = db.collection('stockMovements').doc();
-            batch.set(moveRef, {'movementId': moveRef.id, 'productId': prod.id, 'productName': prod.name, 'quantity': -lossQty, 'type': reasonType, 'reason': 'Manual Adjustment: $reasonType', 'timestamp': Timestamp.fromDate(currentDate.add(Duration(hours: 14))), 'user': _fixedUserId});
+            // Generate Receipt (1 Transaction per product per day to save writes, but representing multiple customers)
+            DateTime txTime = currentDate.add(Duration(hours: 9 + random.nextInt(12))); // 9am - 9pm
+
+            DocumentReference saleRef = db.collection('sales').doc();
+            batch.set(saleRef, {'salesID': saleRef.id, 'productID': prod.id, 'snapshotName': prod.name, 'quantitySold': qtyToSell, 'totalAmount': salesValue, 'saleDate': Timestamp.fromDate(txTime), 'status': 'completed', 'remarks': 'Walk-in Customers (Aggregated)', 'userID': _fixedUserId});
             await checkBatchLimit();
 
-            if (reasonType == 'Expired' && affectedBatchId.isNotEmpty) {
-              DocumentReference alertRef = db.collection('alerts').doc();
-              batch.set(alertRef, {'alertType': 'expiry', 'batchId': affectedBatchId, 'batchNumber': affectedBatchNum, 'expiryStage': 'expired', 'isDone': true, 'isNotified': true, 'isRead': false, 'notifiedAt': Timestamp.fromDate(currentDate), 'productId': prod.id, 'productName': prod.name});
-              await checkBatchLimit();
-            }
+            batch.set(db.collection('stockMovements').doc(), {'movementId': db.collection('stockMovements').doc().id, 'productId': prod.id, 'productName': prod.name, 'quantity': -qtyToSell, 'type': 'Sold', 'reason': 'Sales Order', 'timestamp': Timestamp.fromDate(txTime), 'user': _fixedUserId});
+            await checkBatchLimit();
           }
         }
 
-      } // End Loop (Hingga Hari Ini)
+        // >>> PHASE 3: RANDOM LOSS <<<
+        for (var prod in simulationList) {
+          if (prod.currentStock > 20 && random.nextDouble() < 0.05) {
+            int loss = 1 + random.nextInt(3);
+            prod.currentStock -= loss;
+            // FIFO logic repeated...
+            int rem = loss;
+            for (var b in prod.activeBatches) { if(rem<=0)break; if(b.currentQty>0){ int t=min(b.currentQty, rem); b.currentQty-=t; rem-=t; } }
 
-      // >>> LOGIC 4: STRICT FINAL ADJUSTMENT (TARGET 20-50 & ZERO STOCK) <<<
+            batch.set(db.collection('stockMovements').doc(), {'movementId': db.collection('stockMovements').doc().id, 'productId': prod.id, 'productName': prod.name, 'quantity': -loss, 'type': 'Damaged', 'reason': 'Manual Adj', 'timestamp': Timestamp.fromDate(currentDate.add(const Duration(hours: 18))), 'user': _fixedUserId});
+            await checkBatchLimit();
+          }
+        }
+
+        currentDate = currentDate.add(const Duration(days: 1));
+      } // End Daily Loop
+
+      // >>> PHASE 4: FINAL ADJUSTMENT (FORCE TARGET STOCK AT END) <<<
       // Ini dijalankan selepas loop tamat (iaitu pada HARI INI)
 
       for (var prod in simulationList) {
         int targetStock;
 
-        // 🔥 RULE 1: KES KHAS 5 PRODUK WAJIB 0 🔥
-        if (prod.forceZeroStock) {
-          targetStock = 0;
-        }
-        // 🔥 RULE 2: PRODUK LAIN WAJIB 20 - 50 🔥
-        else {
-          // Random antara 20 hingga 50
-          targetStock = 20 + random.nextInt(31);
+        // 1. Determine Target
+        if (prod.isLowStockTarget) {
+          targetStock = 1 + random.nextInt(9); // 1 - 9 Unit (Tak kosong)
+        } else {
+          targetStock = 10 + random.nextInt(21); // 10 - 30 Unit
         }
 
-        // Jika stok sekarang tak sama dengan target, kita adjust (Adjust UP atau DOWN)
+        // 2. Adjust Stock
         if (prod.currentStock != targetStock) {
 
-          // Case A: Stok Terlebih (Kena Kurangkan)
+          // A. Terlebih Stok -> Buat Clearance
           if (prod.currentStock > targetStock) {
-            int qtyToClear = prod.currentStock - targetStock;
+            int diff = prod.currentStock - targetStock;
             prod.currentStock = targetStock;
 
-            // FIFO Deduct
-            int remainingToDeduct = qtyToClear;
-            for (var b in prod.activeBatches) {
-              if (remainingToDeduct <= 0) break;
-              if (b.currentQty > 0) {
-                int take = min(b.currentQty, remainingToDeduct);
-                b.currentQty -= take;
-                remainingToDeduct -= take;
-              }
-            }
+            // FIFO deduct
+            int rem = diff;
+            for (var b in prod.activeBatches) { if(rem<=0)break; if(b.currentQty>0){ int t=min(b.currentQty, rem); b.currentQty-=t; rem-=t; } }
 
-            // Rekod Sales 'Clearance' pada hari ini
-            DocumentReference saleRef = db.collection('sales').doc();
-            batch.set(saleRef, {
-              'salesID': saleRef.id, 'productID': prod.id, 'snapshotName': prod.name,
-              'quantitySold': qtyToClear, 'totalAmount': qtyToClear * (prod.price * 0.5),
-              'saleDate': Timestamp.now(),
-              'status': 'completed',
-              'remarks': 'System Balance Adjustment (Clearance)',
-              'userID': _fixedUserId
-            });
-            await checkBatchLimit();
-
-            DocumentReference moveRef = db.collection('stockMovements').doc();
-            batch.set(moveRef, {
-              'movementId': moveRef.id, 'productId': prod.id, 'productName': prod.name,
-              'quantity': -qtyToClear, 'type': 'Sold', 'reason': 'Clearance Sale',
-              'timestamp': Timestamp.now(), 'user': _fixedUserId
-            });
+            batch.set(db.collection('stockMovements').doc(), {'movementId': db.collection('stockMovements').doc().id, 'productId': prod.id, 'productName': prod.name, 'quantity': -diff, 'type': 'Sold', 'reason': 'Clearance Sale (Sim)', 'timestamp': Timestamp.now(), 'user': _fixedUserId});
             await checkBatchLimit();
           }
 
-          // Case B: Stok Terkurang (Kena Tambah sikit - Jarang berlaku tapi safety net)
-          else if (prod.currentStock < targetStock && !prod.forceZeroStock) {
-            // Jika stok terlalu rendah (bawah 20), kita buat 'Emergency Restock' hari ini
-            int qtyToAdd = targetStock - prod.currentStock;
+          // B. Terkurang Stok -> Buat Topup (Important for Freshness)
+          else if (prod.currentStock < targetStock) {
+            int diff = targetStock - prod.currentStock;
             prod.currentStock = targetStock;
+
+            // 🔥 FRESHNESS LOGIC 🔥
+            // Kalau topup hari ini, pastikan expiry date logik.
+            // Roti: Expired 4 hari lagi. Barang lain: 6 bulan.
+            int daysToLive = (prod.unitsPerCarton == 1) ? (3 + random.nextInt(3)) : 180;
+            DateTime freshExp = DateTime.now().add(Duration(days: daysToLive));
 
             String dateStr = DateFormat('yyyyMMdd').format(DateTime.now());
             String batchNum = "BATCH-$dateStr-ADJ";
-            DateTime expDate = DateTime.now().add(const Duration(days: 180));
 
             DocumentReference batchRef = db.collection('batches').doc();
-            batch.set(batchRef, {
-              'batchId': batchRef.id, 'batchNumber': batchNum, 'productId': prod.id, 'productName': prod.name,
-              'initialQuantity': qtyToAdd, 'currentQuantity': qtyToAdd, 'expiryDate': Timestamp.fromDate(expDate),
-              'receivedDate': Timestamp.now(), 'status': 'active', 'supplierId': prod.supplierId, 'supplierName': prod.supplierName,
-              'createdAt': Timestamp.now()
-            });
+            batch.set(batchRef, {'batchId': batchRef.id, 'batchNumber': batchNum, 'productId': prod.id, 'productName': prod.name, 'initialQuantity': diff, 'currentQuantity': diff, 'expiryDate': Timestamp.fromDate(freshExp), 'receivedDate': Timestamp.now(), 'status': 'active', 'supplierId': prod.supplierId, 'supplierName': prod.supplierName, 'createdAt': Timestamp.now()});
             await checkBatchLimit();
-            prod.activeBatches.add(LocalBatch(batchRef.id, batchNum, qtyToAdd, batchRef));
 
-            DocumentReference moveRef = db.collection('stockMovements').doc();
-            batch.set(moveRef, {
-              'movementId': moveRef.id, 'productId': prod.id, 'productName': prod.name,
-              'quantity': qtyToAdd, 'type': 'Stock In', 'reason': 'System Balance Adjustment (Topup)',
-              'timestamp': Timestamp.now(), 'user': _fixedUserId
-            });
+            prod.activeBatches.add(LocalBatch(batchRef.id, batchNum, diff, freshExp, batchRef));
+
+            batch.set(db.collection('stockMovements').doc(), {'movementId': db.collection('stockMovements').doc().id, 'productId': prod.id, 'productName': prod.name, 'quantity': diff, 'type': 'Stock In', 'reason': 'System Topup (Sim)', 'timestamp': Timestamp.now(), 'user': _fixedUserId});
             await checkBatchLimit();
           }
         }
       }
 
-      // --- C. FINAL SYNC ---
+      // --- C. FINAL COMMIT TO DB ---
       for (var prod in simulationList) {
         for (var b in prod.activeBatches) { batch.update(b.ref, {'currentQuantity': b.currentQty}); await checkBatchLimit(); }
         Map<String, dynamic> up = {'currentStock': prod.currentStock, 'updatedAt': Timestamp.now()};
@@ -456,7 +391,7 @@ class _CmdPageState extends State<CmdPage> {
       }
 
       await batch.commit();
-      if (mounted) { Navigator.pop(context); showDialog(context: context, builder: (_) => AlertDialog(title: const Text("Simulasi Selesai! ✅"), content: Text("Data berjaya dijana sehingga HARI INI.\n\nTarget Tercapai:\n- Majoriti Produk: 20-50 unit\n- 5 Produk Random: 0 unit"), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))])); }
+      if (mounted) { Navigator.pop(context); showDialog(context: context, builder: (_) => AlertDialog(title: const Text("Simulasi Selesai! ✅"), content: Text("Data berjaya dijana.\n\n- Sales Harian: RM1k - RM3k\n- Date: Hingga ${DateFormat('dd/MM/yyyy').format(DateTime.now())}\n- Baki Akhir: 10-30 unit (Low: 1-9)\n- Expiry: Roti Fresh (3-5 hari)."), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))])); }
 
     } catch (e) { if (mounted) Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
   }
@@ -471,9 +406,9 @@ class _CmdPageState extends State<CmdPage> {
         child: Column(children: [
           const Text("Global Ecosystem Generator", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          const Text("Multi-product. High Frequency Sales.\nStrict Final Stock Target (20-50 & 0).", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+          const Text("Balanced Revenue (RM1k-3k). \nAccurate until TODAY. \nSmart Final Stock (10-30 & Low <10).", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 30),
-          InkWell(onTap: _showMultiProductDialog, child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]), child: Row(children: [const Icon(Icons.storefront_rounded, color: Colors.blueAccent, size: 30), const SizedBox(width: 15), const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Run Realistic Simulation", style: TextStyle(fontWeight: FontWeight.bold)), Text("Full Suite: Until Today + Target Stock", style: TextStyle(fontSize: 11, color: Colors.grey))])), const Icon(Icons.chevron_right)]))),
+          InkWell(onTap: _showMultiProductDialog, child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]), child: Row(children: [const Icon(Icons.storefront_rounded, color: Colors.blueAccent, size: 30), const SizedBox(width: 15), const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Run Balanced Simulation", style: TextStyle(fontWeight: FontWeight.bold)), Text("Full Suite: Until Today + Revenue Target", style: TextStyle(fontSize: 11, color: Colors.grey))])), const Icon(Icons.chevron_right)]))),
         ]),
       ),
     );

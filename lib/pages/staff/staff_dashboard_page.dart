@@ -17,7 +17,7 @@ class StaffDashboardPage extends StatefulWidget {
 class _StaffDashboardPageState extends State<StaffDashboardPage> {
   final Color primaryBlue = const Color(0xFF203288);
 
-  // Advanced Filter States
+  // Filter States
   String _selectedHistoryFilter = "Last 7 Days";
   String _selectedMainType = "All";
   String _selectedStockOutReason = "All";
@@ -46,13 +46,14 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     }
   }
 
-  // --- LOGIC: QUERY FIREBASE ---
+  // --- LOGIC: SMART QUERY (FIXED FOR SIMULATION DATA) ---
   Query _getHistoryQuery() {
     CollectionReference moveRef = FirebaseFirestore.instance.collection('stockMovements');
     DateTime now = DateTime.now();
     DateTime start;
     DateTime end = now;
 
+    // 1. Tentukan Tarikh
     if (_selectedHistoryFilter == "Today") {
       start = DateTime(now.year, now.month, now.day);
     } else if (_selectedHistoryFilter == "Last 7 Days") {
@@ -64,21 +65,40 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
       end = _customEndDate ?? now;
     }
 
-    // 1. Time Range Filter (Base Query)
+    // 2. Base Query (Filter Tarikh)
     Query query = moveRef.where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(end));
 
-    // 2. Main Type Filter (e.g., Stock In or Stock Out)
-    if (_selectedMainType != "All") {
-      query = query.where('type', isEqualTo: _selectedMainType);
+    // 3. Logic Filter Type (DIKEMASKINI UNTUK BACA DATA SIMULASI)
+    if (_selectedMainType == "Stock In") {
+      query = query.where('type', isEqualTo: 'Stock In');
+
+    } else if (_selectedMainType == "Stock Out") {
+
+      if (_selectedStockOutReason == "All") {
+        // Cari semua jenis Stock Out (Termasuk format Simulasi & Manual)
+        // Note: Firestore limit 'whereIn' max 10 items.
+        query = query.where('type', whereIn: [
+          'Sold',
+          'Manual Adjustment',
+          'Damaged',
+          'Expired',
+          'Theft',
+          'Returned',
+          'Adjustment'
+        ]);
+
+      } else if (_selectedStockOutReason == "Sold") {
+        query = query.where('type', isEqualTo: 'Sold');
+
+      } else {
+        // User pilih "Damaged", "Theft", dll.
+        // Kita cari direct pada field 'type' sebab simulasi simpan kat situ.
+        query = query.where('type', isEqualTo: _selectedStockOutReason);
+      }
     }
 
-    // 3. FIX: Check 'reason' field for specific Stock Out types
-    // Based on your DB, these are stored in the 'reason' field.
-    if (_selectedMainType == "Stock Out" && _selectedStockOutReason != "All") {
-      query = query.where('reason', isEqualTo: _selectedStockOutReason);
-    }
-
+    // 4. Sorting
     return query.orderBy('timestamp', descending: true);
   }
 
@@ -104,18 +124,21 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 child: Text("Stock Movement History", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
 
+              // Filter Tarikh
               _buildFilterRow(["Today", "Last 7 Days", "Last 30 Days", "Custom"], _selectedHistoryFilter, (val) {
                 if (val == "Custom") _selectDateRange(setModalState);
                 else setModalState(() { _selectedHistoryFilter = val; });
               }),
 
+              // Filter Jenis Utama
               _buildFilterRow(["All", "Stock In", "Stock Out"], _selectedMainType, (val) {
                 setModalState(() {
                   _selectedMainType = val;
-                  if (val != "Stock Out") _selectedStockOutReason = "All";
+                  _selectedStockOutReason = "All"; // Reset sub-filter
                 });
               }),
 
+              // Filter Sub-Jenis (Hanya keluar bila pilih Stock Out)
               if (_selectedMainType == "Stock Out")
                 _buildFilterRow(["All", "Sold", "Damaged", "Expired", "Returned", "Theft", "Adjustment"], _selectedStockOutReason, (val) {
                   setModalState(() => _selectedStockOutReason = val);
@@ -123,11 +146,12 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
 
               const Divider(height: 30),
 
+              // List Data
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: _getHistoryQuery().snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.hasError) return _buildErrorState();
+                    if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
                     final docs = snapshot.data!.docs;
@@ -142,12 +166,20 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                         final String type = data['type'] ?? '';
                         final String reason = data['reason'] ?? '';
 
+                        // Logic Display
+                        bool isStockIn = (type == "Stock In");
+
+                        // Kalau Simulasi, 'type' dah pegang reason (cth: 'Damaged').
+                        // Kalau Manual, 'type' ialah 'Manual Adjustment', reason ialah 'DAMAGED'.
+                        // Kita gabungkan untuk display subtitle yang cantik.
+                        String displayReason = isStockIn ? type : (type == "Manual Adjustment" ? reason : type);
+
                         return _buildActivityItem(
                           title: "${data['productName'] ?? 'Unknown'}",
-                          subtitle: "$type • $reason\n${DateFormat('dd MMM, hh:mm a').format((data['timestamp'] as Timestamp).toDate())}",
-                          trailingText: (type == "Stock In") ? "+$qty" : "$qty",
-                          trailingColor: (type == "Stock In") ? Colors.green : _getReasonColor(reason),
-                          icon: (type == "Stock In") ? Icons.arrow_downward_rounded : _getReasonIcon(type, reason),
+                          subtitle: "$displayReason\n${DateFormat('dd MMM, hh:mm a').format((data['timestamp'] as Timestamp).toDate())}",
+                          trailingText: isStockIn ? "+$qty" : "$qty",
+                          trailingColor: isStockIn ? Colors.green : _getReasonColor(displayReason),
+                          icon: isStockIn ? Icons.arrow_downward_rounded : _getReasonIcon(displayReason),
                         );
                       },
                     );
@@ -188,40 +220,43 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
   }
 
   Color _getReasonColor(String r) {
-    switch (r.toLowerCase()) {
-      case 'sold': return Colors.red;
-      case 'damaged': return Colors.orange;
-      case 'theft': return Colors.black87;
-      case 'returned': return Colors.blue;
-      case 'expired': return Colors.deepOrange;
-      default: return Colors.redAccent;
-    }
+    String lowerR = r.toLowerCase();
+    if (lowerR.contains('sold')) return Colors.redAccent;
+    if (lowerR.contains('damaged')) return Colors.orange;
+    if (lowerR.contains('theft')) return Colors.black87;
+    if (lowerR.contains('returned')) return Colors.blue;
+    if (lowerR.contains('expired')) return Colors.deepOrange;
+    return Colors.red;
   }
 
-  IconData _getReasonIcon(String type, String reason) {
-    if (type == "Stock In") return Icons.arrow_downward_rounded;
-    switch (reason.toLowerCase()) {
-      case 'sold': return Icons.shopping_cart_checkout;
-      case 'damaged': return Icons.broken_image_rounded;
-      case 'theft': return Icons.person_off_rounded;
-      case 'expired': return Icons.event_busy_rounded;
-      case 'returned': return Icons.keyboard_return_rounded;
-      default: return Icons.arrow_upward_rounded;
-    }
+  IconData _getReasonIcon(String r) {
+    String lowerR = r.toLowerCase();
+    if (lowerR.contains('stock in')) return Icons.arrow_downward_rounded;
+    if (lowerR.contains('sold')) return Icons.shopping_cart_checkout;
+    if (lowerR.contains('damaged')) return Icons.broken_image_rounded;
+    if (lowerR.contains('theft')) return Icons.person_off_rounded;
+    if (lowerR.contains('expired')) return Icons.event_busy_rounded;
+    if (lowerR.contains('returned')) return Icons.keyboard_return_rounded;
+    return Icons.arrow_upward_rounded;
   }
 
-  Widget _buildErrorState() {
-    return const Center(
+  Widget _buildErrorState(String errorMsg) {
+    bool isIndexError = errorMsg.contains("failed-precondition") || errorMsg.contains("requires an index");
+
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline, color: Colors.red, size: 40),
-            SizedBox(height: 10),
-            Text("Firebase Index Required", style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 5),
-            Text("Click the link in your Debug Console to create the required composite index.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 10),
+            const Text("Database Index Required", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 5),
+            if (isIndexError)
+              const Text("⚠️ ACTION REQUIRED:\nCheck 'Debug Console' in VS Code.\nClick the BLUE LINK from Firebase to create the index.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey))
+            else
+              Text("Error: $errorMsg", textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
       ),
@@ -299,6 +334,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
               TextButton(onPressed: () => _showAllActivityPopup(context), child: Text("View All", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.bold))),
             ],
           ),
+          // Recent Activity Preview
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('stockMovements').orderBy('timestamp', descending: true).limit(5).snapshots(),
             builder: (context, snapshot) {
@@ -309,12 +345,16 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                   final int qty = (data['quantity'] ?? 0).toInt();
                   final String type = data['type'] ?? '';
                   final String reason = data['reason'] ?? '';
+                  bool isStockIn = (type == "Stock In");
+                  // Smart Display Label for Simulation vs Manual
+                  String displayReason = isStockIn ? type : (type == "Manual Adjustment" ? reason : type);
+
                   return _buildActivityItem(
                     title: "${data['productName']}",
                     subtitle: DateFormat('hh:mm a').format((data['timestamp'] as Timestamp).toDate()),
-                    trailingText: (type == "Stock In") ? "+$qty" : "$qty",
-                    trailingColor: (type == "Stock In") ? Colors.green : _getReasonColor(reason),
-                    icon: (type == "Stock In") ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                    trailingText: isStockIn ? "+$qty" : "$qty",
+                    trailingColor: isStockIn ? Colors.green : _getReasonColor(displayReason),
+                    icon: isStockIn ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
                   );
                 }).toList(),
               );
