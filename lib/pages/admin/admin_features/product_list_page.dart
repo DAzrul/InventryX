@@ -30,7 +30,6 @@ class _ProductListPageState extends State<ProductListPage> {
   final TextEditingController _searchController = TextEditingController();
   final Color primaryBlue = const Color(0xFF233E99);
 
-  // --- LOGIC NUCLEAR: RESET APP ---
   void _onItemTapped(int index) {
     if (index == 0) {
       final user = FirebaseAuth.instance.currentUser;
@@ -87,14 +86,12 @@ class _ProductListPageState extends State<ProductListPage> {
                 ProfilePage(username: currentUsername, userId: uid ?? ''),
               ],
             ),
-            floatingActionButton: null, // FAB DAH PINDAH KE HEADER
             bottomNavigationBar: _buildFloatingNavBar(),
           );
         }
     );
   }
 
-  // --- UI: NAVBAR ---
   Widget _buildFloatingNavBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -139,7 +136,6 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-  // --- CONTENT PRODUK ---
   Widget _buildProductContent() {
     return Column(
       children: [
@@ -151,7 +147,6 @@ class _ProductListPageState extends State<ProductListPage> {
     );
   }
 
-  // --- HEADER DENGAN BUTTON ADD KAT KANAN ---
   Widget _buildCustomAppBar() {
     return Container(
       color: Colors.white,
@@ -289,7 +284,6 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-// ------------------- [UPDATE] PRODUCT CARD DENGAN PLACEHOLDER CANTIK -------------------
 class ProductItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
@@ -306,6 +300,10 @@ class ProductItemCard extends StatelessWidget {
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
+    // --- [NEW LOGIC] REORDER LEVEL COMPARISON ---
+    int reorderLevel = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+    bool isLowStock = stock <= reorderLevel;
+
     return GestureDetector(
       onTap: () => _showProductDetailDialog(context),
       child: Container(
@@ -319,9 +317,8 @@ class ProductItemCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // --- [UPDATE DI SINI] LOGIC GAMBAR VS PLACEHOLDER CANTIK ---
             ClipRRect(
-              borderRadius: BorderRadius.circular(15), // Bucu lebih bulat sikit
+              borderRadius: BorderRadius.circular(15),
               child: (data['imageUrl'] != null && data['imageUrl'].isNotEmpty)
                   ? CachedNetworkImage(
                 imageUrl: data['imageUrl'],
@@ -333,10 +330,7 @@ class ProductItemCard extends StatelessWidget {
               )
                   : _buildPlaceholder(isTablet, isSmall),
             ),
-
             const SizedBox(width: 12),
-
-            // TEXT
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,22 +347,25 @@ class ProductItemCard extends StatelessWidget {
                       Text('RM ${price.toStringAsFixed(2)}',
                           style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
                       const SizedBox(width: 8),
+                      // --- [UPDATED UI] STOCK ALERT ---
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                          color: isLowStock ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('Stock: $stock',
-                            style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                            style: TextStyle(
+                                fontSize: isTablet ? 12 : 10,
+                                fontWeight: FontWeight.w900,
+                                color: isLowStock ? Colors.red : primaryColor
+                            )),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-
-            // ACTION BUTTONS
             if (!isSmall)
               Row(children: _actionButtons(context))
             else
@@ -392,25 +389,17 @@ class ProductItemCard extends StatelessWidget {
     );
   }
 
-  // --- [UPDATE] WIDGET PLACEHOLDER IKUT STYLE GAMBAR ---
   Widget _buildPlaceholder(bool isTablet, bool isSmall) {
     return Container(
       width: isTablet ? 70 : isSmall ? 45 : 55,
       height: isTablet ? 70 : isSmall ? 45 : 55,
       decoration: BoxDecoration(
-        color: Colors.white, // Background putih
+        color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: primaryColor.withOpacity(0.1), // Border pudar biru/kelabu
-          width: 1.5,
-        ),
+        border: Border.all(color: primaryColor.withOpacity(0.1), width: 1.5),
       ),
       child: Center(
-        child: Icon(
-          Icons.inventory_2_rounded,
-          color: primaryColor.withOpacity(0.3), // Icon warna pudar
-          size: isTablet ? 30 : 24,
-        ),
+        child: Icon(Icons.inventory_2_rounded, color: primaryColor.withOpacity(0.3), size: isTablet ? 30 : 24),
       ),
     );
   }
@@ -434,6 +423,7 @@ class ProductItemCard extends StatelessWidget {
     final dataMap = data;
     double price = double.tryParse(dataMap['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(dataMap['currentStock']?.toString() ?? '0') ?? 0;
+    int reorderLevel = int.tryParse(dataMap['reorderLevel']?.toString() ?? '10') ?? 10;
     final primaryBlue = const Color(0xFF233E99);
 
     showDialog(
@@ -449,18 +439,12 @@ class ProductItemCard extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: primaryBlue.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: primaryBlue.withOpacity(0.1), shape: BoxShape.circle),
                   child: Icon(Icons.info_outline_rounded, color: primaryBlue, size: 40),
                 ),
                 const SizedBox(height: 16),
                 const Text("Product Details", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
-                const Text("View the details of the selected product.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 20),
-
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
@@ -473,20 +457,14 @@ class ProductItemCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          // --- PLACEHOLDER JUGA DI DETAILS ---
                           ClipRRect(
                             borderRadius: BorderRadius.circular(15),
                             child: SizedBox(
-                              width: 70,
-                              height: 70,
+                              width: 70, height: 70,
                               child: (dataMap['imageUrl'] != null && dataMap['imageUrl'].isNotEmpty)
                                   ? CachedNetworkImage(imageUrl: dataMap['imageUrl'], fit: BoxFit.cover)
                                   : Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5),
-                                ),
+                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: primaryBlue.withOpacity(0.1), width: 1.5)),
                                 child: Icon(Icons.inventory_2_rounded, color: primaryBlue.withOpacity(0.3), size: 30),
                               ),
                             ),
@@ -512,7 +490,7 @@ class ProductItemCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
-                          _buildStatusChip("In Stock", "$stock ${dataMap['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                          _buildStatusChip("In Stock", "$stock ${dataMap['unit'] ?? 'pcs'}", stock <= reorderLevel ? Colors.red : Colors.green),
                         ],
                       ),
                     ],
@@ -522,12 +500,7 @@ class ProductItemCard extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                     onPressed: () => Navigator.pop(context),
                     child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),

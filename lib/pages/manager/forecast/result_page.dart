@@ -290,9 +290,12 @@ class _ResultPageState extends State<ResultPage> {
     final int cartonCount = item['cartonCount'];
     final int unitsPerCarton = item['unitsPerCarton'];
     final String trend = item['trend'];
-
-    // Extract the method name (SMA or SES) from the model
     final String methodUsed = forecast.forecastMethod;
+
+    // Logic for dynamic labeling based on unitsPerCarton
+    final String label = unitsPerCarton == 1
+        ? (cartonCount == 1 ? "Unit" : "Units")
+        : "Cartons";
 
     bool isUp = trend.toLowerCase().contains("up") || trend.toLowerCase().contains("increase");
 
@@ -327,13 +330,15 @@ class _ResultPageState extends State<ResultPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text("$cartonCount", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: primaryColor)),
-              const Padding(padding: EdgeInsets.only(bottom: 5, left: 6), child: Text("Cartons", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 5, left: 6),
+                  child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))
+              ),
             ],
           ),
 
           const SizedBox(height: 15),
 
-          // --- NEW: DISPLAY FORMULA METHOD ---
           Row(
             children: [
               Icon(Icons.functions_rounded, size: 14, color: Colors.grey.shade400),
@@ -350,7 +355,6 @@ class _ResultPageState extends State<ResultPage> {
           ),
           const SizedBox(height: 8),
 
-          // Details section
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: bgGrey, borderRadius: BorderRadius.circular(12)),
