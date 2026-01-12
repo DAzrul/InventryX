@@ -30,7 +30,7 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
     _calculateAllRisks();
   }
 
-  // --- LOGIK PENGIRAAN RISIKO ---
+  // --- LOGIK PENGIRAAN RISIKO (CORRECTED) ---
   Future<void> _calculateAllRisks() async {
     List<Map<String, dynamic>> results = [];
 
@@ -48,28 +48,32 @@ class _RiskScoringPageState extends State<RiskScoringPage> {
           currentStock = int.tryParse(productDoc.get('currentStock')?.toString() ?? '0') ?? 0;
         }
 
-        // 2. Dapatkan Tarikh Luput Paling Dekat
+        // 2. Dapatkan Tarikh Luput (FIXED LOGIC)
+        // We query purely by Date ASCENDING to ensure we look at the calendar order.
         QuerySnapshot batchSnapshot = await FirebaseFirestore.instance
             .collection('batches')
             .where('productId', isEqualTo: forecast.productId)
-            .where('currentQuantity', isGreaterThan: 0)
-            .orderBy('currentQuantity') // Firestore index requirement
-            .orderBy('expiryDate', descending: false)
+            .orderBy('expiryDate', descending: false) // Sort 14/1 -> 16/1 -> 18/1 -> 20/1
             .get();
 
-        int daysToExpiry = 999; // Default jika tiada batch
+        int daysToExpiry = 999; // Default Safe
 
+        // Loop through batches in chronological order
         for (var doc in batchSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          if (data['expiryDate'] != null) {
+          int qty = int.tryParse(data['currentQuantity']?.toString() ?? '0') ?? 0;
+
+          // LOGIC: Only pick this date if the batch actually has stock
+          if (qty > 0 && data['expiryDate'] != null) {
             Timestamp expiryTs = data['expiryDate'];
             DateTime expiryDate = expiryTs.toDate();
             daysToExpiry = expiryDate.difference(DateTime.now()).inDays;
-            break; // Ambil batch pertama (paling awal luput)
+            break; // Found the earliest active batch! Stop looking.
           }
+          // If qty is 0, the loop continues to the next date (e.g. 14/1 -> 16/1 -> 18/1)
         }
 
-        // 3. Jalankan Pengiraan Risiko (Class Berasingan)
+        // 3. Jalankan Pengiraan Risiko
         RiskResult result = RiskLogic.calculateRisk(
           forecastDemand: forecast.predictedDemand,
           currentStock: currentStock,

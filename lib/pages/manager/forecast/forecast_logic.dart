@@ -65,9 +65,12 @@ class ForecastLogic {
     }
   }
 
-  // 5. MAIN GENERATOR: Automatic Method Selection
+
+// 5. MAIN GENERATOR: Automatic Method Selection
   static Map<String, dynamic> generateForecast(List<int> sales) {
-    const double varianceThreshold = 20;
+    // INCREASE THIS: 20 is too low for most products.
+    // 150 ensures stable products stay in SMA mode.
+    const double varianceThreshold = 150;
 
     final variance = calculateVariance(sales);
     final trend = calculateTrend(sales);
@@ -75,7 +78,6 @@ class ForecastLogic {
     double forecast;
     String methodUsed;
 
-    // Logic: If variance is high, use SES. If stable, use SMA.
     if (variance >= varianceThreshold) {
       forecast = calculateSES(sales, alpha: 0.5);
       methodUsed = "SES";
@@ -85,7 +87,7 @@ class ForecastLogic {
     }
 
     return {
-      "forecast": forecast.round(), // Round to nearest whole unit for display
+      "forecast": forecast.round(),
       "method": methodUsed,
       "trend": trend,
       "variance": variance,
