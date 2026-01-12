@@ -34,8 +34,8 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   int _selectedIndex = 1;
   final Color primaryBlue = const Color(0xFF233E99);
 
-  // --- FILTER STATE ---
-  String _selectedTimeframe = 'All Time';
+  // [UBAH 1] Default Filter set kepada 'This Month'
+  String _selectedTimeframe = 'This Month';
   DateTime? _customStartDate;
   DateTime? _customEndDate;
 
@@ -72,7 +72,8 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         _selectedTimeframe = 'Custom Range';
       });
     } else {
-      setState(() => _selectedTimeframe = 'All Time');
+      // Jika cancel, reset ke default This Month
+      setState(() => _selectedTimeframe = 'This Month');
     }
   }
 
@@ -92,6 +93,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
       start = _customStartDate;
       end = _customEndDate;
     }
+    // All Time kekal null
 
     return {
       'start': start != null ? Timestamp.fromDate(start) : null,
@@ -125,17 +127,17 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 
       List<String> tableHeaders = [];
       List<List<dynamic>> tableData = [];
-      List<pw.Widget> gridCards = [];
 
       final PdfColor brandColor = PdfColors.blue900;
       final PdfColor accentColor = PdfColors.grey200;
 
       if (tabIndex == 0) {
-        // --- 1. INVENTORY ---
+        // --- 1. INVENTORY (STOCK) - [UBAH 2] Generates Table Report ---
         reportTitle = "CURRENT STOCK REPORT";
-        timeframeLabel = "Snapshot: Today (Active)";
+        tableHeaders = ['No', 'Item Name', 'Category', 'Stock', 'Price', 'Value'];
 
         Query query = _db.collection('products').orderBy('productName');
+        // Filter: Show active items updated within range (or all if All Time)
         if (startTimestamp != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: startTimestamp);
         if (endTimestamp != null) query = query.where('updatedAt', isLessThanOrEqualTo: endTimestamp);
 
@@ -143,38 +145,26 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 
         double totalVal = 0;
         int lowStockCount = 0;
+        int index = 1;
 
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           int s = int.tryParse(data['currentStock'].toString()) ?? 0;
           double p = double.tryParse(data['price'].toString()) ?? 0;
           double rowTot = s * p;
           totalVal += rowTot;
           if (s <= 10) lowStockCount++;
 
-          gridCards.add(
-              pw.Container(
-                  width: 150, height: 85, margin: const pw.EdgeInsets.all(6), padding: const pw.EdgeInsets.all(8),
-                  decoration: pw.BoxDecoration(
-                    color: s <= 10 ? PdfColors.red50 : PdfColors.white,
-                    border: pw.Border.all(color: s <= 10 ? PdfColors.red200 : PdfColors.grey300),
-                    borderRadius: pw.BorderRadius.circular(6),
-                  ),
-                  child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                    pw.Text(data['productName']?.toString().toUpperCase() ?? '-', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.blue900), maxLines: 2, overflow: pw.TextOverflow.clip),
-                    pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                        pw.Text("STOCK", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-                        pw.Text(s.toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: s <= 10 ? PdfColors.red : PdfColors.black)),
-                      ]),
-                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                        pw.Text("VALUE", style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-                        pw.Text("RM ${rowTot.toStringAsFixed(0)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.green700)),
-                      ]),
-                    ])
-                  ])
-              )
-          );
+          // Fill Table Data
+          tableData.add([
+            index.toString(),
+            data['productName']?.toString().toUpperCase() ?? '-',
+            data['category'] ?? '-',
+            s.toString(),
+            "RM ${p.toStringAsFixed(2)}",
+            "RM ${rowTot.toStringAsFixed(2)}"
+          ]);
+          index++;
         }
         summaryText = "Inventory Valuation Report. Total Asset Value: RM ${totalVal.toStringAsFixed(2)}. Critical items: $lowStockCount.";
 
@@ -187,7 +177,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         final snap = await query.get();
 
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           if (data['forecastDate'] != null) {
             Timestamp t = data['forecastDate'];
             if (startTimestamp != null && t.compareTo(startTimestamp) < 0) continue;
@@ -208,12 +198,12 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         final snap = await _db.collection('risk_analysis').orderBy('RiskValue', descending: true).get();
 
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           String level = data['RiskLevel']?.toString().toUpperCase() ?? 'LOW';
           String expiryInfo = "${data['DaysToExpiry'] ?? 0} Days Left";
           tableData.add([data['ProductName'] ?? '-', level, expiryInfo, "Monitoring"]);
         }
-        summaryText = "Current risk assessment. Prioritize High Risk items for clearance.";
+        summaryText = "Current risk assessment based on real-time expiry and stock data.";
 
       } else if (tabIndex == 3) {
         // --- 4. SALES (FULL ACCESS) ---
@@ -241,12 +231,13 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
             date,
             d.id.substring(0, 8).toUpperCase(),
             productName,
-            "RM ${rev.toStringAsFixed(2)}"
+            "RM ${rev.toStringAsFixed(2)}" // Admin sees REAL money
           ]);
         }
         summaryText = "Financial sales record. Total Revenue: RM ${totalRev.toStringAsFixed(2)}.";
       }
 
+      // --- PDF BUILDER ---
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -287,17 +278,17 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
                   ])
               ),
               pw.SizedBox(height: 20),
-              if (tabIndex == 0)
-                pw.Wrap(spacing: 10, runSpacing: 10, children: gridCards)
-              else
-                pw.TableHelper.fromTextArray(
-                  context: context, headers: tableHeaders, data: tableData, border: null,
-                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
-                  headerDecoration: pw.BoxDecoration(color: brandColor, borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(4))),
-                  cellStyle: const pw.TextStyle(fontSize: 9),
-                  rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
-                  cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerLeft, 2: pw.Alignment.center, 3: tabIndex == 3 ? pw.Alignment.centerRight : pw.Alignment.center},
-                ),
+
+              // --- TABLE RENDERER (ALL TABS USE TABLE) ---
+              pw.TableHelper.fromTextArray(
+                context: context, headers: tableHeaders, data: tableData, border: null,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+                headerDecoration: pw.BoxDecoration(color: brandColor, borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(4))),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
+                cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerLeft, 2: pw.Alignment.center, 3: tabIndex == 3 ? pw.Alignment.centerRight : pw.Alignment.center},
+              ),
             ];
           },
         ),
@@ -341,7 +332,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
 
         final snap = await query.get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           int s = int.tryParse(data['currentStock'].toString()) ?? 0;
           double p = double.tryParse(data['price'].toString()) ?? 0;
           rows.add([data['productName'] ?? '', data['category'] ?? '', s, p, s*p]);
@@ -353,7 +344,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         if (startTimestamp != null) query = query.where('forecastDate', isGreaterThanOrEqualTo: startTimestamp);
         final snap = await query.get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           if (data['forecastDate'] != null && endTimestamp != null) {
             if ((data['forecastDate'] as Timestamp).compareTo(endTimestamp) > 0) continue;
           }
@@ -364,7 +355,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         headers = ['Product Name', 'Risk Level', 'Days To Expiry'];
         final snap = await _db.collection('risk_analysis').get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           rows.add([data['ProductName'] ?? '', data['RiskLevel'] ?? '', data['DaysToExpiry'] ?? 0]);
         }
       } else if (tabIndex == 3) {
@@ -375,7 +366,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
         if (endTimestamp != null) query = query.where('saleDate', isLessThanOrEqualTo: endTimestamp);
         final snap = await query.get();
         for (var d in snap.docs) {
-          final data = d.data() as Map<String, dynamic>; // Explicit cast
+          final data = d.data() as Map<String, dynamic>;
           rows.add([
             data['saleDate'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((data['saleDate'] as Timestamp).toDate()) : '-',
             d.id,
@@ -495,7 +486,7 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
           ),
           Padding(padding: const EdgeInsets.only(right: 12), child: IconButton(icon: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryBlue.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(Icons.file_download_outlined, color: primaryBlue, size: 22)), onPressed: () => _showExportOptions(context)))
         ],
-        bottom: PreferredSize(preferredSize: const Size.fromHeight(65), child: Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 12), padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(25)), child: TabBar(controller: _tabController, isScrollable: false, indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]), labelColor: primaryBlue, labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12), unselectedLabelColor: Colors.grey.shade500, unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12), dividerColor: Colors.transparent, tabs: const [Tab(text: "Stock"), Tab(text: "Forecast"), Tab(text: "Health"), Tab(text: "Sales")]))),
+        bottom: PreferredSize(preferredSize: const Size.fromHeight(65), child: Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 12), padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(25)), child: TabBar(controller: _tabController, isScrollable: false, indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]), labelColor: primaryBlue, labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12), unselectedLabelColor: Colors.grey.shade500, unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12), dividerColor: Colors.transparent, tabs: const [Tab(text: "Stock"), Tab(text: "Forecast"), Tab(text: "Risk"), Tab(text: "Sales")]))),
       ),
       body: TabBarView(
           controller: _tabController,
@@ -521,54 +512,340 @@ class _ReportPageState extends State<ReportPage> with SingleTickerProviderStateM
   }
 }
 
-// 1. INVENTORY TAB
-class _InventoryReportTab extends StatelessWidget {
+// -----------------------------------------------------------------------------
+// TAB 1: INVENTORY REPORT (FULL PIE CHART - BLUE THEME FIXED)
+// -----------------------------------------------------------------------------
+class _InventoryReportTab extends StatefulWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
+
   const _InventoryReportTab({required this.db, this.start, this.end});
 
   @override
+  State<_InventoryReportTab> createState() => _InventoryReportTabState();
+}
+
+class _InventoryReportTabState extends State<_InventoryReportTab> {
+  int _touchedIndex = -1;
+
+  @override
   Widget build(BuildContext context) {
-    // Filter by Updated At
-    Query query = db.collection('products');
-    if (start != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: start);
-    if (end != null) query = query.where('updatedAt', isLessThanOrEqualTo: end);
+    Query query = widget.db.collection('products');
+    if (widget.start != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: widget.start);
+    if (widget.end != null) query = query.where('updatedAt', isLessThanOrEqualTo: widget.end);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        double totalValue = 0;
-        Map<String, double> catData = {};
+
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return const Center(child: Text("No stock activity in this period.", style: TextStyle(color: Colors.grey)));
 
+        double totalValue = 0;
+        Map<String, double> catTotalUnits = {};
+        Map<String, int> catProductCount = {};
+
         for (var doc in docs) {
-          final data = doc.data() as Map<String, dynamic>; // Explicit cast
+          final data = doc.data() as Map<String, dynamic>;
           double p = double.tryParse(data['price']?.toString() ?? '0') ?? 0;
           int s = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
           totalValue += (p * s);
-          catData[data['category'] ?? 'Others'] = (catData[data['category']] ?? 0) + s.toDouble();
+          String cat = (data['category'] ?? 'Others').toString().toUpperCase();
+
+          catTotalUnits[cat] = (catTotalUnits[cat] ?? 0) + s.toDouble();
+          catProductCount[cat] = (catProductCount[cat] ?? 0) + 1;
         }
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildPremiumStatCard("Total Asset Value", "RM ${totalValue.toStringAsFixed(2)}", Icons.account_balance_wallet_outlined, const Color(0xFF233E99)), const SizedBox(height: 30), const Text("Category Distribution", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 15), _buildCleanBarChart(catData), const SizedBox(height: 30), const Text("Critical Stock Alerts", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.redAccent)), const SizedBox(height: 15), if (docs.where((d) => (int.tryParse((d.data() as Map<String, dynamic>)['currentStock'].toString()) ?? 0) <= 10).isEmpty) _buildEmptyAlert() else ...docs.where((d) => (int.tryParse((d.data() as Map<String, dynamic>)['currentStock'].toString()) ?? 0) <= 10).map((d) {
+
+        var lowStockItems = docs.where((d) {
           final data = d.data() as Map<String, dynamic>;
-          return _buildModernAlertTile(data['productName'] ?? 'Item', "${data['currentStock']} units left", Icons.warning_amber_rounded, Colors.red);
-        })]);
+          int stock = int.tryParse(data['currentStock'].toString()) ?? 0;
+          return stock <= 10;
+        }).toList();
+
+        List<Widget> contentWidgets = [
+          _buildPremiumStatCard("Stock Value (Cost)", "RM ${totalValue.toStringAsFixed(2)}", Icons.account_balance_wallet_outlined, const Color(0xFF233E99)),
+          const SizedBox(height: 30),
+          const Text("Category Distribution", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 5),
+          const Text("Breakdown by Total Units & Product Count", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 20),
+
+          _buildCategoryPieChart(catTotalUnits, catProductCount),
+
+          const SizedBox(height: 30),
+          const Text("Restock Needed", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black)),
+          const SizedBox(height: 15),
+        ];
+
+        if (lowStockItems.isEmpty) {
+          contentWidgets.add(_buildEmptyAlert());
+        } else {
+          for (var d in lowStockItems) {
+            final data = d.data() as Map<String, dynamic>;
+            contentWidgets.add(_buildModernAlertTile(
+                data['productName'] ?? 'Item',
+                "${data['currentStock']} units left",
+                Icons.warning_amber_rounded,
+                Colors.red,
+                data
+            ));
+          }
+        }
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+          physics: const BouncingScrollPhysics(),
+          children: contentWidgets,
+        );
       },
     );
   }
-  Widget _buildEmptyAlert() { return Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(20)), child: const Center(child: Text("All stock levels are healthy! ✅", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)))); }
-  Widget _buildPremiumStatCard(String title, String val, IconData icon, Color color) { return Container(padding: const EdgeInsets.all(28), decoration: BoxDecoration(gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: Colors.white60, size: 18), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600))]), const SizedBox(height: 12), Text(val, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -0.5))])); }
-  Widget _buildCleanBarChart(Map<String, double> data) { return Container(height: 260, padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]), child: BarChart(BarChartData(maxY: data.values.isEmpty ? 10 : data.values.reduce((a, b) => a > b ? a : b) * 1.3, barGroups: data.entries.map((e) => BarChartGroupData(x: data.keys.toList().indexOf(e.key), barRods: [BarChartRodData(toY: e.value, color: const Color(0xFF233E99), width: 20, borderRadius: const BorderRadius.vertical(top: Radius.circular(8)))])).toList(), titlesData: FlTitlesData(topTitles: const AxisTitles(), rightTitles: const AxisTitles(), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) { if (v.toInt() >= data.length) return const SizedBox(); return Padding(padding: const EdgeInsets.only(top: 10), child: Text(data.keys.elementAt(v.toInt()).substring(0, 3).toUpperCase(), style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w900))); })), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: Colors.grey.shade400))))), gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)), borderData: FlBorderData(show: false)))); }
-  Widget _buildModernAlertTile(String name, String subtitle, IconData icon, Color color) { return Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: color.withValues(alpha: 0.08)), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1A1C1E))), const SizedBox(height: 4), Text(subtitle, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))])), const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 14)])); }
+
+// --- FULL PIE CHART WIDGET (LAYOUT SEBELAH-MENYEBELAH, TIADA LUBANG) ---
+  // --- FULL PIE CHART WIDGET (FIX: TEXT WRAPPING UTK NAMA PANJANG) ---
+  Widget _buildCategoryPieChart(Map<String, double> unitData, Map<String, int> productCountData) {
+    final List<Color> colors = [
+      const Color(0xFF3B82F6), // Royal Blue
+      const Color(0xFFEF4444), // Red Coral
+      const Color(0xFF10B981), // Emerald Green
+      const Color(0xFFF59E0B), // Amber
+      const Color(0xFF8B5CF6), // Violet
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFF64748B), // Slate Grey
+    ];
+
+    double totalAllUnits = unitData.values.fold(0, (sum, item) => sum + item);
+    List<PieChartSectionData> sections = [];
+    List<Widget> indicators = [];
+    int i = 0;
+
+    unitData.forEach((category, qty) {
+      final isTouched = i == _touchedIndex;
+      final double radius = isTouched ? 75.0 : 70.0;
+      final double widgetScale = isTouched ? 1.03 : 1.0;
+
+      final color = colors[i % colors.length];
+      final int productCount = productCountData[category] ?? 0;
+      final percentage = totalAllUnits > 0 ? (qty / totalAllUnits * 100) : 0;
+
+      // 1. Chart Section
+      sections.add(PieChartSectionData(
+        color: color,
+        value: qty,
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: radius,
+        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+        titlePositionPercentageOffset: 0.6,
+      ));
+
+      // 2. Legend Item
+      final List<BoxShadow> shadow = isTouched
+          ? [const BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))]
+          : <BoxShadow>[];
+
+      indicators.add(
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                if (_touchedIndex == i) {
+                  _touchedIndex = -1;
+                } else {
+                  _touchedIndex = i;
+                }
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              transform: Matrix4.identity()..scale(widgetScale),
+              transformAlignment: Alignment.centerLeft,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                  color: isTouched ? color.withOpacity(0.08) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isTouched ? Border.all(color: color.withOpacity(0.5), width: 1.5) : Border.all(color: Colors.grey.shade100),
+                  boxShadow: shadow
+              ),
+              child: Row(
+                children: [
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  const SizedBox(width: 12),
+
+                  // [FIX DI SINI]: Expanded benarkan teks turun baris
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          category,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11, // Kecilkan sikit font
+                              color: isTouched ? Colors.black : Colors.grey.shade800
+                          ),
+                          maxLines: 2, // Benarkan 2 baris
+                          overflow: TextOverflow.ellipsis, // Kalau lebih 2 baris baru potong
+                        ),
+                        Text(
+                            "$productCount Products",
+                            style: TextStyle(
+                                color: isTouched ? Colors.grey.shade700 : Colors.grey.shade500,
+                                fontSize: 10
+                            )
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text("${qty.toInt()}", style: TextStyle(fontWeight: FontWeight.w900, color: color, fontSize: 13)),
+                ],
+              ),
+            ),
+          )
+      );
+
+      i++;
+    });
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // BAHAGIAN KIRI: CARTA (Kurangkan Flex supaya chart kecil sikit, bagi ruang teks)
+          Expanded(
+            flex: 4,
+            child: SizedBox(
+              height: 160,
+              child: PieChart(
+                PieChartData(
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                          _touchedIndex = -1;
+                          return;
+                        }
+                        _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  borderData: FlBorderData(show: false),
+                  sectionsSpace: 0,
+                  centerSpaceRadius: 0,
+                  startDegreeOffset: -90,
+                  sections: sections,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 15),
+
+          // BAHAGIAN KANAN: LEGEND (Besarkan Flex supaya teks muat)
+          Expanded(
+            flex: 6, // 6 bahagian untuk teks, 4 bahagian untuk chart
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: indicators,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET LAIN KEKAL SAMA ---
+  Widget _buildEmptyAlert() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(20)),
+      child: const Center(child: Text("All stock levels are healthy! ✅", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+    );
+  }
+
+  Widget _buildPremiumStatCard(String title, String val, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [Icon(icon, color: Colors.white60, size: 18), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600))]),
+          const SizedBox(height: 12),
+          Text(val, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -0.5))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernAlertTile(String name, String subtitle, IconData icon, Color color, Map<String, dynamic> fullData) {
+    return InkWell(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailRow("Category", fullData['category'] ?? '-'),
+                _detailRow("Current Stock", "${fullData['currentStock']} units"),
+                _detailRow("Price", "RM ${fullData['price']}"),
+                _detailRow("Last Update", fullData['updatedAt'] != null
+                    ? DateFormat('dd MMM yyyy').format((fullData['updatedAt'] as Timestamp).toDate())
+                    : '-'),
+              ],
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Close"))],
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: color.withValues(alpha: 0.08)), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.02), blurRadius: 10)]),
+        child: Row(children: [
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)),
+          const SizedBox(width: 15),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1A1C1E))), const SizedBox(height: 4), Text(subtitle, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))])),
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey, size: 20)
+        ]),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        ],
+      ),
+    );
+  }
 }
 
-// 2. FORECAST TAB (FILTERED)
+// -----------------------------------------------------------------------------
+// TAB 2: FORECAST REPORT
+// -----------------------------------------------------------------------------
 class _ForecastReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
+
   const _ForecastReportTab({required this.db, this.start, this.end});
 
   @override
@@ -581,9 +858,21 @@ class _ForecastReportTab extends StatelessWidget {
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
         final docs = snapshot.data!.docs;
+
         if (docs.isEmpty || docs.length < 2) {
-          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.insights_rounded, size: 60, color: Colors.grey.shade300), const SizedBox(height: 15), const Text("Not enough data to show trends yet.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)), const Text("Run 'Forecast' in Utilities to generate.", style: TextStyle(color: Colors.grey, fontSize: 11))]));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.insights_rounded, size: 60, color: Colors.grey.shade300),
+                const SizedBox(height: 15),
+                const Text("Not enough data to show trends.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                const Text("Try selecting 'This Year' or run Forecast.", style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ],
+            ),
+          );
         }
 
         List<FlSpot> spots = [];
@@ -591,133 +880,430 @@ class _ForecastReportTab extends StatelessWidget {
         final chartDocs = docs;
 
         for (int i = 0; i < chartDocs.length; i++) {
-          final data = chartDocs[i].data() as Map<String, dynamic>; // Explicit cast
+          final data = chartDocs[i].data() as Map<String, dynamic>;
           double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
           if (val > maxDemand) maxDemand = val;
           spots.add(FlSpot(i.toDouble(), val));
         }
 
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [
-          _buildHeader("Sales Forecast Trend"),
-          const SizedBox(height: 20),
-          _buildLineChart(spots, maxDemand, chartDocs),
-          const SizedBox(height: 35),
-          _buildHeader("Expected Sales List"),
-          const SizedBox(height: 15),
-          ...docs.take(10).map((d) {
-            final data = d.data() as Map<String, dynamic>; // Explicit cast
-            String dateStr = "N/A";
-            if (data['forecastDate'] is Timestamp) {
-              dateStr = DateFormat('dd MMM').format((data['forecastDate'] as Timestamp).toDate());
-            }
-            double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
-            return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', val.toInt().toString());
-          })
-        ]);
+        return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 25, 20, 100),
+            physics: const BouncingScrollPhysics(),
+            children: [
+              _buildHeader(" Forecast Trend"),
+              const SizedBox(height: 20),
+              _buildLineChart(spots, maxDemand, chartDocs),
+              const SizedBox(height: 35),
+              _buildHeader("Forecast Result"),
+              const SizedBox(height: 15),
+              ...docs.take(10).map((d) {
+                final data = d.data() as Map<String, dynamic>;
+                String dateStr = "N/A";
+                if (data['forecastDate'] is Timestamp) {
+                  dateStr = DateFormat('dd MMM').format((data['forecastDate'] as Timestamp).toDate());
+                }
+                double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
+                return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', val.toInt().toString());
+              })
+            ]
+        );
       },
     );
   }
-  Widget _buildHeader(String title) { return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))); }
-  Widget _buildLineChart(List<FlSpot> spots, double maxY, List<QueryDocumentSnapshot> docs) {
-    return Container(height: 300, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 5))]), child: LineChart(LineChartData(minX: 0, maxX: (spots.length - 1).toDouble(), minY: 0, maxY: maxY * 1.2, lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.purpleAccent, barWidth: 4, isStrokeCapRound: true, dotData: FlDotData(show: true), belowBarData: BarAreaData(show: true, color: Colors.purpleAccent.withValues(alpha: 0.1)))], titlesData: FlTitlesData(
-        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: (docs.length / 5).ceil().toDouble(), getTitlesWidget: (value, meta) {
-          int index = value.toInt();
-          if (index >= 0 && index < docs.length) {
-            final data = docs[index].data() as Map<String, dynamic>; // Explicit cast
-            if (data['forecastDate'] is Timestamp) {
-              return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('d/M').format((data['forecastDate'] as Timestamp).toDate()), style: const TextStyle(fontSize: 10, color: Colors.grey)));
-            }
-          }
-          return const SizedBox();
-        })),
-        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey))))), gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)), borderData: FlBorderData(show: false))));
+
+  Widget _buildHeader(String title) {
+    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)));
   }
-  Widget _buildForecastTile(String date, String productName, String demand) { return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 2), Text("Target Date: $date", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.bold))])), const SizedBox(width: 10), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(demand, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.purple)), const Text("units", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey))])])); }
+
+  Widget _buildLineChart(List<FlSpot> spots, double maxY, List<QueryDocumentSnapshot> docs) {
+    return Container(
+      height: 300,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 5))]),
+      child: LineChart(LineChartData(
+          minX: 0, maxX: (spots.length - 1).toDouble(), minY: 0, maxY: maxY * 1.2,
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (touchedSpot) => Colors.blueGrey,
+              getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                return touchedSpots.map((spot) {
+                  return LineTooltipItem(
+                    spot.y.toStringAsFixed(0),
+                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  );
+                }).toList();
+              },
+            ),
+          ),
+          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.purpleAccent, barWidth: 4, isStrokeCapRound: true, dotData: FlDotData(show: true), belowBarData: BarAreaData(show: true, color: Colors.purpleAccent.withValues(alpha: 0.1)))],
+          titlesData: FlTitlesData(
+              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: (docs.length / 5).ceil().toDouble(), getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= 0 && index < docs.length) {
+                  final data = docs[index].data() as Map<String, dynamic>;
+                  if (data['forecastDate'] is Timestamp) {
+                    return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('d/M').format((data['forecastDate'] as Timestamp).toDate()), style: const TextStyle(fontSize: 10, color: Colors.grey)));
+                  }
+                }
+                return const SizedBox();
+              })),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey))))
+          ),
+          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)),
+          borderData: FlBorderData(show: false)
+      )),
+    );
+  }
+
+  Widget _buildForecastTile(String date, String productName, String demand) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      child: Row(children: [
+        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)),
+        const SizedBox(width: 15),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 2),
+          Text("Forecast Date: $date", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.bold))
+        ])),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(demand, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.purple)), const Text("units", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey))])
+      ]),
+    );
+  }
 }
 
-// 3. RISK TAB (REMOVED SCORE)
-class _RiskReportTab extends StatelessWidget {
+// -----------------------------------------------------------------------------
+// TAB 3: RISK REPORT (TOOLTIP FIXED + POPUP ADDED)
+// -----------------------------------------------------------------------------
+class _RiskReportTab extends StatefulWidget {
   final FirebaseFirestore db;
   const _RiskReportTab({required this.db});
+
+  @override
+  State<_RiskReportTab> createState() => _RiskReportTabState();
+}
+
+class _RiskReportTabState extends State<_RiskReportTab> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.collection('risk_analysis').snapshots(),
+      stream: widget.db.collection('risk_analysis').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No risk data detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
+        if (snapshot.data!.docs.isEmpty) return Center(child: Text("No health issues detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
         final docs = snapshot.data!.docs;
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 25, 20, 100), physics: const BouncingScrollPhysics(), children: [_buildRiskHeader(docs.length), const SizedBox(height: 30), ...docs.map((d) { final data = d.data() as Map<String, dynamic>; return _buildRiskTile(data['ProductName'] ?? 'Unknown', "Expires in ${data['DaysToExpiry'] ?? 0} days", data['RiskLevel'] ?? 'Low'); })]);
+        return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 25, 20, 100),
+            physics: const BouncingScrollPhysics(),
+            children: [
+              _buildRiskHeader(docs.length),
+              const SizedBox(height: 30),
+              ...docs.map((d) {
+                final data = d.data() as Map<String, dynamic>;
+                return _buildRiskTile(
+                    data['ProductName'] ?? 'Unknown',
+                    "Expires in ${data['DaysToExpiry'] ?? 0} days",
+                    data['RiskLevel'] ?? 'Low',
+                    data // Pass Full Data
+                );
+              })
+            ]
+        );
       },
     );
   }
-  Widget _buildRiskHeader(int count) { return Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFFD32F2F).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.security_rounded, color: Colors.white, size: 28)), const SizedBox(width: 15), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Identified Risks", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)), Text("$count Items", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))])])); }
-  Widget _buildRiskTile(String productName, String subtitle, String probability) { Color riskColor = Colors.green; String prob = probability.toLowerCase(); if (prob.contains('high')) riskColor = const Color(0xFFD32F2F); else if (prob.contains('medium')) riskColor = Colors.orange; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: riskColor.withValues(alpha: 0.2), width: 1), boxShadow: [BoxShadow(color: riskColor.withValues(alpha: 0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: riskColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))), const Spacer(), Icon(Icons.info_outline_rounded, size: 18, color: Colors.grey[400])]), const SizedBox(height: 10), Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))), const SizedBox(height: 6), Row(children: [Icon(Icons.warning_amber_rounded, size: 14, color: riskColor), const SizedBox(width: 5), Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))])])); }
+
+  Widget _buildRiskHeader(int count) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFFD32F2F).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]),
+      child: Row(children: [
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.health_and_safety_rounded, color: Colors.white, size: 28)),
+        const SizedBox(width: 15),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Items at Risk", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)), Text("$count Items", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))])
+      ]),
+    );
+  }
+
+  // [MODIFIED] Added Popup
+  Widget _buildRiskTile(String productName, String subtitle, String probability, Map<String, dynamic> fullData) {
+    Color riskColor = Colors.green;
+    String prob = probability.toLowerCase();
+    if (prob.contains('high')) riskColor = const Color(0xFFD32F2F); else if (prob.contains('medium')) riskColor = Colors.orange;
+
+    return InkWell(
+      onTap: () {
+        // 1. Kira Tarikh Luput (Hari ini + Baki Hari)
+        int daysLeft = int.tryParse(fullData['DaysToExpiry']?.toString() ?? '0') ?? 0;
+        DateTime expDate = DateTime.now().add(Duration(days: daysLeft));
+        String dateStr = DateFormat('dd MMM yyyy').format(expDate);
+
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(children: [
+              Icon(Icons.warning_amber_rounded, color: riskColor),
+              const SizedBox(width: 10),
+              Expanded(child: Text("Risk Alert", style: TextStyle(color: riskColor, fontWeight: FontWeight.bold))),
+            ]),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 15),
+                _detailRow("Risk Level", probability.toUpperCase()),
+                _detailRow("Days to Expiry", "${fullData['DaysToExpiry']} days"),
+
+                // [BARU] Tunjuk Tarikh Luput Sebenar
+                _detailRow("Expiry Date", dateStr),
+
+                const SizedBox(height: 10),
+                const Text("Recommendation:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                    prob.contains('high')
+                        ? "Clear stock immediately (Discount/Promo)."
+                        : "Monitor stock movement closely.",
+                    style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic)
+                ),
+              ],
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Close"))],
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: riskColor.withOpacity(0.2), width: 1), // Guna withOpacity utk elak error version
+            boxShadow: [BoxShadow(color: riskColor.withOpacity(0.05), blurRadius: 10)]
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: riskColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))
+            ),
+            const Spacer(),
+            Icon(Icons.info_outline_rounded, size: 20, color: Colors.grey[400])
+          ]),
+          const SizedBox(height: 10),
+          Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(Icons.warning_amber_rounded, size: 14, color: riskColor),
+            const SizedBox(width: 5),
+            Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))
+          ])
+        ]),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        ],
+      ),
+    );
+  }
 }
 
-// 4. SALES TAB (FULL ACCESS - SHOW MONEY)
+// -----------------------------------------------------------------------------
+// TAB 4: SALES REPORT (DAILY SUMMARY + LINE CHART)
+// -----------------------------------------------------------------------------
 class _SalesReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
   const _SalesReportTab({required this.db, this.start, this.end});
-
   @override
   Widget build(BuildContext context) {
-    Query query = db.collection('sales').orderBy('saleDate', descending: true);
+    Query query = db.collection('sales').orderBy('saleDate', descending: false);
     if (start != null) query = query.where('saleDate', isGreaterThanOrEqualTo: start);
     if (end != null) query = query.where('saleDate', isLessThanOrEqualTo: end);
-
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-
         if (docs.isEmpty) {
           return const Center(child: Text("No sales records found for this period.", style: TextStyle(color: Colors.grey)));
         }
-
-        double totalSalesAmount = 0;
+        // --- 1. DATA AGGREGATION ---
+        Map<String, double> dailySalesMap = {};
+        double totalRevenuePeriod = 0;
         for (var doc in docs) {
-          final data = doc.data() as Map<String, dynamic>; // Explicit cast
-          totalSalesAmount += double.tryParse(data['totalAmount'].toString()) ?? 0;
-        }
+          final data = doc.data() as Map<String, dynamic>;
+          Timestamp? t = data['saleDate'];
+          if (t == null) continue;
+          String dateKey = DateFormat('yyyy-MM-dd').format(t.toDate());
+          // Guna totalAmount (Unmasked)
+          double amount = double.tryParse(data['totalAmount']?.toString() ?? '0') ?? 0;
 
+          dailySalesMap[dateKey] = (dailySalesMap[dateKey] ?? 0) + amount;
+          totalRevenuePeriod += amount;
+        }
+        List<String> sortedDates = dailySalesMap.keys.toList()..sort();
+        // Convert data to FlSpot
+        List<FlSpot> chartSpots = [];
+        for (int i = 0; i < sortedDates.length; i++) {
+          chartSpots.add(FlSpot(i.toDouble(), dailySalesMap[sortedDates[i]]!));
+        }
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           physics: const BouncingScrollPhysics(),
           children: [
+            // KAD TOTAL REVENUE
             Container(
                 padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF00796B), Color(0xFF004D40)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFF004D40).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Total Sales Revenue", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)), const SizedBox(height: 8), Text("RM ${totalSalesAmount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)), const SizedBox(height: 8), Text("${docs.length} Transactions", style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600))])
+                decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF00796B), Color(0xFF004D40)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [BoxShadow(color: const Color(0xFF004D40).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text("Total Revenue (Period)", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text("RM ${totalRevenuePeriod.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Text("${docs.length} Transactions processed", style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600))
+                ])
             ),
-            const SizedBox(height: 30),
-            const Text("Recent Transactions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
-            const SizedBox(height: 15),
-            ...docs.map((d) {
-              final data = d.data() as Map<String, dynamic>; // Explicit cast
-              String dateStr = 'Unknown';
-              if (data['saleDate'] != null) { dateStr = DateFormat('dd MMM, HH:mm').format((data['saleDate'] as Timestamp).toDate()); }
-              double amount = double.tryParse(data['totalAmount'].toString()) ?? 0;
-              String productName = data['snapshotName'] ?? 'Unknown Item';
-              int quantity = int.tryParse(data['quantitySold'].toString()) ?? 0;
 
+            const SizedBox(height: 30),
+            const Text("Daily Sales Trend", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+            const SizedBox(height: 15),
+
+            // --- 2. CHART WIDGET (LINE CHART + TOOLTIP FIX) ---
+            if (sortedDates.isNotEmpty)
+              Container(
+                height: 250,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
+                child: LineChart(
+                    LineChartData(
+                      minX: 0,
+                      maxX: (sortedDates.length - 1).toDouble(),
+                      minY: 0,
+                      maxY: dailySalesMap.values.reduce((a, b) => a > b ? a : b) * 1.2,
+
+                      // --- TOOLTIP FIX (SALES) ---
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (touchedSpot) => Colors.blueGrey, // Dark BG
+                          getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              return LineTooltipItem(
+                                "RM ${spot.y.toStringAsFixed(2)}",
+                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              );
+                            }).toList();
+                          },
+                        ),
+                        handleBuiltInTouches: true,
+                      ),
+                      // ---------------------------
+                      lineBarsData: [
+                        LineChartBarData(
+                            spots: chartSpots,
+                            isCurved: true,
+                            color: const Color(0xFF00796B),
+                            barWidth: 4,
+                            isStrokeCapRound: true,
+                            dotData: const FlDotData(show: true),
+                            belowBarData: BarAreaData(
+                                show: true,
+                                color: const Color(0xFF00796B).withValues(alpha: 0.2)
+                            )
+                        )
+                      ],
+                      titlesData: FlTitlesData(
+                        show: true,
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: 1,
+                            getTitlesWidget: (double value, TitleMeta meta) {
+                              int index = value.toInt();
+                              if (index >= 0 && index < sortedDates.length) {
+                                DateTime date = DateTime.parse(sortedDates[index]);
+                                // Show labels sparingly if too many
+                                if (sortedDates.length > 7 && index % 2 != 0) return const SizedBox();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(DateFormat('d/M').format(date), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                );
+                              }
+                              return const SizedBox();
+                            },
+                          ),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)
+                      ),
+                      borderData: FlBorderData(show: false),
+                    )
+                ),
+              )
+            else
+              const Center(child: Text("Not enough data for chart")),
+            const SizedBox(height: 30),
+            const Text("Daily Breakdown", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+            const SizedBox(height: 15),
+            // --- 3. TABLE / LIST (DAILY SUMMARY) ---
+            ...sortedDates.reversed.map((dateKey) {
+              double total = dailySalesMap[dateKey]!;
+              DateTime date = DateTime.parse(dateKey);
               return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text("Qty: $quantity unit", style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text(productName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1A1C1E)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
-                      Text(dateStr, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-                    ])),
-                    Text("RM ${amount.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF00796B)))
-                  ])
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8)]),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                            child: const Icon(Icons.calendar_today_rounded, color: Colors.teal, size: 20)
+                        ),
+                        const SizedBox(width: 15),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(DateFormat('dd MMMM yyyy').format(date), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1A1C1E))),
+                            const SizedBox(height: 4),
+                            Text(DateFormat('EEEE').format(date), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Text("RM ${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF00796B))),
+                  ],
+                ),
               );
             })
           ],

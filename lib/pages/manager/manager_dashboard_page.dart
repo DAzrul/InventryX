@@ -276,7 +276,7 @@ class _StatItem extends StatelessWidget {
 }
 
 // ==========================================================
-// 4. PIE CHART CARD
+// 4. PIE CHART CARD (UPDATED - FULL PIE)
 // ==========================================================
 class _TotalProductsCard extends StatelessWidget {
   const _TotalProductsCard();
@@ -308,7 +308,8 @@ class _TotalProductsCard extends StatelessWidget {
 
           catCount.forEach((key, val) {
             final clr = colors[i % colors.length];
-            sections.add(PieChartSectionData(color: clr, value: val.toDouble(), radius: 22, showTitle: false));
+            // [CHANGE] radius increased to 60 for full pie effect
+            sections.add(PieChartSectionData(color: clr, value: val.toDouble(), radius: 60, showTitle: false));
             legend.add(_LegendRow(color: clr, label: key, count: val.toString()));
             i++;
           });
@@ -325,7 +326,11 @@ class _TotalProductsCard extends StatelessWidget {
               const SizedBox(height: 25),
               Row(
                 children: [
-                  Expanded(flex: 5, child: SizedBox(height: 140, child: PieChart(PieChartData(sectionsSpace: 4, centerSpaceRadius: 40, sections: sections)))),
+                  Expanded(
+                      flex: 5,
+                      // [CHANGE] centerSpaceRadius set to 0 to remove hole
+                      child: SizedBox(height: 140, child: PieChart(PieChartData(sectionsSpace: 2, centerSpaceRadius: 0, sections: sections)))
+                  ),
                   const SizedBox(width: 20),
                   Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: legend)),
                 ],

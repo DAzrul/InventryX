@@ -98,7 +98,7 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
   }
 
   // ===========================================================================
-  // 1. PROFESSIONAL PDF GENERATOR (STOCK TABLE UPDATE)
+  // 1. PROFESSIONAL PDF GENERATOR
   // ===========================================================================
   Future<void> _generateAndPrintPDF() async {
     if (!mounted) return;
@@ -128,13 +128,10 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
       final PdfColor accentColor = PdfColors.grey200;
 
       if (tabIndex == 0) {
-        // --- 1. INVENTORY (NOW A TABLE) ---
         reportTitle = "CURRENT STOCK REPORT";
-        tableHeaders = ['No', 'Item Name', 'Category', 'Stock', 'Price', 'Value']; // Header Baru
+        tableHeaders = ['No', 'Item Name', 'Category', 'Stock', 'Price', 'Value'];
 
         Query query = _db.collection('products').orderBy('productName');
-        // Filter logic optional: usually stock report shows ALL current stock regardless of date
-        // But if you want to filter by update date:
         if (startTimestamp != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: startTimestamp);
         if (endTimestamp != null) query = query.where('updatedAt', isLessThanOrEqualTo: endTimestamp);
 
@@ -151,7 +148,6 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
           totalVal += rowTot;
           if (s <= 10) lowStockCount++;
 
-          // Add Row to Table
           tableData.add([
             index.toString(),
             data['productName'] ?? '-',
@@ -165,7 +161,6 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
         summaryText = "Stock overview. Total Value: RM ${totalVal.toStringAsFixed(2)}. Restock needed: $lowStockCount items.";
 
       } else if (tabIndex == 1) {
-        // --- 2. FORECAST ---
         reportTitle = "FUTURE SALES FORECAST";
         tableHeaders = ['Date', 'Product', 'Forecast Result', 'Status'];
         Query query = _db.collection('forecasts').orderBy('predictedDemand', descending: true);
@@ -185,7 +180,6 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
         summaryText = "AI-Predicted sales demand for the selected timeframe.";
 
       } else if (tabIndex == 2) {
-        // --- 3. RISK ---
         reportTitle = "EXPIRY & RISK CHECK";
         timeframeLabel = "Snapshot: Today";
         tableHeaders = ['Product Name', 'Risk Level', 'Days Left', 'Status'];
@@ -200,16 +194,14 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
         summaryText = "Items approaching expiry or identified as high risk.";
 
       } else if (tabIndex == 3) {
-        // --- 4. SALES ---
-        reportTitle = "SALES PERFORMANCE LOG";
-        tableHeaders = ['Date', 'Sale ID', 'Product', 'Qty', 'Revenue (RM)'];
+        reportTitle = "SALES LOG (MANAGEMENT VIEW)";
+        tableHeaders = ['Date', 'Sale ID', 'Product', 'Qty'];
 
         Query query = _db.collection('sales').orderBy('saleDate', descending: true);
         if (startTimestamp != null) query = query.where('saleDate', isGreaterThanOrEqualTo: startTimestamp);
         if (endTimestamp != null) query = query.where('saleDate', isLessThanOrEqualTo: endTimestamp);
 
         final snap = await query.get();
-        double totalRevenue = 0;
 
         for (var d in snap.docs) {
           final data = d.data() as Map<String, dynamic>;
@@ -219,15 +211,12 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
 
           String productName = data['snapshotName'] ?? 'Unknown Item';
           String qty = (data['quantitySold'] ?? 0).toString();
-          double revenue = double.tryParse(data['totalAmount']?.toString() ?? '0') ?? 0;
-          totalRevenue += revenue;
 
-          tableData.add([date, d.id.substring(0, 6).toUpperCase(), productName, qty, revenue.toStringAsFixed(2)]);
+          tableData.add([date, d.id.substring(0, 8).toUpperCase(), productName, qty]);
         }
-        summaryText = "Total Revenue for this period: RM ${totalRevenue.toStringAsFixed(2)}.";
+        summaryText = "Sales activity log. Revenue data is restricted for this user role.";
       }
 
-      // --- PDF BUILDER ---
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -235,7 +224,7 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
           header: (context) => pw.Column(children: [
             pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
               pw.Text("INVENTRYX REPORT", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20, color: brandColor)),
-              pw.Text("INTERNAL USE ONLY", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.red)),
+              pw.Text("RESTRICTED VIEW", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.red)),
             ]),
             pw.SizedBox(height: 5),
             pw.Divider(color: brandColor, thickness: 1.5),
@@ -260,7 +249,6 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
                   child: pw.Text(summaryText, style: const pw.TextStyle(fontSize: 10))
               ),
               pw.SizedBox(height: 20),
-              // --- TABLE RENDERER (ALL TABS USE TABLE NOW) ---
               pw.TableHelper.fromTextArray(
                   context: context,
                   headers: tableHeaders,
@@ -268,7 +256,7 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
                   headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
                   headerDecoration: pw.BoxDecoration(color: brandColor),
                   cellStyle: const pw.TextStyle(fontSize: 9),
-                  cellAlignment: pw.Alignment.centerLeft, // Align left for neatness
+                  cellAlignment: pw.Alignment.centerLeft,
                   rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5)))
               ),
             ];
@@ -345,7 +333,7 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
         }
       } else if (tabIndex == 3) {
         sheetName = "SalesLog";
-        headers = ['Date', 'Sale ID', 'Item Name', 'Qty Sold', 'Revenue'];
+        headers = ['Date', 'Sale ID', 'Item Name', 'Qty Sold'];
         Query query = _db.collection('sales').orderBy('saleDate', descending: true);
         if (startTimestamp != null) query = query.where('saleDate', isGreaterThanOrEqualTo: startTimestamp);
         if (endTimestamp != null) query = query.where('saleDate', isLessThanOrEqualTo: endTimestamp);
@@ -353,13 +341,11 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
         final snap = await query.get();
         for (var d in snap.docs) {
           final data = d.data() as Map<String, dynamic>;
-          double revenue = double.tryParse(data['totalAmount']?.toString() ?? '0') ?? 0;
           rows.add([
             data['saleDate'] != null ? DateFormat('yyyy-MM-dd').format((data['saleDate'] as Timestamp).toDate()) : '-',
             d.id,
             data['snapshotName'] ?? '',
             data['quantitySold'] ?? 0,
-            revenue
           ]);
         }
       }
@@ -384,7 +370,7 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
       excel.setDefaultSheet(sheetName);
       var fileBytes = excel.save();
       final directory = await getApplicationDocumentsDirectory();
-      final path = '${directory.path}/InventryX_${sheetName}_Report.xlsx';
+      final path = '${directory.path}/InventryX_${sheetName.replaceAll(" ", "_")}.xlsx';
       final file = File(path);
       await file.writeAsBytes(fileBytes!);
 
@@ -409,7 +395,6 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
     }
   }
 
-  // --- EXPORT MENU ---
   void _showExportOptions(BuildContext context) {
     List<String> tabNames = ["Stock List", "Forecast", "Risk Status", "Sales Log"];
     String currentTab = tabNames[_tabController.index];
@@ -542,9 +527,9 @@ class _ManagerReportPageState extends State<ManagerReportPage> with SingleTicker
 }
 
 // -----------------------------------------------------------------------------
-// TAB 1: INVENTORY REPORT (TOOLTIP FIXED)
+// TAB 1: INVENTORY REPORT (FULL PIE CHART - BLUE THEME FIXED)
 // -----------------------------------------------------------------------------
-class _InventoryReportTab extends StatelessWidget {
+class _InventoryReportTab extends StatefulWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
@@ -552,10 +537,17 @@ class _InventoryReportTab extends StatelessWidget {
   const _InventoryReportTab({required this.db, this.start, this.end});
 
   @override
+  State<_InventoryReportTab> createState() => _InventoryReportTabState();
+}
+
+class _InventoryReportTabState extends State<_InventoryReportTab> {
+  int _touchedIndex = -1;
+
+  @override
   Widget build(BuildContext context) {
-    Query query = db.collection('products');
-    if (start != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: start);
-    if (end != null) query = query.where('updatedAt', isLessThanOrEqualTo: end);
+    Query query = widget.db.collection('products');
+    if (widget.start != null) query = query.where('updatedAt', isGreaterThanOrEqualTo: widget.start);
+    if (widget.end != null) query = query.where('updatedAt', isLessThanOrEqualTo: widget.end);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -566,11 +558,19 @@ class _InventoryReportTab extends StatelessWidget {
         if (docs.isEmpty) return const Center(child: Text("No stock activity in this period.", style: TextStyle(color: Colors.grey)));
 
         double totalValue = 0;
+        Map<String, double> catTotalUnits = {};
+        Map<String, int> catProductCount = {};
+
         for (var doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
           double p = double.tryParse(data['price']?.toString() ?? '0') ?? 0;
           int s = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+
           totalValue += (p * s);
+          String cat = (data['category'] ?? 'Others').toString().toUpperCase();
+
+          catTotalUnits[cat] = (catTotalUnits[cat] ?? 0) + s.toDouble();
+          catProductCount[cat] = (catProductCount[cat] ?? 0) + 1;
         }
 
         var lowStockItems = docs.where((d) {
@@ -582,11 +582,15 @@ class _InventoryReportTab extends StatelessWidget {
         List<Widget> contentWidgets = [
           _buildPremiumStatCard("Stock Value (Cost)", "RM ${totalValue.toStringAsFixed(2)}", Icons.account_balance_wallet_outlined, const Color(0xFF233E99)),
           const SizedBox(height: 30),
-          const Text("Active Stock by Category", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 15),
-          _buildCleanBarChart(docs),
+          const Text("Category Distribution", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 5),
+          const Text("Breakdown by Total Units & Product Count", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 20),
+
+          _buildCategoryPieChart(catTotalUnits, catProductCount),
+
           const SizedBox(height: 30),
-          const Text("Restock Needed", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.redAccent)),
+          const Text("Restock Needed", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black)),
           const SizedBox(height: 15),
         ];
 
@@ -599,7 +603,8 @@ class _InventoryReportTab extends StatelessWidget {
                 data['productName'] ?? 'Item',
                 "${data['currentStock']} units left",
                 Icons.warning_amber_rounded,
-                Colors.red
+                Colors.red,
+                data
             ));
           }
         }
@@ -613,6 +618,165 @@ class _InventoryReportTab extends StatelessWidget {
     );
   }
 
+// --- FULL PIE CHART WIDGET (LAYOUT SEBELAH-MENYEBELAH, TIADA LUBANG) ---
+  // --- FULL PIE CHART WIDGET (FIX: TEXT WRAPPING UTK NAMA PANJANG) ---
+  Widget _buildCategoryPieChart(Map<String, double> unitData, Map<String, int> productCountData) {
+    final List<Color> colors = [
+      const Color(0xFF3B82F6), // Royal Blue
+      const Color(0xFFEF4444), // Red Coral
+      const Color(0xFF10B981), // Emerald Green
+      const Color(0xFFF59E0B), // Amber
+      const Color(0xFF8B5CF6), // Violet
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFF64748B), // Slate Grey
+    ];
+
+    double totalAllUnits = unitData.values.fold(0, (sum, item) => sum + item);
+    List<PieChartSectionData> sections = [];
+    List<Widget> indicators = [];
+    int i = 0;
+
+    unitData.forEach((category, qty) {
+      final isTouched = i == _touchedIndex;
+      final double radius = isTouched ? 75.0 : 70.0;
+      final double widgetScale = isTouched ? 1.03 : 1.0;
+
+      final color = colors[i % colors.length];
+      final int productCount = productCountData[category] ?? 0;
+      final percentage = totalAllUnits > 0 ? (qty / totalAllUnits * 100) : 0;
+
+      // 1. Chart Section
+      sections.add(PieChartSectionData(
+        color: color,
+        value: qty,
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: radius,
+        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+        titlePositionPercentageOffset: 0.6,
+      ));
+
+      // 2. Legend Item
+      final List<BoxShadow> shadow = isTouched
+          ? [const BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))]
+          : <BoxShadow>[];
+
+      indicators.add(
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                if (_touchedIndex == i) {
+                  _touchedIndex = -1;
+                } else {
+                  _touchedIndex = i;
+                }
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              transform: Matrix4.identity()..scale(widgetScale),
+              transformAlignment: Alignment.centerLeft,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                  color: isTouched ? color.withOpacity(0.08) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isTouched ? Border.all(color: color.withOpacity(0.5), width: 1.5) : Border.all(color: Colors.grey.shade100),
+                  boxShadow: shadow
+              ),
+              child: Row(
+                children: [
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  const SizedBox(width: 12),
+
+                  // [FIX DI SINI]: Expanded benarkan teks turun baris
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          category,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11, // Kecilkan sikit font
+                              color: isTouched ? Colors.black : Colors.grey.shade800
+                          ),
+                          maxLines: 2, // Benarkan 2 baris
+                          overflow: TextOverflow.ellipsis, // Kalau lebih 2 baris baru potong
+                        ),
+                        Text(
+                            "$productCount Products",
+                            style: TextStyle(
+                                color: isTouched ? Colors.grey.shade700 : Colors.grey.shade500,
+                                fontSize: 10
+                            )
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text("${qty.toInt()}", style: TextStyle(fontWeight: FontWeight.w900, color: color, fontSize: 13)),
+                ],
+              ),
+            ),
+          )
+      );
+
+      i++;
+    });
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // BAHAGIAN KIRI: CARTA (Kurangkan Flex supaya chart kecil sikit, bagi ruang teks)
+          Expanded(
+            flex: 4,
+            child: SizedBox(
+              height: 160,
+              child: PieChart(
+                PieChartData(
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                          _touchedIndex = -1;
+                          return;
+                        }
+                        _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  borderData: FlBorderData(show: false),
+                  sectionsSpace: 0,
+                  centerSpaceRadius: 0,
+                  startDegreeOffset: -90,
+                  sections: sections,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 15),
+
+          // BAHAGIAN KANAN: LEGEND (Besarkan Flex supaya teks muat)
+          Expanded(
+            flex: 6, // 6 bahagian untuk teks, 4 bahagian untuk chart
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: indicators,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET LAIN KEKAL SAMA ---
   Widget _buildEmptyAlert() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -636,66 +800,60 @@ class _InventoryReportTab extends StatelessWidget {
     );
   }
 
-  Widget _buildCleanBarChart(List<QueryDocumentSnapshot> docs) {
-    Map<String, double> catData = {};
-    for (var doc in docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      String cat = data['category'] ?? 'Others';
-      int s = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-      catData[cat] = (catData[cat] ?? 0) + s.toDouble();
-    }
-
-    return Container(
-      height: 260,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)]),
-      child: BarChart(BarChartData(
-          maxY: catData.values.isEmpty ? 10 : catData.values.reduce((a, b) => a > b ? a : b) * 1.3,
-          barTouchData: BarTouchData(
-            enabled: true,
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (group) => Colors.blueGrey,
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                return BarTooltipItem(
-                  rod.toY.round().toString(),
-                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                );
-              },
+  Widget _buildModernAlertTile(String name, String subtitle, IconData icon, Color color, Map<String, dynamic> fullData) {
+    return InkWell(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailRow("Category", fullData['category'] ?? '-'),
+                _detailRow("Current Stock", "${fullData['currentStock']} units"),
+                _detailRow("Price", "RM ${fullData['price']}"),
+                _detailRow("Last Update", fullData['updatedAt'] != null
+                    ? DateFormat('dd MMM yyyy').format((fullData['updatedAt'] as Timestamp).toDate())
+                    : '-'),
+              ],
             ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Close"))],
           ),
-          barGroups: catData.entries.map((e) => BarChartGroupData(x: catData.keys.toList().indexOf(e.key), barRods: [BarChartRodData(toY: e.value, color: const Color(0xFF233E99), width: 20, borderRadius: const BorderRadius.vertical(top: Radius.circular(8)))])).toList(),
-          titlesData: FlTitlesData(
-              topTitles: const AxisTitles(),
-              rightTitles: const AxisTitles(),
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, m) {
-                if (v.toInt() >= catData.length) return const SizedBox();
-                return Padding(padding: const EdgeInsets.only(top: 10), child: Text(catData.keys.elementAt(v.toInt()).substring(0, 3).toUpperCase(), style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w900)));
-              })),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: Colors.grey.shade400))))
-          ),
-          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)),
-          borderData: FlBorderData(show: false)
-      )),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: color.withValues(alpha: 0.08)), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.02), blurRadius: 10)]),
+        child: Row(children: [
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)),
+          const SizedBox(width: 15),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1A1C1E))), const SizedBox(height: 4), Text(subtitle, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))])),
+          const Icon(Icons.chevron_right_rounded, color: Colors.grey, size: 20)
+        ]),
+      ),
     );
   }
 
-  Widget _buildModernAlertTile(String name, String subtitle, IconData icon, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: color.withValues(alpha: 0.08)), boxShadow: [BoxShadow(color: color.withValues(alpha: 0.02), blurRadius: 10)]),
-      child: Row(children: [
-        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)),
-        const SizedBox(width: 15),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1A1C1E))), const SizedBox(height: 4), Text(subtitle, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))])),
-        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 14)
-      ]),
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        ],
+      ),
     );
   }
 }
 
 // -----------------------------------------------------------------------------
-// TAB 2: FORECAST REPORT (TOOLTIP FIXED)
+// TAB 2: FORECAST REPORT
 // -----------------------------------------------------------------------------
 class _ForecastReportTab extends StatelessWidget {
   final FirebaseFirestore db;
@@ -834,15 +992,21 @@ class _ForecastReportTab extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// TAB 3: RISK REPORT
+// TAB 3: RISK REPORT (TOOLTIP FIXED + POPUP ADDED)
 // -----------------------------------------------------------------------------
-class _RiskReportTab extends StatelessWidget {
+class _RiskReportTab extends StatefulWidget {
   final FirebaseFirestore db;
   const _RiskReportTab({required this.db});
+
+  @override
+  State<_RiskReportTab> createState() => _RiskReportTabState();
+}
+
+class _RiskReportTabState extends State<_RiskReportTab> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.collection('risk_analysis').snapshots(),
+      stream: widget.db.collection('risk_analysis').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         if (snapshot.data!.docs.isEmpty) return Center(child: Text("No health issues detected.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)));
@@ -855,7 +1019,12 @@ class _RiskReportTab extends StatelessWidget {
               const SizedBox(height: 30),
               ...docs.map((d) {
                 final data = d.data() as Map<String, dynamic>;
-                return _buildRiskTile(data['ProductName'] ?? 'Unknown', "Expires in ${data['DaysToExpiry'] ?? 0} days", data['RiskLevel'] ?? 'Low');
+                return _buildRiskTile(
+                    data['ProductName'] ?? 'Unknown',
+                    "Expires in ${data['DaysToExpiry'] ?? 0} days",
+                    data['RiskLevel'] ?? 'Low',
+                    data // Pass Full Data
+                );
               })
             ]
         );
@@ -875,22 +1044,96 @@ class _RiskReportTab extends StatelessWidget {
     );
   }
 
-  Widget _buildRiskTile(String productName, String subtitle, String probability) {
+  // [MODIFIED] Added Popup
+  Widget _buildRiskTile(String productName, String subtitle, String probability, Map<String, dynamic> fullData) {
     Color riskColor = Colors.green;
     String prob = probability.toLowerCase();
     if (prob.contains('high')) riskColor = const Color(0xFFD32F2F); else if (prob.contains('medium')) riskColor = Colors.orange;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: riskColor.withValues(alpha: 0.2), width: 1), boxShadow: [BoxShadow(color: riskColor.withValues(alpha: 0.05), blurRadius: 10)]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: riskColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))), const Spacer(), Icon(Icons.info_outline_rounded, size: 18, color: Colors.grey[400])]),
-        const SizedBox(height: 10),
-        Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
-        const SizedBox(height: 6),
-        Row(children: [Icon(Icons.warning_amber_rounded, size: 14, color: riskColor), const SizedBox(width: 5), Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))])
-      ]),
+    return InkWell(
+      onTap: () {
+        // 1. Kira Tarikh Luput (Hari ini + Baki Hari)
+        int daysLeft = int.tryParse(fullData['DaysToExpiry']?.toString() ?? '0') ?? 0;
+        DateTime expDate = DateTime.now().add(Duration(days: daysLeft));
+        String dateStr = DateFormat('dd MMM yyyy').format(expDate);
+
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(children: [
+              Icon(Icons.warning_amber_rounded, color: riskColor),
+              const SizedBox(width: 10),
+              Expanded(child: Text("Risk Alert", style: TextStyle(color: riskColor, fontWeight: FontWeight.bold))),
+            ]),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 15),
+                _detailRow("Risk Level", probability.toUpperCase()),
+                _detailRow("Days to Expiry", "${fullData['DaysToExpiry']} days"),
+
+                // [BARU] Tunjuk Tarikh Luput Sebenar
+                _detailRow("Expiry Date", dateStr),
+
+                const SizedBox(height: 10),
+                const Text("Recommendation:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                    prob.contains('high')
+                        ? "Clear stock immediately (Discount/Promo)."
+                        : "Monitor stock movement closely.",
+                    style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic)
+                ),
+              ],
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Close"))],
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: riskColor.withOpacity(0.2), width: 1), // Guna withOpacity utk elak error version
+            boxShadow: [BoxShadow(color: riskColor.withOpacity(0.05), blurRadius: 10)]
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: riskColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text(probability.toUpperCase(), style: TextStyle(color: riskColor, fontSize: 10, fontWeight: FontWeight.w900))
+            ),
+            const Spacer(),
+            Icon(Icons.info_outline_rounded, size: 20, color: Colors.grey[400])
+          ]),
+          const SizedBox(height: 10),
+          Text(productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(Icons.warning_amber_rounded, size: 14, color: riskColor),
+            const SizedBox(width: 5),
+            Expanded(child: Text(subtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: riskColor)))
+          ])
+        ]),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        ],
+      ),
     );
   }
 }
@@ -902,51 +1145,40 @@ class _SalesReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
-
-  const _SalesReportTab({required this.db, this.start, this.end});
-
+    const _SalesReportTab({required this.db, this.start, this.end});
   @override
   Widget build(BuildContext context) {
     Query query = db.collection('sales').orderBy('saleDate', descending: false);
     if (start != null) query = query.where('saleDate', isGreaterThanOrEqualTo: start);
     if (end != null) query = query.where('saleDate', isLessThanOrEqualTo: end);
-
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-
         if (docs.isEmpty) {
           return const Center(child: Text("No sales records found for this period.", style: TextStyle(color: Colors.grey)));
         }
-
         // --- 1. DATA AGGREGATION ---
         Map<String, double> dailySalesMap = {};
         double totalRevenuePeriod = 0;
-
         for (var doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
-
           Timestamp? t = data['saleDate'];
           if (t == null) continue;
           String dateKey = DateFormat('yyyy-MM-dd').format(t.toDate());
-
           // Guna totalAmount (Unmasked)
           double amount = double.tryParse(data['totalAmount']?.toString() ?? '0') ?? 0;
 
           dailySalesMap[dateKey] = (dailySalesMap[dateKey] ?? 0) + amount;
           totalRevenuePeriod += amount;
         }
-
         List<String> sortedDates = dailySalesMap.keys.toList()..sort();
-
         // Convert data to FlSpot
         List<FlSpot> chartSpots = [];
         for (int i = 0; i < sortedDates.length; i++) {
           chartSpots.add(FlSpot(i.toDouble(), dailySalesMap[sortedDates[i]]!));
         }
-
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           physics: const BouncingScrollPhysics(),
@@ -1001,7 +1233,6 @@ class _SalesReportTab extends StatelessWidget {
                         handleBuiltInTouches: true,
                       ),
                       // ---------------------------
-
                       lineBarsData: [
                         LineChartBarData(
                             spots: chartSpots,
@@ -1031,7 +1262,6 @@ class _SalesReportTab extends StatelessWidget {
                                 DateTime date = DateTime.parse(sortedDates[index]);
                                 // Show labels sparingly if too many
                                 if (sortedDates.length > 7 && index % 2 != 0) return const SizedBox();
-
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: Text(DateFormat('d/M').format(date), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
@@ -1053,16 +1283,13 @@ class _SalesReportTab extends StatelessWidget {
               )
             else
               const Center(child: Text("Not enough data for chart")),
-
-            const SizedBox(height: 30),
-            const Text("Daily Breakdown", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
-            const SizedBox(height: 15),
-
+              const SizedBox(height: 30),
+             const Text("Daily Breakdown", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+              const SizedBox(height: 15),
             // --- 3. TABLE / LIST (DAILY SUMMARY) ---
             ...sortedDates.reversed.map((dateKey) {
               double total = dailySalesMap[dateKey]!;
               DateTime date = DateTime.parse(dateKey);
-
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(18),
