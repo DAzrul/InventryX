@@ -15,7 +15,8 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
   final Color accentBlue = const Color(0xFF3B5BDB);
   final Color bgLight = const Color(0xFFF8F9FD);
 
-  String selectedFilter = "Last 7 Days";
+  // --- CHANGED: Default filter is now "Today" ---
+  String selectedFilter = "Today";
   DateTime? customStartDate;
   DateTime? customEndDate;
 
@@ -238,7 +239,6 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
   }
 
   Widget _buildOverviewCard(double total, int count) {
-    // Generate the dynamic date range label
     String dateRangeLabel = "";
     DateTime now = DateTime.now();
 
@@ -281,7 +281,6 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
                       color: Colors.white70,
                       fontSize: 14,
                       fontWeight: FontWeight.w500)),
-              // Display the date range label in the top right of the card
               Text(dateRangeLabel,
                   style: const TextStyle(
                       color: Colors.white60,
