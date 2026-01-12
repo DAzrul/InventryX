@@ -71,7 +71,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                   _findProductField(),
                   const SizedBox(height: 30),
 
-                  _buildSectionHeader("3. Batch Review (${batchItems.length})", Icons.inventory_rounded),
+                  _buildSectionHeader("3. Batch - Stock In (${batchItems.length})", Icons.inventory_rounded),
                   const SizedBox(height: 12),
                   _batchList(),
                   const SizedBox(height: 100),
@@ -144,7 +144,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: isLocked ? () => _showError('Pilih supplier dulu mat!') : _showProductDialog,
+            onTap: isLocked ? () => _showError('Please choose the supplier first!') : _showProductDialog,
             child: Container(
               height: 55,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -307,6 +307,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, // Align to start for labels
             children: [
               Row(
                 children: [
@@ -314,12 +315,25 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                   const SizedBox(width: 15),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                    // Displaying Barcode/SN
+                    Text("SN: ${item.barcodeNo}", style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                     Text("From: ${item.supplierName}", style: TextStyle(fontSize: 11, color: primaryBlue, fontWeight: FontWeight.bold)),
                   ])),
                   IconButton(icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20), onPressed: () => setState(() => batchItems.removeAt(i))),
                 ],
               ),
               const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+
+              // Added labels for Quantity and Expiry Date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Quantity", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                  Text("Expiry Date", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                ],
+              ),
+              const SizedBox(height: 8),
+
               Row(
                 children: [
                   _qtyBtn(Icons.remove_rounded, () => setState(() { if(item.quantity > 0) item.quantity--; })),
@@ -350,16 +364,19 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                       child: Row(children: [
                         const Icon(Icons.event_available_rounded, size: 14, color: Colors.orange),
                         const SizedBox(width: 6),
-                        Text(DateFormat('dd/MM/yy').format(item.expiryDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
+                        Text(DateFormat('dd/MM/yyyy').format(item.expiryDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
                       ]),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                "${item.quantity} x ${item.unitsPerCarton} = ${item.totalUnits} units",
-                style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "${item.quantity} x ${item.unitsPerCarton} = ${item.totalUnits} units",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
