@@ -17,7 +17,6 @@ class ForecastingPage extends StatefulWidget {
 }
 
 class _ForecastingPageState extends State<ForecastingPage> {
-  // Index 1 sebab Forecast sebahagian dari Features
   int _selectedIndex = 1;
 
   String? selectedCategory;
@@ -36,8 +35,14 @@ class _ForecastingPageState extends State<ForecastingPage> {
   @override
   void initState() {
     super.initState();
-    // [PENTING] Load draft lama bila page dibuka
     _loadDraftFromFirebase();
+  }
+
+  // --- LOGIC: CLEAR ALL ---
+  void _clearAllSelection() {
+    setState(() {
+      selectedQuantities.clear();
+    });
   }
 
   // --- LOGIC 1: SAVE DRAFT ---
@@ -57,7 +62,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
           const SnackBar(content: Text("Saving draft..."), duration: Duration(milliseconds: 800))
       );
 
-      // Simpan data dalam collection 'forecast_drafts' ikut UID manager
       await FirebaseFirestore.instance.collection('forecast_drafts').doc(uid).set({
         'userId': uid,
         'selectedItems': selectedQuantities,
@@ -71,11 +75,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
       }
     } catch (e) {
       debugPrint("Error saving draft: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Failed to save: $e"), backgroundColor: Colors.red)
-        );
-      }
     }
   }
 
@@ -92,19 +91,8 @@ class _ForecastingPageState extends State<ForecastingPage> {
         Map<String, dynamic> savedItems = data['selectedItems'] ?? {};
 
         setState(() {
-          // Convert Map<String, dynamic> ke Map<String, int>
           selectedQuantities = savedItems.map((key, value) => MapEntry(key, value as int));
         });
-
-        if (mounted && selectedQuantities.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Previous draft loaded."),
-                duration: Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              )
-          );
-        }
       }
     } catch (e) {
       debugPrint("Error loading draft: $e");
@@ -114,7 +102,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
   // --- LOGIC 3: NAVIGATION ---
   void _onItemTapped(BuildContext context, int index, String currentUsername, String uid) {
     if (index == 0) {
-      // Home: Reset App
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => ManagerPage(
@@ -126,10 +113,8 @@ class _ForecastingPageState extends State<ForecastingPage> {
             (Route<dynamic> route) => false,
       );
     } else if (index == 1) {
-      // Features: Buka Modal
       ManagerFeaturesModal.show(context, currentUsername, uid);
     } else if (index == 2) {
-      // Profile: Tukar Tab
       setState(() => _selectedIndex = index);
     }
   }
@@ -143,7 +128,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
     return Icons.category_rounded;
   }
 
-  // --- BUILD UTAMA ---
   @override
   Widget build(BuildContext context) {
     String? uid = FirebaseAuth.instance.currentUser?.uid;
@@ -161,9 +145,7 @@ class _ForecastingPageState extends State<ForecastingPage> {
           return Scaffold(
             backgroundColor: bgGrey,
             extendBody: true,
-
             bottomNavigationBar: _buildFloatingNavBar(context, currentUsername, safeUid),
-
             body: IndexedStack(
               index: _selectedIndex == 2 ? 1 : 0,
               children: [
@@ -176,7 +158,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
     );
   }
 
-  // --- NAVBAR TERAPUNG ---
   Widget _buildFloatingNavBar(BuildContext context, String currentUsername, String uid) {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -230,7 +211,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
     );
   }
 
-  // --- CONTENT FORECAST ---
   Widget _buildForecastContent() {
     return Column(
       children: [
@@ -246,6 +226,17 @@ class _ForecastingPageState extends State<ForecastingPage> {
             icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
+          // --- CLEAR ALL ACTION ---
+          actions: [
+            if (selectedQuantities.isNotEmpty)
+              TextButton(
+                onPressed: _clearAllSelection,
+                child: const Text(
+                  "Clear All",
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+              ),
+          ],
         ),
 
         Expanded(
@@ -319,8 +310,6 @@ class _ForecastingPageState extends State<ForecastingPage> {
       ],
     );
   }
-
-  // --- WIDGETS ---
 
   Widget _buildCategoryTabs(List<String> categories, List<ProductModel> allProducts) {
     return SizedBox(
@@ -440,7 +429,7 @@ class _ForecastingPageState extends State<ForecastingPage> {
           Expanded(
             flex: 1,
             child: OutlinedButton(
-              onPressed: _saveDraftToFirebase, // [FIX] Guna function save sebenar
+              onPressed: _saveDraftToFirebase,
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 side: BorderSide(color: primaryColor),
