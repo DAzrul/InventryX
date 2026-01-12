@@ -13,132 +13,188 @@ class RiskAlertDetailPage extends StatelessWidget {
     required this.userRole,
   });
 
-  // Standard Colors
   final Color primaryBlue = const Color(0xFF1E3A8A);
+  final Color bgGrey = const Color(0xFFF8FAFF);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: bgGrey,
       appBar: AppBar(
-        title: const Text("Risk Analysis Detail",
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          "Risk Analysis Detail",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+        ),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
       ),
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('risk_analysis').doc(riskAnalysisId).get(),
         builder: (context, riskSnap) {
           if (!riskSnap.hasData) return const Center(child: CircularProgressIndicator());
-
-          // Handle jika data risk sudah dipadam
           if (!riskSnap.data!.exists) return const Center(child: Text("Risk data no longer exists."));
 
           final risk = riskSnap.data!.data() as Map<String, dynamic>;
-
           final String productName = risk['ProductName'] ?? "Unknown";
           final String riskLevel = risk['RiskLevel'] ?? "Medium";
-          final int riskValue = risk['RiskValue'] ?? 0;
           final int daysToExpiry = risk['DaysToExpiry'] ?? 0;
 
           Color statusColor = riskLevel == "High" ? Colors.red : Colors.orange;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  "⚠️ $riskLevel RISK DETECTED",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statusColor),
-                ),
-                const SizedBox(height: 16),
-
-                // Papar Gambar Produk
-                FutureBuilder<QuerySnapshot>(
-                  future: FirebaseFirestore.instance.collection('products').get(),
-                  builder: (context, prodQuerySnap) {
-                    if (prodQuerySnap.hasError) return const Icon(Icons.error);
-
-                    String? imageUrl;
-                    if (prodQuerySnap.hasData) {
-                      try {
-                        // Cari produk berdasarkan nama (Safe check)
-                        final matchingDocs = prodQuerySnap.data!.docs.where(
-                                (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
-                        );
-
-                        if (matchingDocs.isNotEmpty) {
-                          imageUrl = (matchingDocs.first.data() as Map<String, dynamic>)['imageUrl'];
-                        }
-                      } catch (e) {
-                        imageUrl = null;
-                      }
-                    }
-
-                    return Center(
-                      child: Container(
-                        height: 200,
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: imageUrl != null && imageUrl.isNotEmpty
-                              ? Image.network(
-                            imageUrl,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                          )
-                              : const Icon(Icons.inventory_2, size: 80, color: Colors.grey),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                // Info Kad
+                // 1. STATUS BANNER
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                    border: Border.all(color: statusColor.withOpacity(0.3)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Row(
                     children: [
-                      const Text("Inventory Risk Metrics",
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      const Divider(thickness: 1.2, height: 20, color: Colors.grey),
-
-                      const SizedBox(height: 10),
-                      Text(productName,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 20),
-
-                      _row("Risk Score", "$riskValue / 100"),
-                      _row("Risk Level", riskLevel),
-                      _row("Days to Nearest Expiry", daysToExpiry == 999 ? "N/A" : "$daysToExpiry days"),
-                      const Divider(),
-                      const Text(
-                        "This risk is calculated based on the ratio between current stock levels and predicted demand from your recent sales history.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                      Icon(Icons.warning_amber_rounded, color: statusColor),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "⚠️ ${riskLevel.toUpperCase()} RISK DETECTED",
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: statusColor),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 20),
 
-                const SizedBox(height: 24),
+                // 2. PRODUCT INFO CARD
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                  ),
+                  child: FutureBuilder<QuerySnapshot>(
+                    future: FirebaseFirestore.instance.collection('products').get(),
+                    builder: (context, prodQuerySnap) {
+                      String? imageUrl;
+                      String subCategory = "-";
+                      String category = "-";
 
-                // Butang Recommendation
+                      if (prodQuerySnap.hasData) {
+                        try {
+                          final matchingDocs = prodQuerySnap.data!.docs.where(
+                                  (doc) => (doc.data() as Map<String, dynamic>)['productName'] == productName
+                          );
+                          if (matchingDocs.isNotEmpty) {
+                            final productData = matchingDocs.first.data() as Map<String, dynamic>;
+                            imageUrl = productData['imageUrl'];
+                            subCategory = productData['subCategory'] ?? "-";
+                            category = productData['category'] ?? "-";
+                          }
+                        } catch (e) { imageUrl = null; }
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                maxHeight: 150,
+                                minHeight: 100,
+                              ),
+                              width: double.infinity,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: imageUrl != null && imageUrl.isNotEmpty
+                                    ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.contain,
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return const Center(child: CircularProgressIndicator());
+                                  },
+                                )
+                                    : Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
+                              ),
+                            ),
+                          ),
+
+                          Center(
+                            child: Text(
+                              productName,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E)),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+
+                          Center(
+                            child: Text(
+                              "$subCategory • $category",
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+                          const Divider(),
+                          const SizedBox(height: 6),
+
+                          _row("Risk Level", riskLevel.toUpperCase(), color: statusColor),
+                          _row("Days to Nearest Expiry", daysToExpiry == 999 ? "N/A" : "$daysToExpiry days", color: statusColor),
+
+                          const Divider(height: 30),
+                          const Text(
+                            "Reason:",
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E)),
+                          ),
+                          const SizedBox(height: 8),
+                          if (riskLevel == "High") ...[
+                            _bulletPoint("Stock is 3× higher than forecast"),
+                            _bulletPoint("Expiry in 6 days"),
+                            _bulletPoint("Sales trend decreasing"),
+                          ] else ...[
+                            _bulletPoint("Stock slightly higher than forecast"),
+                            _bulletPoint("Expiry within 14 days"),
+                          ],
+
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
+                            child: const Text(
+                              "This risk is calculated based on the ratio between current stock levels and forecasted demand.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
                 SizedBox(
-                  width: double.infinity,
+                  height: 55,
                   child: ElevatedButton.icon(
                     onPressed: () => _showRecommendationSheet(context, riskLevel, alertId),
                     icon: const Icon(Icons.lightbulb_outline),
@@ -150,7 +206,8 @@ class RiskAlertDetailPage extends StatelessWidget {
                       backgroundColor: primaryBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
                     ),
                   ),
                 ),
@@ -162,11 +219,28 @@ class RiskAlertDetailPage extends StatelessWidget {
     );
   }
 
-  // 🔹 FUNGSI YANG DIPERBAIKI (ANTI-CRASH)
+  Widget _bulletPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("• ", style: TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRecommendationSheet(BuildContext context, String level, String alertId) {
     bool isHigh = level == "High";
+    Color actionColor = isHigh ? Colors.red : Colors.orange;
 
-    // Helper untuk bina UI dalam BottomSheet (Supaya tak perlu tulis kod 2 kali)
     Widget buildSheetContent(bool isDone, bool canInteract) {
       return Container(
         padding: const EdgeInsets.all(24),
@@ -178,40 +252,62 @@ class RiskAlertDetailPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Center(
+              child: Text(
+                "Recommended Action",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
             const SizedBox(height: 20),
 
-            const Center(child: Text("Recommended Action", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-            const Divider(thickness: 1, height: 20),
+            // 🔹 Action Box styling matches Expiry Page
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: actionColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: actionColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                      color: actionColor,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
 
-            Text("Risk Level: $level", style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
-            const SizedBox(height: 8),
-            const Text("Reason:", style: TextStyle(fontWeight: FontWeight.bold)),
-            if (isHigh) ...[
-              const Text("• Stock is 3× higher than forecast"),
-              const Text("• Expiry in 6 days"),
-              const Text("• Sales trend decreasing"),
-            ] else ...[
-              const Text("• Stock slightly higher than forecast"),
-              const Text("• Expiry within 14 days"),
-            ],
+                  if (isHigh) ...[
+                    _buildSheetBulletPoint("Stop all incoming orders for this product."),
+                    _buildSheetBulletPoint("Bundle with fast-moving items."),
+                    _buildSheetBulletPoint("Relocate to 'Quick Sale' section."),
+                  ] else ...[
+                    _buildSheetBulletPoint("Reduce next order quantity."),
+                    _buildSheetBulletPoint("Monitor daily sales closely."),
+                    _buildSheetBulletPoint("Review pricing strategy."),
+                  ],
 
-            const SizedBox(height: 20),
-
-            const Center(child: Text("Recommended Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-            const Divider(thickness: 1, height: 20),
-            Text(isHigh ? "IMMEDIATE STOCK CLEARANCE" : "INVENTORY ADJUSTMENT",
-                style: TextStyle(fontWeight: FontWeight.bold, color: isHigh ? Colors.red : Colors.orange)),
-            const SizedBox(height: 10),
-            if (isHigh) ...[
-              const Text("1. Stop all incoming orders for this product"),
-              const Text("2. Bundle with fast-moving items"),
-              const Text("3. Relocate to 'Quick Sale' section"),
-            ] else ...[
-              const Text("1. Reduce next order quantity"),
-              const Text("2. Monitor daily sales closely"),
-              const Text("3. Review pricing strategy"),
-            ],
+                  _urgencyBadge(isHigh ? "CRITICAL" : "MEDIUM", actionColor),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 30),
 
@@ -230,7 +326,6 @@ class RiskAlertDetailPage extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    // 🔹 FIX: Disable button jika sudah Done ATAU jika alertId kosong (canInteract = false)
                     onPressed: (isDone || !canInteract) ? null : () async {
                       if (alertId.isNotEmpty) {
                         await FirebaseFirestore.instance.collection('alerts').doc(alertId).update({'isDone': true});
@@ -264,13 +359,7 @@ class RiskAlertDetailPage extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        // 🔹 SAFETY CHECK: Jika alertId kosong, jangan panggil Firebase!
-        if (alertId.isEmpty) {
-          // Papar UI tapi disable fungsi 'Mark as Done'
-          return buildSheetContent(false, false);
-        }
-
-        // Jika alertId ada, baru fetch status dari Firebase
+        if (alertId.isEmpty) return buildSheetContent(false, false);
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance.collection('alerts').doc(alertId).get(),
           builder: (context, alertSnap) {
@@ -285,14 +374,39 @@ class RiskAlertDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, String value) {
+  Widget _buildSheetBulletPoint(String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("• ", style: TextStyle(fontSize: 16)),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.3))),
+        ],
+      ),
+    );
+  }
+
+  Widget _urgencyBadge(String level, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        "Urgency: $level",
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
-          Text(value, style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
+          Text(label, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+          Text(value, style: TextStyle(color: color ?? primaryBlue, fontWeight: FontWeight.bold, fontSize: 14)),
         ],
       ),
     );

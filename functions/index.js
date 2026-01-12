@@ -56,7 +56,6 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
       riskLevel: riskLevel,
       riskValue: riskData.RiskValue || 0,
       riskAnalysisId: riskId,
-      // 🔹 productId removed as requested
       productName: riskData.ProductName || "Unknown Product",
       isRead: false,
       isDone: false,
@@ -73,11 +72,6 @@ exports.onRiskAnalysisWritten = onDocumentWritten({
         notification: {
           title: `${emoji} ${riskLevel.toUpperCase()} RISK ALERT          ${dateStr}`,
           body: `"${alertData.productName}" has a Risk Score of ${alertData.riskValue}/100.`,
-        },
-        data: {
-          riskAnalysisId: riskId,
-          alertType: "risk",
-          click_action: "FLUTTER_NOTIFICATION_CLICK"
         },
         topic: "inventory_alerts",
       });
@@ -144,13 +138,6 @@ async function createAlertForBatch(db, batch, batchId) {
         title: `${title}          ${dateStr}`,
         body: `"${alertData.productName}"\nBatch: ${alertData.batchNumber}`,
       },
-      data: {
-        batchId: batchId,
-        productId: batch.productId,
-        stage: String(stage),
-        alertType: "expiry",
-        click_action: "FLUTTER_NOTIFICATION_CLICK"
-      },
       topic: "inventory_alerts",
     });
   } catch (error) {
@@ -181,4 +168,97 @@ exports.dailyExpiryCheck = onSchedule({
     promises.push(createAlertForBatch(db, doc.data(), doc.id));
   });
   return Promise.all(promises);
+});
+
+// ==========================================================
+// 4. LOW STOCK TRIGGER (Region: Singapore)
+// ==========================================================
+exports.onLowStockTrigger = onDocumentWritten({
+  document: "products/{productId}",
+  region: "asia-southeast1"
+}, async (event) => {
+  const db = admin.firestore();
+  const snapshot = event.data.after;
+
+  if (!snapshot || !snapshot.exists) return null;
+
+  const productData = snapshot.data();
+  const currentStock = parseInt(productData.currentStock || 0);
+  const reorderLevel = parseInt(productData.reorderLevel || 0);
+  const productId = event.params.productId;
+
+  // 🔹 AUTO-RESET LOGIC
+  if (currentStock > reorderLevel) {
+    const activeAlerts = await db.collection("alerts")
+      .where("productId", "==", productId)
+      .where("alertType", "==", "lowStock")
+      .where("isDone", "==", false)
+      .get();
+
+    if (!activeAlerts.empty) {
+      const batch = db.batch();
+      activeAlerts.forEach((doc) => {
+        batch.update(doc.ref, {
+          isDone: true,
+          resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+          reason: "Stock replenished above reorder level"
+        });
+      });
+      await batch.commit();
+      console.log(`Resolved existing alerts for ${productId}`);
+    }
+    return null;
+  }
+
+  // 🔹 TRIGGER LOGIC
+  if (currentStock <= reorderLevel) {
+    const existing = await db.collection("alerts")
+      .where("productId", "==", productId)
+      .where("alertType", "==", "lowStock")
+      .where("isDone", "==", false)
+      .get();
+
+    if (!existing.empty) return null;
+
+    const alertData = {
+      alertType: "lowStock",
+      productId: productId,
+      productName: productData.productName || "Unknown Product",
+      currentStock: currentStock,
+      reorderLevel: reorderLevel,
+      category: productData.category || "N/A",
+      subCategory: productData.subCategory || "N/A",
+      imageUrl: productData.imageUrl || "",
+      isRead: false,
+      isDone: false,
+      isNotified: true,
+      notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    try {
+      // 🔹 CAPTURE THE ALERT ID: We need this for the detail page navigation
+      const alertRef = await db.collection("alerts").add(alertData);
+      const newAlertId = alertRef.id;
+
+      const dateStr = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kuala_Lumpur" });
+
+      return admin.messaging().send({
+        notification: {
+          title: `📉 LOW STOCK ALERT          ${dateStr}`,
+          body: `"${alertData.productName}" is at or below reorder level (${currentStock} left).`,
+        },
+        data: {
+          productId: productId,
+          alertId: newAlertId, // 🔹 PASS ALERT ID TO FLUTTER
+          alertType: "lowStock",
+          click_action: "FLUTTER_NOTIFICATION_CLICK"
+        },
+        topic: "inventory_alerts",
+      });
+    } catch (error) {
+      console.error("Low Stock Alert Error:", error);
+      return null;
+    }
+  }
+  return null;
 });

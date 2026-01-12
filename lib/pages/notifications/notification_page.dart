@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'expiry_alert_detail_page.dart';
 import 'risk_alert_detail_page.dart';
+import 'low_stock_alert_detail_page.dart';
 
 class NotificationPage extends StatefulWidget {
   final String userRole;
@@ -23,7 +24,7 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {
@@ -32,6 +33,7 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
             case 1: headerText = "Unread Alerts"; break;
             case 2: headerText = "Expiry Alerts"; break;
             case 3: headerText = "Risk Alerts"; break;
+            case 4: headerText = "Stock Alerts"; break;
           }
         });
       }
@@ -42,28 +44,64 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
   Widget _buildTabWithRedDot(String label, {String? filterType}) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('alerts').snapshots(),
-      builder: (context, snapshot) {
-        bool hasUnread = false;
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-          hasUnread = snapshot.data!.docs.any((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final bool isDone = data['isDone'] ?? false;
-            final String type = data['alertType'] ?? '';
-            bool unread = (!isDone) && !readNotifications.contains(doc.id);
-            return filterType == null ? unread : (unread && type == filterType);
-          });
-        }
-        return Tab(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label),
-              if (hasUnread) ...[
-                const SizedBox(width: 4),
-                Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
-              ]
-            ],
-          ),
+      builder: (context, alertSnapshot) {
+        return FutureBuilder<QuerySnapshot>(
+          future: FirebaseFirestore.instance.collection('products').get(),
+          builder: (context, productSnapshot) {
+            bool hasUnread = false;
+
+            if (alertSnapshot.hasData && productSnapshot.hasData) {
+              final allProducts = productSnapshot.data!.docs;
+
+              hasUnread = alertSnapshot.data!.docs.any((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final bool isDone = data['isDone'] ?? false;
+                final String type = data['alertType'] ?? '';
+
+                // 1. Basic check: Is it undone?
+                if (isDone != false) return false;
+                // 2. Tab check: Does it match the tab type (Expiry/Risk)?
+                if (filterType != null && type != filterType) return false;
+                // 3. Filter check: Does it match the selected subCategory?
+                if (selectedSubCategories.isNotEmpty) {
+                  try {
+                    // Find the product linked to this alert
+                    final String pId = data['productId'] ?? '';
+                    final String pName = data['productName'] ?? '';
+                    final productDoc = allProducts.firstWhere((p) {
+                      final pData = p.data() as Map<String, dynamic>;
+                      return p.id == pId || pData['productName'] == pName;
+                    });
+                    final String subCat = (productDoc.data() as Map<String, dynamic>)['subCategory'] ?? '';
+                    // If the unread item's sub-category is NOT in our filter, don't show the dot
+                    if (!selectedSubCategories.contains(subCat)) return false;
+                  } catch (e) {
+                    return false;
+                  }
+                }
+                return true;
+              });
+            }
+            return Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label),
+                  if (hasUnread) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ]
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -124,6 +162,100 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
           Icon(icon, size: 12, color: textColor),
           const SizedBox(width: 4),
           Flexible(child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textColor), overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLowStockCard(Map<String, dynamic> alert, String alertId) {
+    final String productId = alert['productId'] ?? '';
+    final isDone = alert['isDone'] ?? false;
+    final productName = alert['productName'] ?? 'Unknown';
+    final currentStock = alert['currentStock'] ?? 0;
+    final reorderLevel = alert['reorderLevel'] ?? 0;
+    final category = alert['category'] ?? 'N/A';
+    final subCategory = alert['subCategory'] ?? 'N/A';
+    final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+    // Stock is low, so we use a Warning color (Orange)
+    final Color stockColor = Colors.orange.shade800;
+
+    // Filter check
+    if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+      return const SizedBox.shrink();
+    }
+
+    return _cardWrapper(
+      alertId: alertId,
+      isDone: isDone,
+      accentColor: stockColor,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LowStockAlertDetailPage(
+              productId: productId,
+              alertId: alertId,
+              userRole: widget.userRole,
+            ),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildStatusBadge("LOW STOCK", stockColor, stockColor.withOpacity(0.1), Icons.trending_down_rounded),
+              Text("${notifiedAt.day}/${notifiedAt.month}", style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+            ],
+          ),
+          const SizedBox(height: 12), // Increased slightly for better spacing without image
+
+          // 🔹 Product Info (Text only)
+          Text(
+              productName,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.category_outlined, size: 14, color: Colors.grey.shade600),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  "$subCategory • $category",
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Current Stock", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text("$currentStock Units", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: stockColor)),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text("Reorder Level", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text("$reorderLevel Units", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -198,35 +330,130 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
   Widget _buildRiskCard(Map<String, dynamic> alert, String alertId) {
     final isDone = alert['isDone'] ?? false;
     final riskLevel = alert['riskLevel'] ?? 'Med';
-    final riskValue = alert['riskValue'] ?? 0;
+    final riskAnalysisId = alert['riskAnalysisId'] ?? '';
     final notifiedAt = (alert['notifiedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-    Color rColor = riskLevel == "High" ? Colors.red.shade700 : Colors.orange.shade700;
 
-    return _cardWrapper(
-      alertId: alertId, isDone: isDone, accentColor: rColor,
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RiskAlertDetailPage(riskAnalysisId: alert['riskAnalysisId'] ?? '', alertId: alertId, userRole: widget.userRole))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildStatusBadge("${riskLevel.toUpperCase()} RISK", rColor, rColor.withOpacity(0.1), Icons.warning_amber),
-              Text("${notifiedAt.day}/${notifiedAt.month}", style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(alert['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: LinearProgressIndicator(value: riskValue / 100, backgroundColor: Colors.grey.shade200, color: rColor, minHeight: 6)),
-              const SizedBox(width: 8),
-              Text("$riskValue%", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: rColor)),
-            ],
-          )
-        ],
-      ),
+    // Retrieve product name with fallback for different casing
+    final productName = alert['productName'] ?? alert['ProductName'] ?? 'Unknown Product';
+
+    Color rColor = riskLevel == "High" ? Colors.red.shade700 : Colors.orange.shade700;
+    Color rBgColor = rColor.withOpacity(0.1);
+
+    return FutureBuilder<QuerySnapshot>(
+      // Fetch products to find the one matching the alert's product name
+      future: FirebaseFirestore.instance.collection('products').get(),
+      builder: (context, productSnap) {
+        String category = "N/A";
+        String subCategory = "N/A";
+
+        if (productSnap.hasData && productSnap.data!.docs.isNotEmpty) {
+          try {
+            final matchingDoc = productSnap.data!.docs.firstWhere(
+                    (doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return data['productName'].toString().trim() == productName.toString().trim();
+                }
+            );
+
+            final productData = matchingDoc.data() as Map<String, dynamic>;
+            category = productData['category'] ?? "N/A";
+            subCategory = productData['subCategory'] ?? "N/A";
+
+            if (selectedSubCategories.isNotEmpty && !selectedSubCategories.contains(subCategory)) {
+              return const SizedBox.shrink();
+            }
+          } catch (e) {
+            // No matching product found
+          }
+        }
+
+        return FutureBuilder<DocumentSnapshot>(
+          // 🔹 Fetch DaysToExpiry from risk_analysis collection
+          future: FirebaseFirestore.instance.collection('risk_analysis').doc(riskAnalysisId).get(),
+          builder: (context, riskAnalysisSnap) {
+            String daysToExpiryText = "-";
+            if (riskAnalysisSnap.hasData && riskAnalysisSnap.data!.exists) {
+              final riskData = riskAnalysisSnap.data!.data() as Map<String, dynamic>;
+              final days = riskData['DaysToExpiry'];
+              daysToExpiryText = (days == null || days == 999) ? "N/A" : "$days";
+            }
+
+            return _cardWrapper(
+              alertId: alertId,
+              isDone: isDone,
+              accentColor: rColor,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RiskAlertDetailPage(
+                    riskAnalysisId: riskAnalysisId,
+                    alertId: alertId,
+                    userRole: widget.userRole,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildStatusBadge("${riskLevel.toUpperCase()} RISK", rColor, rBgColor, Icons.warning_amber),
+                      Text(
+                        "${notifiedAt.day}/${notifiedAt.month}",
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    productName,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  Row(
+                    children: [
+                      Icon(Icons.category_outlined, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          "$subCategory • $category",
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // 🔹 Added Divider to match Expiry Card style
+                  const Divider(height: 16),
+
+                  // 🔹 Added Days to Nearest Expiry display
+                  Row(
+                    children: [
+                      const Text(
+                        "Days to Nearest Expiry: ",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        "$daysToExpiryText Days",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.redAccent, // Red color as requested
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -263,15 +490,22 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
         title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black, fontSize: 16)),
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true,
+          isScrollable: false,
+          tabAlignment: TabAlignment.fill,
           indicatorColor: primaryColor,
           labelColor: primaryColor,
           unselectedLabelColor: Colors.grey,
+          labelPadding: EdgeInsets.zero,
+          labelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold
+          ),
           tabs: [
             const Tab(text: "All"),
             _buildTabWithRedDot("Unread"),
             _buildTabWithRedDot("Expiry", filterType: 'expiry'),
             _buildTabWithRedDot("Risk", filterType: 'risk'),
+            _buildTabWithRedDot("Stock", filterType: 'lowStock'), // UI already had this, but logic needed sync
           ],
         ),
       ),
@@ -290,10 +524,17 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: List.generate(4, (index) => _buildNotificationList(
+              children: List.generate(5, (index) { // 🔹 Updated from 4 to 5
+                String? type;
+                if (index == 2) type = 'expiry';
+                if (index == 3) type = 'risk';
+                if (index == 4) type = 'lowStock'; // 🔹 Route for the Stock Tab
+
+                return _buildNotificationList(
                   unreadOnly: index == 1,
-                  filterType: index == 2 ? 'expiry' : (index == 3 ? 'risk' : null)
-              )),
+                  filterType: type,
+                );
+              }),
             ),
           ),
         ],
@@ -303,22 +544,46 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
 
   Widget _buildNotificationList({bool unreadOnly = false, String? filterType}) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('alerts').orderBy('notifiedAt', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .orderBy('notifiedAt', descending: true)
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
         final docs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          if (unreadOnly && (data['isDone'] == true || readNotifications.contains(doc.id))) return false;
-          if (filterType != null && data['alertType'] != filterType) return false;
+
+          // 1. Unread Filter
+          if (unreadOnly && (data['isDone'] == true || readNotifications.contains(doc.id))) {
+            return false;
+          }
+
+          // 2. Tab Category Filter (expiry, risk, lowStock)
+          if (filterType != null && data['alertType'] != filterType) {
+            return false;
+          }
+
           return true;
         }).toList();
 
         if (docs.isEmpty) return const Center(child: Text("No alerts found"));
+
         return ListView.builder(
           itemCount: docs.length,
           itemBuilder: (context, i) {
             final data = docs[i].data() as Map<String, dynamic>;
-            return data['alertType'] == 'risk' ? _buildRiskCard(data, docs[i].id) : _buildExpiryCard(data, docs[i].id);
+            final String alertType = data['alertType'] ?? '';
+
+            // 🔹 Route to the correct card based on alertType
+            if (alertType == 'risk') {
+              return _buildRiskCard(data, docs[i].id);
+            } else if (alertType == 'lowStock') {
+              return _buildLowStockCard(data, docs[i].id);
+            } else {
+              // Default to Expiry Card
+              return _buildExpiryCard(data, docs[i].id);
+            }
           },
         );
       },

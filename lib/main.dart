@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'pages/notifications/notification_page.dart';
 import 'pages/notifications/expiry_alert_detail_page.dart';
 import 'pages/notifications/risk_alert_detail_page.dart';
+import 'pages/notifications/low_stock_alert_detail_page.dart';
 import 'pages/login_page.dart';
 import 'firebase_options.dart';
 
@@ -137,6 +138,17 @@ class _MyAppState extends State<MyApp> {
               batchId: data['batchId'] ?? "",
               productId: data['productId'] ?? "",
               stage: data['stage'] ?? "5",
+              userRole: role,
+            ),
+          ),
+        );
+      } else if (type == 'lowStock') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => LowStockAlertDetailPage(
+              productId: data['productId'] ?? "",
+              // 🔹 FIXED: Now correctly extracts the alertId passed from index.js
+              alertId: data['alertId'] ?? "",
               userRole: role,
             ),
           ),
