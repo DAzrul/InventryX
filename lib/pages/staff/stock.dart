@@ -10,6 +10,7 @@ import 'stock_out.dart';
 import '../Features_app/barcode_scanner_page.dart';
 import 'utils/staff_features_modal.dart';
 import '../Profile/User_profile_page.dart';
+import 'low_stock_page.dart';
 
 class StockPage extends StatefulWidget {
   final String username;
@@ -203,7 +204,16 @@ class _StockPageState extends State<StockPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _SummaryItem(value: '$total', label: 'Total SKUs', color: primaryBlue),
-                _SummaryItem(value: '$low', label: 'Low Stock', color: Colors.orange),
+// Wrap the low stock summary item with InkWell
+                InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LowStockPage()),
+                    );
+                  },
+                  child: _SummaryItem(value: '$low', label: 'Low Stock', color: Colors.orange),
+                ),
               ],
             ),
           );

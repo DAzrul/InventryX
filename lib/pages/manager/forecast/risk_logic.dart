@@ -16,48 +16,47 @@ class RiskLogic {
     required int currentStock,
     required int daysToExpiry,
   }) {
-    // ===== 1. DETERMINE RISK LEVEL =====
     String riskLevel;
 
-    if (forecastDemand <= 0 && currentStock > 0) {
+    // Priority 1: Out of Stock (0 units) -> URGENT
+    if (currentStock <= 0 && forecastDemand > 0) {
+      riskLevel = "Urgent";
+    }
+    // Priority 2: Expiry Risk -> HIGH
+    else if (daysToExpiry <= 7) {
       riskLevel = "High";
-    } else if (forecastDemand <= 0 && currentStock == 0) {
-      riskLevel = "Low";
-    } else {
-      final ratio = currentStock / forecastDemand;
+    }
+    // Priority 3: Dead Stock -> HIGH
+    else if (forecastDemand <= 0 && currentStock > 0) {
+      riskLevel = "High";
+    }
+    else {
+      final ratio = (forecastDemand > 0) ? currentStock / forecastDemand : 0.0;
 
-      if (daysToExpiry <= 7 && ratio >= 1.5) {
+      // Overstock Check
+      if (ratio >= 1.5) {
         riskLevel = "High";
       } else if (daysToExpiry <= 14 || ratio >= 1.0) {
         riskLevel = "Medium";
       } else {
+        // Safe Range
         riskLevel = "Low";
       }
     }
 
-    // ===== 2. CALCULATE RISK VALUE (Your Custom Formula) =====
-    // Ratio logic
-    final ratio = (forecastDemand > 0) ? currentStock / forecastDemand : 3.0;
-
-    // Stock Score (max 60)
-    double stockScore = ratio * 40;
-    if (stockScore > 60) stockScore = 60;
-
-    // Expiry Score (max 40)
-    int expiryScore;
-    if (daysToExpiry <= 7) {
-      expiryScore = 40;
-    } else if (daysToExpiry <= 14) {
-      expiryScore = 25;
+    // Risk Value Calculation
+    int riskValue = 0;
+    if (currentStock <= 0 && forecastDemand > 0) {
+      riskValue = 95;
+    } else if (daysToExpiry <= 0) {
+      riskValue = 100;
     } else {
-      expiryScore = 10;
+      final ratio = (forecastDemand > 0) ? currentStock / forecastDemand : 1.0;
+      double stockScore = (ratio * 30).clamp(0, 60);
+      int expiryScore = (daysToExpiry <= 7) ? 40 : (daysToExpiry <= 14 ? 20 : 5);
+      riskValue = (stockScore + expiryScore).round().clamp(0, 100);
     }
 
-    // Total Score (max 100)
-    int riskValue = (stockScore + expiryScore).round();
-    if (riskValue > 100) riskValue = 100;
-
-    // ===== 3. GENERATE REASONS =====
     final reasons = generateRiskReasons(
       riskLevel: riskLevel,
       forecastDemand: forecastDemand,
@@ -65,11 +64,7 @@ class RiskLogic {
       daysToExpiry: daysToExpiry,
     );
 
-    return RiskResult(
-      riskLevel: riskLevel,
-      riskValue: riskValue,
-      reasons: reasons,
-    );
+    return RiskResult(riskLevel: riskLevel, riskValue: riskValue, reasons: reasons);
   }
 
   static List<String> generateRiskReasons({
@@ -79,23 +74,41 @@ class RiskLogic {
     required int daysToExpiry,
   }) {
     List<String> reasons = [];
-    final ratio = (forecastDemand > 0) ? currentStock / forecastDemand : 999.0;
 
-    if (riskLevel == "High") {
-      if (ratio >= 1.5) reasons.add("Stock is significantly higher than forecast");
-      if (daysToExpiry <= 7) reasons.add("Expiry is critical (in $daysToExpiry days)");
-      if (ratio > 3.0) reasons.add("Severe overstocking detected");
+    // --- URGENT REASONS ---
+    if (currentStock <= 0 && forecastDemand > 0) {
+      reasons.add("URGENT: Product is out of stock");
+      reasons.add("Action: Restock immediately to fulfill demand");
+      return reasons;
     }
 
-    if (riskLevel == "Medium") {
-      if (ratio >= 1.0) reasons.add("Stock slightly higher than forecast");
-      if (daysToExpiry <= 14) reasons.add("Expiry within 14 days");
+    // --- HIGH/MEDIUM REASONS (Expiry & Overstock) ---
+    if (daysToExpiry <= 0) {
+      reasons.add("CRITICAL: Product already expired");
+    } else if (daysToExpiry <= 7) {
+      reasons.add("High Risk: Expiry in $daysToExpiry days");
     }
 
+    final ratio = (forecastDemand > 0) ? currentStock / forecastDemand : 0.0;
+    if (ratio >= 1.5) {
+      reasons.add("Overstock: Stock is significantly higher than forecast");
+    }
+
+    // --- LOW RISK REASONS (UPDATED LOGIC) ---
     if (riskLevel == "Low") {
-      reasons.add("Stock matches forecast");
-      if (daysToExpiry > 14) reasons.add("Expiry > 14 days (Safe)");
-      reasons.add("Good sales stability");
+      reasons.add("Expiry date is safe (> 14 days)");
+
+      // NEW: Specific check for low stock but safe expiry
+      if (currentStock <= 10 && currentStock > 0) {
+        reasons.add("Stock level is low ($currentStock remaining)");
+        reasons.add("Suggestion: Need to stock up soon");
+      } else {
+        reasons.add("Stock level is healthy");
+      }
+    }
+
+    if (reasons.isEmpty) {
+      reasons.add("Inventory levels and expiry are safe");
     }
 
     return reasons;

@@ -37,6 +37,29 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     super.dispose();
   }
 
+// --- NEW LOGIC: CLEAR ALL BATCHES ---
+  void _clearAllBatches() {
+    if (batchItems.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Clear All Batches?"),
+        content: const Text("This will remove all products currently in this incoming session."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () {
+              setState(() => batchItems.clear());
+              Navigator.pop(context);
+            },
+            child: const Text("Clear", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,7 +94,17 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                   _findProductField(),
                   const SizedBox(height: 30),
 
-                  _buildSectionHeader("3. Batch Review (${batchItems.length})", Icons.inventory_rounded),
+                  // UPDATED HEADER WITH CLEAR BUTTON
+                  _buildSectionHeader(
+                    "3. Batch - Stock In (${batchItems.length})",
+                    Icons.inventory_rounded,
+                    action: batchItems.isNotEmpty
+                        ? TextButton(
+                      onPressed: _clearAllBatches,
+                      child: const Text("Clear All", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                    )
+                        : null,
+                  ),
                   const SizedBox(height: 12),
                   _batchList(),
                   const SizedBox(height: 100),
@@ -85,12 +118,15 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon) {
+  // UPDATED HEADER WIDGET
+  Widget _buildSectionHeader(String title, IconData icon, {Widget? action}) {
     return Row(
       children: [
         Icon(icon, size: 18, color: primaryBlue),
         const SizedBox(width: 8),
         Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+        const Spacer(),
+        if (action != null) action,
       ],
     );
   }
@@ -144,7 +180,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: isLocked ? () => _showError('Pilih supplier dulu mat!') : _showProductDialog,
+            onTap: isLocked ? () => _showError('Please choose the supplier first!') : _showProductDialog,
             child: Container(
               height: 55,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -292,6 +328,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
 
   Widget _batchList() {
     if (batchItems.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(40), child: Column(children: [Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey.shade300), const SizedBox(height: 10), Text('No batches added yet', style: TextStyle(color: Colors.grey.shade400))])));
+
     return Column(
       children: batchItems.asMap().entries.map((entry) {
         final i = entry.key; final item = entry.value;
@@ -307,19 +344,41 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildProductImage(item.imageUrl, size: 55),
                   const SizedBox(width: 15),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                    Text("From: ${item.supplierName}", style: TextStyle(fontSize: 11, color: primaryBlue, fontWeight: FontWeight.bold)),
+                    Text("SN: ${item.barcodeNo}", style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                    const SizedBox(height: 4),
+                    Text(item.supplierName, style: TextStyle(fontSize: 10, color: primaryBlue, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   ])),
-                  IconButton(icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20), onPressed: () => setState(() => batchItems.removeAt(i))),
+                  // CHANGED: Cleaner Cross (x) Symbol for deleting
+                  GestureDetector(
+                    onTap: () => setState(() => batchItems.removeAt(i)),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                      child: const Icon(Icons.close_rounded, color: Colors.grey, size: 16),
+                    ),
+                  ),
                 ],
               ),
-              const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+              const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, thickness: 0.5)),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Quantity (Cartons)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                  Text("Expiry Date", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                ],
+              ),
+              const SizedBox(height: 8),
+
               Row(
                 children: [
                   _qtyBtn(Icons.remove_rounded, () => setState(() { if(item.quantity > 0) item.quantity--; })),
@@ -329,7 +388,7 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                       controller: _qtyController,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                       decoration: const InputDecoration(border: InputBorder.none, isDense: true),
                       onChanged: (v) {
                         int? n = int.tryParse(v);
@@ -350,21 +409,48 @@ class _AddIncomingStockPageState extends State<AddIncomingStockPage> {
                       child: Row(children: [
                         const Icon(Icons.event_available_rounded, size: 14, color: Colors.orange),
                         const SizedBox(width: 6),
-                        Text(DateFormat('dd/MM/yy').format(item.expiryDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
+                        Text(DateFormat('dd MMM yyyy').format(item.expiryDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
                       ]),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                "${item.quantity} x ${item.unitsPerCarton} = ${item.totalUnits} units",
-                style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+              const SizedBox(height: 15),
+
+              // IMPROVED: Professional Calculation UI
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: primaryBlue.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: primaryBlue.withOpacity(0.08)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _calcPart(item.quantity.toString(), "Cartons"),
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text("×", style: TextStyle(color: Colors.grey.shade400, fontSize: 18))),
+                    _calcPart(item.unitsPerCarton.toString(), "Units/Ctn"),
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text("=", style: TextStyle(color: Colors.grey.shade400, fontSize: 18))),
+                    _calcPart(item.totalUnits.toString(), "Total Units", isPrimary: true),
+                  ],
+                ),
               ),
             ],
           ),
         );
       }).toList(),
+    );
+  }
+
+  // Helper widget for the calculation part
+  Widget _calcPart(String value, String label, {bool isPrimary = false}) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: isPrimary ? primaryBlue : Colors.black87)),
+        Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade500, fontWeight: FontWeight.bold, letterSpacing: 0.3)),
+      ],
     );
   }
 
