@@ -6,7 +6,7 @@ import '../Features_app/barcode_scanner_page.dart';
 import 'daily_sales.dart';
 import '../notifications/notification_page.dart';
 // ADD THIS IMPORT
-//import 'low_stock_page.dart';
+import 'low_stock_page.dart';
 
 
 class StaffDashboardPage extends StatefulWidget {
@@ -351,7 +351,7 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
                 label: "Low Stock Alert",
                 color: Colors.orange,
                 // --- NAVIGATION TO LOW STOCK PAGE ---
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesPage())),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LowStockPage())),
                 calcLogic: (docs) {
                   int count = 0;
                   for (var d in docs) {

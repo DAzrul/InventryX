@@ -231,6 +231,10 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
+    // --- [UPDATED LOGIC] REORDER LEVEL ---
+    int reorderLevel = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
+    bool isLowStock = stock <= reorderLevel;
+
     return GestureDetector(
       onTap: () => _showProductDetailDialog(data),
       child: Container(
@@ -274,14 +278,19 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
                       Text('RM ${price.toStringAsFixed(2)}',
                           style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
                       const SizedBox(width: 8),
+                      // --- [UPDATED UI] STOCK ALERT ---
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: stock <= 5 ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                          color: isLowStock ? Colors.red.withOpacity(0.1) : primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('Stock: $stock',
-                            style: TextStyle(fontSize: isTablet ? 12 : 10, fontWeight: FontWeight.w900, color: stock <= 5 ? Colors.red : primaryColor)),
+                            style: TextStyle(
+                                fontSize: isTablet ? 12 : 10,
+                                fontWeight: FontWeight.w900,
+                                color: isLowStock ? Colors.red : primaryColor
+                            )),
                       ),
                     ],
                   ),
@@ -313,6 +322,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
   void _showProductDetailDialog(Map<String, dynamic> data) {
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
+    int reorderLevel = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
 
     showDialog(
       context: context,
@@ -368,7 +378,7 @@ class _ProductListViewPageState extends State<ProductListViewPage> {
                     const SizedBox(height: 12),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                       _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
-                      _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock > 0 ? Colors.green : Colors.red),
+                      _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock <= reorderLevel ? Colors.red : Colors.green),
                     ]),
                   ]),
                 ),
