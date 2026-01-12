@@ -8,7 +8,7 @@ import 'user_list_page.dart';
 import 'admin_features/product_list_page.dart';
 import 'admin_features/supplier_list_page.dart';
 
-// [PENTING] Pastikan file ni wujud, kalau tak error
+// [PENTING] Pastikan file ni wujud
 import 'cmd_page.dart';
 
 class AdminDashboardPage extends StatelessWidget {
@@ -29,7 +29,7 @@ class AdminDashboardPage extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F9FD),
       body: Column(
         children: [
-          // 1. Header (Tanpa Butang Logout)
+          // 1. Header
           _buildHeader(context),
 
           Expanded(
@@ -39,16 +39,41 @@ class AdminDashboardPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 25),
 
-                  // --- SECTION 1: PENDAFTARAN UTAMA ---
+                  // --- SECTION 1: DATABASE OVERVIEW (STATISTIK SEBARIS) ---
+                  const Text(
+                      "Database Overview",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                      "Real-time system statistics",
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600)
+                  ),
+                  const SizedBox(height: 15),
+
+                  // [UBAH DI SINI] Row untuk susun sebaris
+                  Row(
+                    children: [
+                      _buildSquareStatCard("Users", "users", Icons.people_alt_rounded, Colors.blue),
+                      const SizedBox(width: 12),
+                      _buildSquareStatCard("Products", "products", Icons.inventory_2_rounded, Colors.orange),
+                      const SizedBox(width: 12),
+                      _buildSquareStatCard("Suppliers", "supplier", Icons.store_rounded, Colors.green),
+                    ],
+                  ),
+
+                  const SizedBox(height: 35),
+
+                  // --- SECTION 2: REGISTRATION MANAGEMENT ---
                   const Text(
                       "Registration Management",
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))
                   ),
                   const SizedBox(height: 5),
                   Text(
-                      "Manage access and master data",
+                      "Manage access, master data & simulations",
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade600)
                   ),
 
@@ -58,7 +83,7 @@ class AdminDashboardPage extends StatelessWidget {
                     context,
                     title: "Manage Users",
                     subtitle: "Register staff & administrators",
-                    icon: Icons.people_alt_rounded,
+                    icon: Icons.people_outline_rounded,
                     page: UserListPage(loggedInUsername: loggedInUsername),
                   ),
                   const SizedBox(height: 15),
@@ -66,7 +91,7 @@ class AdminDashboardPage extends StatelessWidget {
                     context,
                     title: "Inventory Products",
                     subtitle: "Register new products",
-                    icon: Icons.inventory_2_rounded,
+                    icon: Icons.inventory_2_outlined,
                     page: const ProductListPage(),
                   ),
                   const SizedBox(height: 15),
@@ -74,12 +99,11 @@ class AdminDashboardPage extends StatelessWidget {
                     context,
                     title: "Supplier Directory",
                     subtitle: "Register & manage suppliers",
-                    icon: Icons.local_shipping_rounded,
+                    icon: Icons.local_shipping_outlined,
                     page: const SupplierListPage(),
                   ),
 
-                  // --- [RESTRICTED ACCESS START] ---
-                  // Button ni hanya muncul kalau email user = datuazrul04@gmail.com
+                  // --- [RESTRICTED ACCESS: CMD CONTROL] ---
                   const SizedBox(height: 15),
                   StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
@@ -92,7 +116,6 @@ class AdminDashboardPage extends StatelessWidget {
                       String email = data['email'] ?? '';
                       String username = data['username'] ?? '';
 
-                      // THE CHECK: Kalau email match atau username match, baru tunjuk button
                       bool isTheBoss = email == 'datuazrul04@gmail.com' || username == 'D.AZRUL';
 
                       if (isTheBoss) {
@@ -100,29 +123,14 @@ class AdminDashboardPage extends StatelessWidget {
                           context,
                           title: "CMD Control",
                           subtitle: "Simulation Data (Datu Only)",
-                          icon: Icons.terminal_rounded, // Icon stylo sikit
+                          icon: Icons.terminal_rounded,
                           page: const CmdPage(),
+                          colorOverride: Colors.black87,
                         );
                       }
-
-                      // Kalau bukan boss, return kosong (hidden)
                       return const SizedBox.shrink();
                     },
                   ),
-                  // --- [RESTRICTED ACCESS END] ---
-
-                  const SizedBox(height: 35),
-
-                  // --- SECTION 2: STATISTIK ---
-                  const Text(
-                      "Database Overview",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1C1E))
-                  ),
-                  const SizedBox(height: 15),
-
-                  _buildActivityTile("Total Users", "users", Icons.person_search_rounded, Colors.blue),
-                  _buildActivityTile("Total Products", "products", Icons.inventory_rounded, Colors.orange),
-                  _buildActivityTile("Total Suppliers", "supplier", Icons.store_rounded, Colors.green),
 
                   const SizedBox(height: 50),
                 ],
@@ -198,16 +206,67 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _buildLargeButton(BuildContext context, {required String title, required String subtitle, required IconData icon, required Widget page}) {
+  // [BARU] Widget Kad Statistik Segi Empat (Sebaris)
+  Widget _buildSquareStatCard(String label, String collection, IconData icon, Color color) {
+    return Expanded(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection(collection).snapshots(),
+        builder: (context, snapshot) {
+          int count = 0;
+          if (snapshot.hasData) count = snapshot.data!.docs.length;
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 24),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "$count",
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLargeButton(BuildContext context, {required String title, required String subtitle, required IconData icon, required Widget page, Color? colorOverride}) {
+    final bgColor = colorOverride ?? primaryBlue;
+
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
       borderRadius: BorderRadius.circular(22),
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: primaryBlue, borderRadius: BorderRadius.circular(22),
+          color: bgColor,
+          borderRadius: BorderRadius.circular(22),
           boxShadow: [
-            BoxShadow(color: primaryBlue.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))
+            BoxShadow(color: bgColor.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))
           ],
         ),
         child: Row(
@@ -227,40 +286,6 @@ class AdminDashboardPage extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildActivityTile(String title, String collection, IconData icon, Color color) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection(collection).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return const SizedBox.shrink();
-        int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 15),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
-              ]
-          ),
-          child: Row(
-            children: [
-              Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-                  child: Icon(icon, color: color, size: 18)
-              ),
-              const SizedBox(width: 15),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-              const Spacer(),
-              Text("$count Units", style: TextStyle(color: primaryBlue, fontWeight: FontWeight.w900)),
-            ],
-          ),
-        );
-      },
     );
   }
 }
