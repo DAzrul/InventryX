@@ -238,25 +238,74 @@ class _HistorySalesPageState extends State<HistorySalesPage> {
   }
 
   Widget _buildOverviewCard(double total, int count) {
+    // Generate the dynamic date range label
+    String dateRangeLabel = "";
+    DateTime now = DateTime.now();
+
+    if (selectedFilter == "Today") {
+      dateRangeLabel = DateFormat('dd MMM yyyy').format(now);
+    } else if (selectedFilter == "Last 7 Days") {
+      DateTime start = now.subtract(const Duration(days: 7));
+      dateRangeLabel = "${DateFormat('dd MMM').format(start)} - ${DateFormat('dd MMM yyyy').format(now)}";
+    } else if (selectedFilter == "Last 30 Days") {
+      DateTime start = now.subtract(const Duration(days: 30));
+      dateRangeLabel = "${DateFormat('dd MMM').format(start)} - ${DateFormat('dd MMM yyyy').format(now)}";
+    } else if (selectedFilter == "Custom" && customStartDate != null && customEndDate != null) {
+      dateRangeLabel = "${DateFormat('dd MMM').format(customStartDate!)} - ${DateFormat('dd MMM yyyy').format(customEndDate!)}";
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [primaryBlue, accentBlue], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+            colors: [primaryBlue, accentBlue],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: primaryBlue.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+              color: primaryBlue.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Total Period Revenue", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Total Revenue",
+                  style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500)),
+              // Display the date range label in the top right of the card
+              Text(dateRangeLabel,
+                  style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
           const SizedBox(height: 8),
-          Text("RM ${total.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
+          Text("RM ${total.toStringAsFixed(2)}",
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900)),
           const SizedBox(height: 15),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-            child: Text("$count Transactions Found", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+            decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10)),
+            child: Text("$count Transactions Found",
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
           )
         ],
       ),

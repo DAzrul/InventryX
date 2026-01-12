@@ -194,8 +194,8 @@ class _StockOutPageState extends State<StockOutPage> {
         ),
         child: Row(
           children: [
-            _subTabBtn('Sales / Sold', 0),
-            _subTabBtn('Others / Manual', 1),
+            _subTabBtn('Sold', 0),
+            _subTabBtn('Others', 1),
           ],
         ),
       ),
