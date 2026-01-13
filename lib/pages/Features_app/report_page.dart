@@ -839,7 +839,7 @@ class _InventoryReportTabState extends State<_InventoryReportTab> {
 }
 
 // -----------------------------------------------------------------------------
-// TAB 2: FORECAST REPORT
+// TAB 2: FORECAST REPORT (SCROLLABLE & FILTERED)
 // -----------------------------------------------------------------------------
 class _ForecastReportTab extends StatelessWidget {
   final FirebaseFirestore db;
@@ -850,59 +850,174 @@ class _ForecastReportTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Query query = db.collection('forecasts').orderBy('forecastDate', descending: false);
+    // Limit 50 data untuk diproses
+    Query query = db.collection('forecasts')
+        .orderBy('predictedDemand', descending: true)
+        .limit(50);
+
     if (start != null) query = query.where('forecastDate', isGreaterThanOrEqualTo: start);
     if (end != null) query = query.where('forecastDate', isLessThanOrEqualTo: end);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Colors.purple));
+        }
 
-        final docs = snapshot.data!.docs;
+        if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
 
-        if (docs.isEmpty || docs.length < 2) {
+        final allDocs = snapshot.data?.docs ?? [];
+
+        // --- 1. FILTER DATA (BUANG 0) ---
+        final activeDocs = allDocs.where((d) {
+          final data = d.data() as Map<String, dynamic>;
+          double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
+          return val > 0;
+        }).toList();
+
+        if (activeDocs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.insights_rounded, size: 60, color: Colors.grey.shade300),
+                Icon(Icons.bar_chart_rounded, size: 60, color: Colors.grey.shade300),
                 const SizedBox(height: 15),
-                const Text("Not enough data to show trends.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                const Text("Try selecting 'This Year' or run Forecast.", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                const Text("No active forecast data.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
               ],
             ),
           );
         }
 
-        List<FlSpot> spots = [];
-        double maxDemand = 0;
-        final chartDocs = docs;
+        // --- 2. PERSIAPAN DATA GRAF ---
+        // Kita ambil Top 30 untuk dimasukkan dalam graf (supaya boleh scroll)
+        final chartDocs = activeDocs.take(30).toList();
 
-        for (int i = 0; i < chartDocs.length; i++) {
-          final data = chartDocs[i].data() as Map<String, dynamic>;
+        double maxY = 0;
+        for (var doc in chartDocs) {
+          final data = doc.data() as Map<String, dynamic>;
           double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
-          if (val > maxDemand) maxDemand = val;
-          spots.add(FlSpot(i.toDouble(), val));
+          if (val > maxY) maxY = val;
         }
 
         return ListView(
             padding: const EdgeInsets.fromLTRB(20, 25, 20, 100),
             physics: const BouncingScrollPhysics(),
             children: [
-              _buildHeader(" Forecast Trend"),
+              _buildHeader("Forecast Overview"),
+              const SizedBox(height: 5),
+              Text("Top ${chartDocs.length} predicted items (Scrollable)", style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 20),
-              _buildLineChart(spots, maxDemand, chartDocs),
+
+              // --- 3. SCROLLABLE BAR CHART ---
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal, // Benarkan scroll ke tepi
+                child: Container(
+                  // Kiraan lebar dinamik: Setiap batang dapat 60px
+                  width: (chartDocs.length * 60.0).clamp(MediaQuery.of(context).size.width - 40, 5000.0),
+                  height: 320,
+                  padding: const EdgeInsets.fromLTRB(10, 24, 20, 10),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 5))]
+                  ),
+                  child: BarChart(
+                    BarChartData(
+                      alignment: BarChartAlignment.spaceAround,
+                      maxY: maxY * 1.2,
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          tooltipPadding: const EdgeInsets.all(8),
+                          tooltipMargin: 8,
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final data = chartDocs[groupIndex].data() as Map<String, dynamic>;
+                            return BarTooltipItem(
+                              "${data['productName']}\n",
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                              children: [
+                                TextSpan(
+                                  text: "${rod.toY.toInt()} Units",
+                                  style: const TextStyle(color: Colors.yellowAccent, fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 60,
+                            getTitlesWidget: (value, meta) {
+                              int index = value.toInt();
+                              if (index >= 0 && index < chartDocs.length) {
+                                final data = chartDocs[index].data() as Map<String, dynamic>;
+                                String name = data['productName'] ?? '';
+                                // Pendekkan nama untuk label bawah
+                                if (name.length > 8) name = "${name.substring(0, 8)}..";
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: RotatedBox(
+                                    quarterTurns: 0,
+                                    child: Text(name, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                  ),
+                                );
+                              }
+                              return const SizedBox();
+                            },
+                          ),
+                        ),
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      ),
+                      gridData: const FlGridData(show: false),
+                      borderData: FlBorderData(show: false),
+                      barGroups: chartDocs.asMap().entries.map((entry) {
+                        int idx = entry.key;
+                        final data = entry.value.data() as Map<String, dynamic>;
+                        double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
+
+                        return BarChartGroupData(
+                          x: idx,
+                          barRods: [
+                            BarChartRodData(
+                              toY: val,
+                              color: Colors.purpleAccent,
+                              width: 30, // Batang lebih lebar sebab ada ruang scroll
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                              backDrawRodData: BackgroundBarChartRodData(
+                                show: true,
+                                toY: maxY * 1.2,
+                                color: Colors.grey.withOpacity(0.05),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 35),
-              _buildHeader("Forecast Result"),
+              _buildHeader("Detailed Forecast List"),
               const SizedBox(height: 15),
-              ...docs.take(10).map((d) {
+
+              // Senarai penuh di bawah
+              ...activeDocs.map((d) {
                 final data = d.data() as Map<String, dynamic>;
                 String dateStr = "N/A";
                 if (data['forecastDate'] is Timestamp) {
                   dateStr = DateFormat('dd MMM').format((data['forecastDate'] as Timestamp).toDate());
                 }
                 double val = double.tryParse(data['predictedDemand']?.toString() ?? '0') ?? 0;
+
                 return _buildForecastTile(dateStr, data['productName'] ?? 'Unknown', val.toInt().toString());
               })
             ]
@@ -915,55 +1030,13 @@ class _ForecastReportTab extends StatelessWidget {
     return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)));
   }
 
-  Widget _buildLineChart(List<FlSpot> spots, double maxY, List<QueryDocumentSnapshot> docs) {
-    return Container(
-      height: 300,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 5))]),
-      child: LineChart(LineChartData(
-          minX: 0, maxX: (spots.length - 1).toDouble(), minY: 0, maxY: maxY * 1.2,
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (touchedSpot) => Colors.blueGrey,
-              getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                return touchedSpots.map((spot) {
-                  return LineTooltipItem(
-                    spot.y.toStringAsFixed(0),
-                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  );
-                }).toList();
-              },
-            ),
-          ),
-          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.purpleAccent, barWidth: 4, isStrokeCapRound: true, dotData: FlDotData(show: true), belowBarData: BarAreaData(show: true, color: Colors.purpleAccent.withValues(alpha: 0.1)))],
-          titlesData: FlTitlesData(
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: (docs.length / 5).ceil().toDouble(), getTitlesWidget: (value, meta) {
-                int index = value.toInt();
-                if (index >= 0 && index < docs.length) {
-                  final data = docs[index].data() as Map<String, dynamic>;
-                  if (data['forecastDate'] is Timestamp) {
-                    return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('d/M').format((data['forecastDate'] as Timestamp).toDate()), style: const TextStyle(fontSize: 10, color: Colors.grey)));
-                  }
-                }
-                return const SizedBox();
-              })),
-              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey))))
-          ),
-          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)),
-          borderData: FlBorderData(show: false)
-      )),
-    );
-  }
-
   Widget _buildForecastTile(String date, String productName, String demand) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]),
       child: Row(children: [
-        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)),
+        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.trending_up_rounded, color: Colors.purple, size: 20)),
         const SizedBox(width: 15),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(productName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -1125,18 +1198,20 @@ class _RiskReportTabState extends State<_RiskReportTab> {
 }
 
 // -----------------------------------------------------------------------------
-// TAB 4: SALES REPORT (DAILY SUMMARY + LINE CHART)
+// TAB 4: SALES REPORT (UPDATED TO BAR CHART)
 // -----------------------------------------------------------------------------
 class _SalesReportTab extends StatelessWidget {
   final FirebaseFirestore db;
   final Timestamp? start;
   final Timestamp? end;
   const _SalesReportTab({required this.db, this.start, this.end});
+
   @override
   Widget build(BuildContext context) {
     Query query = db.collection('sales').orderBy('saleDate', descending: false);
     if (start != null) query = query.where('saleDate', isGreaterThanOrEqualTo: start);
     if (end != null) query = query.where('saleDate', isLessThanOrEqualTo: end);
+
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
@@ -1145,26 +1220,30 @@ class _SalesReportTab extends StatelessWidget {
         if (docs.isEmpty) {
           return const Center(child: Text("No sales records found for this period.", style: TextStyle(color: Colors.grey)));
         }
+
         // --- 1. DATA AGGREGATION ---
         Map<String, double> dailySalesMap = {};
         double totalRevenuePeriod = 0;
+
         for (var doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
           Timestamp? t = data['saleDate'];
           if (t == null) continue;
           String dateKey = DateFormat('yyyy-MM-dd').format(t.toDate());
-          // Guna totalAmount (Unmasked)
           double amount = double.tryParse(data['totalAmount']?.toString() ?? '0') ?? 0;
 
           dailySalesMap[dateKey] = (dailySalesMap[dateKey] ?? 0) + amount;
           totalRevenuePeriod += amount;
         }
+
         List<String> sortedDates = dailySalesMap.keys.toList()..sort();
-        // Convert data to FlSpot
-        List<FlSpot> chartSpots = [];
-        for (int i = 0; i < sortedDates.length; i++) {
-          chartSpots.add(FlSpot(i.toDouble(), dailySalesMap[sortedDates[i]]!));
+
+        // Cari max Y untuk scale graf
+        double maxY = 0;
+        if (dailySalesMap.isNotEmpty) {
+          maxY = dailySalesMap.values.reduce((a, b) => a > b ? a : b);
         }
+
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           physics: const BouncingScrollPhysics(),
@@ -1175,7 +1254,7 @@ class _SalesReportTab extends StatelessWidget {
                 decoration: BoxDecoration(
                     gradient: const LinearGradient(colors: [Color(0xFF00796B), Color(0xFF004D40)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                     borderRadius: BorderRadius.circular(30),
-                    boxShadow: [BoxShadow(color: const Color(0xFF004D40).withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))]
+                    boxShadow: [BoxShadow(color: const Color(0xFF004D40).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))]
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text("Total Revenue (Period)", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
@@ -1187,99 +1266,120 @@ class _SalesReportTab extends StatelessWidget {
             ),
 
             const SizedBox(height: 30),
-            const Text("Daily Sales Trend", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
+            const Text("Daily Sales Performance", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
             const SizedBox(height: 15),
 
-            // --- 2. CHART WIDGET (LINE CHART + TOOLTIP FIX) ---
+            // --- 2. SCROLLABLE BAR CHART WIDGET ---
             if (sortedDates.isNotEmpty)
-              Container(
-                height: 250,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
-                child: LineChart(
-                    LineChartData(
-                      minX: 0,
-                      maxX: (sortedDates.length - 1).toDouble(),
-                      minY: 0,
-                      maxY: dailySalesMap.values.reduce((a, b) => a > b ? a : b) * 1.2,
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal, // Benarkan scroll ke tepi
+                child: Container(
+                  // KIRAAN LEBAR: Setiap batang dapat 50px ruang.
+                  // Kalau data sikit, guna lebar skrin penuh. Kalau banyak, dia memanjang.
+                  width: (sortedDates.length * 50.0).clamp(MediaQuery.of(context).size.width - 40, 5000.0),
+                  height: 300,
+                  padding: const EdgeInsets.fromLTRB(10, 24, 20, 10),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+                  ),
+                  child: BarChart(
+                    BarChartData(
+                      alignment: BarChartAlignment.spaceAround,
+                      maxY: maxY * 1.1,
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          tooltipPadding: const EdgeInsets.all(8),
+                          tooltipMargin: 8,
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            String dateKey = sortedDates[groupIndex];
+                            DateTime date = DateTime.parse(dateKey);
+                            String formattedDate = DateFormat('dd MMM').format(date);
 
-                      // --- TOOLTIP FIX (SALES) ---
-                      lineTouchData: LineTouchData(
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipColor: (touchedSpot) => Colors.blueGrey, // Dark BG
-                          getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                            return touchedSpots.map((spot) {
-                              return LineTooltipItem(
-                                "RM ${spot.y.toStringAsFixed(2)}",
-                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              );
-                            }).toList();
+                            return BarTooltipItem(
+                              "$formattedDate\n",
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                              children: [
+                                TextSpan(
+                                  text: "RM ${rod.toY.toStringAsFixed(2)}",
+                                  style: const TextStyle(color: Colors.tealAccent, fontSize: 14, fontWeight: FontWeight.w900),
+                                ),
+                              ],
+                            );
                           },
                         ),
-                        handleBuiltInTouches: true,
                       ),
-                      // ---------------------------
-                      lineBarsData: [
-                        LineChartBarData(
-                            spots: chartSpots,
-                            isCurved: true,
-                            color: const Color(0xFF00796B),
-                            barWidth: 4,
-                            isStrokeCapRound: true,
-                            dotData: const FlDotData(show: true),
-                            belowBarData: BarAreaData(
-                                show: true,
-                                color: const Color(0xFF00796B).withValues(alpha: 0.2)
-                            )
-                        )
-                      ],
                       titlesData: FlTitlesData(
                         show: true,
-                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            interval: 1,
-                            getTitlesWidget: (double value, TitleMeta meta) {
+                            reservedSize: 40,
+                            getTitlesWidget: (value, meta) {
                               int index = value.toInt();
                               if (index >= 0 && index < sortedDates.length) {
                                 DateTime date = DateTime.parse(sortedDates[index]);
-                                // Show labels sparingly if too many
-                                if (sortedDates.length > 7 && index % 2 != 0) return const SizedBox();
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(DateFormat('d/M').format(date), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                  child: Text(
+                                      DateFormat('d/M').format(date),
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)
+                                  ),
                                 );
                               }
                               return const SizedBox();
                             },
                           ),
                         ),
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
-                      gridData: FlGridData(
-                          show: true,
-                          drawVerticalLine: false,
-                          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade100, strokeWidth: 1)
-                      ),
+                      gridData: const FlGridData(show: false),
                       borderData: FlBorderData(show: false),
-                    )
+                      barGroups: sortedDates.asMap().entries.map((entry) {
+                        int idx = entry.key;
+                        String dateKey = entry.value;
+                        double val = dailySalesMap[dateKey]!;
+
+                        return BarChartGroupData(
+                          x: idx,
+                          barRods: [
+                            BarChartRodData(
+                              toY: val,
+                              color: const Color(0xFF00796B),
+                              width: 25, // Lebar batang yang selesa sebab boleh scroll
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                              backDrawRodData: BackgroundBarChartRodData(
+                                show: true,
+                                toY: maxY * 1.1,
+                                color: Colors.grey.withOpacity(0.05),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ),
               )
             else
               const Center(child: Text("Not enough data for chart")),
+
             const SizedBox(height: 30),
             const Text("Daily Breakdown", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E))),
             const SizedBox(height: 15),
-            // --- 3. TABLE / LIST (DAILY SUMMARY) ---
+
+            // --- 3. LIST (DAILY SUMMARY) ---
             ...sortedDates.reversed.map((dateKey) {
               double total = dailySalesMap[dateKey]!;
               DateTime date = DateTime.parse(dateKey);
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8)]),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)]),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1287,7 +1387,7 @@ class _SalesReportTab extends StatelessWidget {
                       children: [
                         Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: Colors.teal.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
                             child: const Icon(Icons.calendar_today_rounded, color: Colors.teal, size: 20)
                         ),
                         const SizedBox(width: 15),

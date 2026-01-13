@@ -10,6 +10,8 @@ import 'admin_features/supplier_list_page.dart';
 
 // [PENTING] Pastikan file ni wujud
 import 'cmd_page.dart';
+import 'AI_advisor_page.dart';
+import 'ExpiryAdvisor.dart';
 
 class AdminDashboardPage extends StatelessWidget {
   final String loggedInUsername;
@@ -103,7 +105,7 @@ class AdminDashboardPage extends StatelessWidget {
                     page: const SupplierListPage(),
                   ),
 
-                  // --- [RESTRICTED ACCESS: CMD CONTROL] ---
+                  // --- [RESTRICTED ACCESS: CMD & ADVISOR] ---
                   const SizedBox(height: 15),
                   StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
@@ -116,16 +118,47 @@ class AdminDashboardPage extends StatelessWidget {
                       String email = data['email'] ?? '';
                       String username = data['username'] ?? '';
 
+                      // Check Boss
                       bool isTheBoss = email == 'datuazrul04@gmail.com' || username == 'D.AZRUL';
 
                       if (isTheBoss) {
-                        return _buildLargeButton(
-                          context,
-                          title: "CMD Control",
-                          subtitle: "Simulation Data (Datu Only)",
-                          icon: Icons.terminal_rounded,
-                          page: const CmdPage(),
-                          colorOverride: Colors.black87,
+                        return Column(
+                          children: [
+                            // 1. CMD Control (Simulasi Data)
+                            _buildLargeButton(
+                              context,
+                              title: "CMD Control",
+                              subtitle: "Simulation Data Generator",
+                              icon: Icons.terminal_rounded,
+                              page: const CmdPage(),
+                              colorOverride: Colors.black87,
+                            ),
+                            const SizedBox(height: 15),
+
+                            // 2. [NEW] Real Shelf Life Analytics
+                            // Page ini hanya fokus analisa berapa lama barang tahan (Expiry)
+                            _buildLargeButton(
+                              context,
+                              title: "Real Shelf Life",
+                              subtitle: "Analyze Actual Product Expiry Trends",
+                              icon: Icons.access_time_filled_rounded,
+                              page: const ExpiryAdvisor(),
+                              colorOverride: Colors.orange.shade800, // Warna oren utk Alert/Masa
+                            ),
+
+                            const SizedBox(height: 15),
+
+                            // 3. [NEW] AI Restock Advisor
+                            // Page ini yang buat suggestion order (Weekly/Monthly) tadi
+                            _buildLargeButton(
+                              context,
+                              title: "AI Restock Advisor",
+                              subtitle: "Smart Order Suggestions (Forecast)",
+                              icon: Icons.psychology_rounded,
+                              page: const AIAdvisorPage(),
+                              colorOverride: Colors.indigo.shade700, // Warna biru utk AI/Otak
+                            ),
+                          ],
                         );
                       }
                       return const SizedBox.shrink();

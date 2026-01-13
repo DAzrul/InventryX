@@ -769,7 +769,7 @@ class _StockOutPageState extends State<StockOutPage> {
     }
   }
 
-  // ======================== CORE LOGIC: MANUAL REMOVAL ========================
+  // ======================== CORE LOGIC: MANUAL REMOVAL (TITLE CASE FIXED) ========================
 
   Future<void> _saveOthersStockOutToFirebase() async {
     setState(() => _isProcessing = true);
@@ -777,21 +777,70 @@ class _StockOutPageState extends State<StockOutPage> {
       final batch = _db.batch();
       final now = Timestamp.now();
 
-      // [FIX] Loop items dari Manager
+      // Loop semua item dalam cart manual
       for (var item in _cartManager.items) {
-        batch.update(_db.collection('batches').doc(item.batchId), {'currentQuantity': FieldValue.increment(-item.quantity), 'updatedAt': now});
-        batch.update(_db.collection('products').doc(item.productId), {'currentStock': FieldValue.increment(-item.quantity), 'updatedAt': now});
+
+        // 1. Update Kuantiti Batch (Tolak)
+        batch.update(_db.collection('batches').doc(item.batchId), {
+          'currentQuantity': FieldValue.increment(-item.quantity),
+          'updatedAt': now
+        });
+
+        // 2. Update Kuantiti Produk Utama (Tolak)
+        batch.update(_db.collection('products').doc(item.productId), {
+          'currentStock': FieldValue.increment(-item.quantity),
+          'updatedAt': now
+        });
+
+        // 3. Rekod Stock Movement (Log Sejarah)
         final movementRef = _db.collection('stockMovements').doc();
-        batch.set(movementRef, {'movementId': movementRef.id, 'productId': item.productId, 'productName': item.productName, 'quantity': -item.quantity, 'type': 'Manual Adjustment', 'reason': _selectedReason.toUpperCase(), 'notes': _notesController.text.trim(), 'timestamp': now, 'user': 'Staff'});
+
+        // Helper function untuk tukar teks jadi Title Case (cth: "damaged" -> "Damaged")
+        String toTitleCase(String text) {
+          if (text.isEmpty) return text;
+          return text[0].toUpperCase() + text.substring(1).toLowerCase();
+        }
+
+        // Format Reason: Gabung "Manual Adjustment" dengan nota user jika ada
+        String userNotes = _notesController.text.trim();
+        String displayReason = userNotes.isEmpty
+            ? "Manual Adjustment"
+            : "Manual Adj: $userNotes";
+
+        // Format Type: Tukar pilihan user (cth: damaged) kepada Title Case (Damaged)
+        String formattedType = toTitleCase(_selectedReason);
+
+        batch.set(movementRef, {
+          'movementId': movementRef.id,
+          'productId': item.productId,
+          'productName': item.productName,
+          'quantity': -item.quantity, // Negatif sebab keluar
+
+          // [PERUBAHAN UTAMA DI SINI]
+          // Type = Damaged, Expired, Theft, dll (Title Case)
+          'type': formattedType,
+
+          // Reason = "Manual Adjustment" (Untuk jelaskan punca)
+          'reason': displayReason,
+
+          'notes': userNotes, // Simpan nota asing juga
+          'timestamp': now,
+          'user': 'Staff'
+        });
       }
+
       await batch.commit();
 
       setState(() {
-        _cartManager.clearCart(); // Clear lepas save
+        _cartManager.clearCart(); // Kosongkan cart
         _notesController.clear();
         _isProcessing = false;
       });
-      _showAlert("Manual Removal Success", "Stock adjustment for manual reasons has been recorded.", isError: false);
+
+      // Tunjuk alert berjaya dengan format yang betul
+      String successType = _selectedReason[0].toUpperCase() + _selectedReason.substring(1).toLowerCase();
+      _showAlert("Success", "Stock removed as $successType.", isError: false);
+
     } catch (e) {
       if (mounted) setState(() => _isProcessing = false);
       _showAlert("System Error", e.toString(), isError: true);
