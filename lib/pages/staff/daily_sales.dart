@@ -102,20 +102,20 @@ class _DailySalesPageState extends State<DailySalesPage> {
   }
 
   // ==========================================================
-  // 1. FETCH DATA
+  // 1. FETCH DATA (UPDATED: LOGIC DETECT EXPIRED & TODAY)
   // ==========================================================
   Future<void> _fetchAndRandomizeData() async {
-    // Jangan ubah _isLoading kepada true di sini sebab init state dah handle
     try {
       final DateTime now = DateTime.now();
-      final DateTime startOfTomorrow = DateTime(now.year, now.month, now.day + 1);
+      // Set waktu ke 00:00:00 hari ini untuk perbandingan tarikh yang tepat
+      final DateTime startOfToday = DateTime(now.year, now.month, now.day);
 
       Map<String, int> validStockMap = {};
       Set<String> productsWithBatches = {};
       Set<String> expiringTodayIds = {};
       Map<String, int> pendingSalesMap = {};
 
-      // A. Batch Logic
+      // A. Batch Logic (Tapis Tarikh Luput Di Sini)
       try {
         final batchSnapshot = await FirebaseFirestore.instance
             .collection('batches')
@@ -131,19 +131,40 @@ class _DailySalesPageState extends State<DailySalesPage> {
 
           if (expTs != null) {
             DateTime expiryDate = expTs.toDate();
-            if (expiryDate.isAfter(now)) {
-              validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
-              if (expiryDate.isBefore(startOfTomorrow)) {
-                expiringTodayIds.add(pid);
-              }
+            // Normalisasikan expiry date ke 00:00:00 juga untuk compare date sahaja
+            DateTime expiryDateOnly = DateTime(expiryDate.year, expiryDate.month, expiryDate.day);
+
+            // LOGIC 1: Jika Tarikh Batch < Hari Ini (Sudah Expired Semalam atau sebelumnya)
+            if (expiryDateOnly.isBefore(startOfToday)) {
+              // Batch ini sudah BUSUK/EXPIRED.
+              // JANGAN tambah ke validStockMap.
+              // Kesannya: Stok akan jadi 0, dan generator takkan pilih.
+              continue;
             }
+
+            // LOGIC 2: Jika Tarikh Batch == Hari Ini (Expiring Today)
+            if (expiryDateOnly.isAtSameMomentAs(startOfToday)) {
+              // Batch ini luput HARI INI.
+              // Masukkan ke set expiringTodayIds.
+              expiringTodayIds.add(pid);
+
+              // Kita masih tambah stok sebab user mungkin nak jual MANUAL (clearance),
+              // TAPI Auto-Generator akan skip berdasarkan flag 'isExpiringToday'.
+              validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
+            } else {
+              // LOGIC 3: Batch Valid (Masa Depan)
+              validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
+            }
+          } else {
+            // Kalau tiada expiry date, anggap valid
+            validStockMap[pid] = (validStockMap[pid] ?? 0) + qty;
           }
         }
       } catch (e) {
         debugPrint("Batch Index Error: $e");
       }
 
-      // B. Pending Sales Logic
+      // B. Pending Sales Logic (Kekal sama)
       try {
         final pendingSnapshot = await FirebaseFirestore.instance.collection('pending_sales').get();
         for (var doc in pendingSnapshot.docs) {
@@ -155,7 +176,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
         debugPrint("Pending Sales Error: $e");
       }
 
-      // C. Product Logic
+      // C. Product Logic (Combine Data)
       final productSnapshot = await FirebaseFirestore.instance.collection('products').get();
       List<ProductLocalState> tempList = [];
       Set<String> categoriesSet = {"All"};
@@ -170,6 +191,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
         int productMasterStock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
 
         int finalStock;
+        // Jika produk ada batch, guna validStockMap (yang dah tolak expired)
         if (productsWithBatches.contains(pid)) {
           finalStock = validStockMap[pid] ?? 0;
         } else {
@@ -177,7 +199,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
         }
 
         int existingQty = pendingSalesMap[pid] ?? 0;
-        bool isRisky = expiringTodayIds.contains(pid);
+        bool isRisky = expiringTodayIds.contains(pid); // Check flag Expiring Today
 
         tempList.add(ProductLocalState(
           id: pid,
@@ -188,7 +210,7 @@ class _DailySalesPageState extends State<DailySalesPage> {
           price: price,
           imageUrl: data['imageUrl'] ?? data['image'],
           soldQty: existingQty,
-          isExpiringToday: isRisky,
+          isExpiringToday: isRisky, // Ini akan digunakan oleh Generator
           hasBatches: productsWithBatches.contains(pid),
         ));
       }
@@ -206,38 +228,87 @@ class _DailySalesPageState extends State<DailySalesPage> {
     }
   }
 
-  // ==========================================================
-  // 2. AUTO GENERATE SALES
+// ==========================================================
+  // 2. AUTO GENERATE SALES (ONE-CLICK TARGET & EXCLUDE EXPIRED)
   // ==========================================================
   void _randomizeAllSales() {
-    // [BARU] Check Lock
+    // 1. Check Lock
     if (_isSalesAlreadySubmitted) {
       _showAlreadySubmittedDialog();
       return;
     }
 
     final Random random = Random();
-    int itemsUpdated = 0;
+
+    // [SETTING] Sasaran Jualan (RM 1,000 - RM 3,000)
+    double targetRevenue = 1000.0 + random.nextInt(2001);
+
+    double currentGeneratedRevenue = 0.0;
+    int itemsCount = 0;
 
     setState(() {
-      for (var product in _allProducts) {
-        if (product.currentStock > 0 && product.currentStock > product.soldQty && !product.isExpiringToday) {
-          if (random.nextDouble() < 0.5) {
-            int remaining = product.currentStock - product.soldQty;
-            int maxToAdd = remaining > 5 ? 5 : remaining;
-            int extraQty = random.nextInt(maxToAdd) + 1;
-            product.soldQty += extraQty;
-            itemsUpdated++;
-          }
+      // A. Reset semua soldQty kepada 0 dahulu (Fresh start)
+      for (var p in _allProducts) {
+        p.soldQty = 0;
+      }
+
+      // B. Buat senarai index yang di-shuffle (rawak)
+      List<int> shuffledIndices = List.generate(_allProducts.length, (i) => i)..shuffle();
+
+      // C. Loop
+      bool stockAvailable = true;
+      int loopSafety = 0;
+
+      while (currentGeneratedRevenue < targetRevenue && stockAvailable && loopSafety < 1000) {
+        loopSafety++;
+        bool anySaleMadeInThisPass = false;
+
+        for (int i in shuffledIndices) {
+          if (currentGeneratedRevenue >= targetRevenue) break;
+
+          var product = _allProducts[i];
+
+          // --- [PENAPISAN PENTING DI SINI] ---
+
+          // 1. Kalau stok kosong (termasuk yang expired semalam sbb stok jadi 0 di fetch), SKIP.
+          if (product.currentStock <= 0) continue;
+
+          // 2. Kalau expired HARI INI (isExpiringToday == true), ELAKKAN.
+          if (product.isExpiringToday) continue;
+
+          // -----------------------------------
+
+          // Kira baki yang boleh dijual
+          int remainingStock = product.currentStock - product.soldQty;
+          if (remainingStock <= 0) continue;
+
+          // Logic Kuantiti: Jual sikit-sikit (1-3 unit)
+          int qtyToAdd = 1 + random.nextInt(3);
+
+          if (qtyToAdd > remainingStock) qtyToAdd = remainingStock;
+
+          double saleValue = product.price * qtyToAdd;
+
+          if (saleValue <= 0) continue;
+
+          // Update Data
+          product.soldQty += qtyToAdd;
+          currentGeneratedRevenue += saleValue;
+          itemsCount++;
+          anySaleMadeInThisPass = true;
+        }
+
+        if (!anySaleMadeInThisPass) {
+          stockAvailable = false;
         }
       }
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(itemsUpdated > 0 ? "Sales Generated!" : "No eligible stock found."),
-          backgroundColor: itemsUpdated > 0 ? primaryColor : Colors.orange,
-          duration: const Duration(milliseconds: 1500),
+          content: Text("Generated: RM ${currentGeneratedRevenue.toStringAsFixed(2)} from auto-sales (Excluded Expired)"),
+          backgroundColor: primaryColor,
+          duration: const Duration(milliseconds: 2000),
         )
     );
   }
@@ -660,21 +731,31 @@ class _ProductListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const Color primaryBlue = Color(0xFF203288);
+
+    // Logic Status
+    final bool isExpired = product.isExpiringToday;
     final bool isOutOfStock = product.currentStock <= 0;
+    // Item tak boleh dijual jika: Locked, Expired, atau No Stock
+    final bool isItemDisabled = isLocked || isExpired || isOutOfStock;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
-          color: isLocked ? Colors.grey.shade50 : Colors.white,
+          color: isItemDisabled ? Colors.grey.shade50 : Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
       ),
       child: Row(
         children: [
-          _buildProductImage(product.imageUrl, size: 50, primaryColor: primaryBlue),
+          // Image Section
+          Opacity(
+            opacity: isItemDisabled ? 0.5 : 1.0,
+            child: _buildProductImage(product.imageUrl, size: 50, primaryColor: primaryBlue),
+          ),
           const SizedBox(width: 10),
 
+          // Info Section
           Expanded(
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,14 +766,17 @@ class _ProductListItem extends StatelessWidget {
                     children: [
                       Text(
                           product.name,
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: isLocked ? Colors.grey : Colors.black),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: isItemDisabled ? Colors.grey : Colors.black,
+                            decoration: isExpired ? TextDecoration.lineThrough : null, // Strikethrough if expired
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis
                       ),
-                      if(product.isExpiringToday)
-                        _buildBadge("Exp Today", Colors.orange),
-                      if(isOutOfStock)
-                        _buildBadge("Expired", Colors.red),
+                      // Badge Khas (Optional, sbb nanti kat kanan ada tulis juga)
+                      if(isExpired) _buildBadge("Expired", Colors.red),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -700,36 +784,48 @@ class _ProductListItem extends StatelessWidget {
                     children: [
                       Text("Stk: ${product.currentStock}", style: TextStyle(fontSize: 10, color: isOutOfStock ? Colors.red : Colors.grey.shade600, fontWeight: FontWeight.bold)),
                       const SizedBox(width: 8),
-                      Text("RM ${product.price.toStringAsFixed(2)}", style: const TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.w900)),
+                      Text("RM ${product.price.toStringAsFixed(2)}", style: TextStyle(fontSize: 10, color: isItemDisabled ? Colors.grey : Colors.green, fontWeight: FontWeight.w900)),
                     ],
                   ),
                 ]
             ),
           ),
 
-          // Control section
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(4),
-                  icon: Icon(Icons.remove_circle_outline, color: isLocked ? Colors.grey : Colors.redAccent, size: 22),
-                  onPressed: isLocked ? null : () => onQtyChanged(max(0, product.soldQty - 1))
-              ),
-              Container(
-                  width: 28,
-                  alignment: Alignment.center,
-                  child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: (product.soldQty > 0 && !isLocked) ? primaryBlue : Colors.grey))
-              ),
-              IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.all(4),
-                  icon: Icon(Icons.add_circle_outline, color: (isOutOfStock || isLocked) ? Colors.grey : Colors.green, size: 22),
-                  onPressed: (isOutOfStock || isLocked) ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
-              ),
-            ],
-          ),
+          // Control / Status Section
+          // Jika Expired atau No Stock, tunjuk TEXT STATUS. Jika OK, tunjuk +/- Button.
+          if (isExpired)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Text("EXPIRED", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.red.withOpacity(0.7))),
+            )
+          else if (isOutOfStock)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Text("NO STOCK", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.grey)),
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                    icon: Icon(Icons.remove_circle_outline, color: isLocked ? Colors.grey : Colors.redAccent, size: 22),
+                    onPressed: isLocked ? null : () => onQtyChanged(max(0, product.soldQty - 1))
+                ),
+                Container(
+                    width: 28,
+                    alignment: Alignment.center,
+                    child: Text("${product.soldQty}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: (product.soldQty > 0 && !isLocked) ? primaryBlue : Colors.grey))
+                ),
+                IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                    icon: Icon(Icons.add_circle_outline, color: isLocked ? Colors.grey : Colors.green, size: 22),
+                    onPressed: isLocked ? null : () => onQtyChanged(min(product.currentStock, product.soldQty + 1))
+                ),
+              ],
+            ),
         ],
       ),
     );
