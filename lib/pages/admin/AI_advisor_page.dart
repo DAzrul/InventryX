@@ -133,22 +133,24 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
 
     if (_historyExpiryDays.containsKey(pid)) {
       int avgDays = _historyExpiryDays[pid]!;
-      return {'date': today.add(Duration(days: avgDays)), 'days': avgDays, 'label': '', 'color': Colors.indigo};
+      // Removed 'label' key
+      return {'date': today.add(Duration(days: avgDays)), 'days': avgDays, 'color': Colors.indigo};
     }
 
     String pName = productName.toUpperCase();
     String cat = (category ?? '').toUpperCase();
 
+    // Removed 'label' keys
     if (pName.contains('ROTI') || pName.contains('GARDENIA') || (pName.contains('KEK') && !cat.contains('FROZEN'))) {
-      return {'date': today.add(const Duration(days: 5)), 'days': 5, 'label': 'Fresh Bakery', 'color': Colors.red};
+      return {'date': today.add(const Duration(days: 5)), 'days': 5, 'color': Colors.red};
     } else if ((pName.contains('MILK') || pName.contains('SUSU')) && !pName.contains('UHT')) {
-      return {'date': today.add(const Duration(days: 21)), 'days': 21, 'label': 'Fresh Dairy', 'color': Colors.orange};
+      return {'date': today.add(const Duration(days: 21)), 'days': 21, 'color': Colors.orange};
     } else if (cat.contains('FROZEN') || pName.contains('ICE CREAM')) {
-      return {'date': today.add(const Duration(days: 270)), 'days': 270, 'label': 'Frozen Food', 'color': Colors.blue};
+      return {'date': today.add(const Duration(days: 270)), 'days': 270, 'color': Colors.blue};
     } else if (cat.contains('CANNED') || cat.contains('DRY') || pName.contains('UHT')) {
-      return {'date': today.add(const Duration(days: 540)), 'days': 540, 'label': 'Long Life', 'color': Colors.green};
+      return {'date': today.add(const Duration(days: 540)), 'days': 540, 'color': Colors.green};
     } else {
-      return {'date': today.add(const Duration(days: 180)), 'days': 180, 'label': 'Estimated', 'color': Colors.grey};
+      return {'date': today.add(const Duration(days: 180)), 'days': 180, 'color': Colors.grey};
     }
   }
 
@@ -172,7 +174,8 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
     dailyVelocity = forecastDaily > historyDaily ? forecastDaily : historyDaily;
 
     if (dailyVelocity <= 0.1) {
-      return {'qty': 0, 'status': 'IDLE', 'color': Colors.grey, 'msg': 'Tiada data jualan aktif.', 'info': 'N/A', 'isSingle': isSingleUnit};
+      // Removed 'info' key
+      return {'qty': 0, 'status': 'IDLE', 'color': Colors.grey, 'msg': 'Tiada data jualan aktif.', 'isSingle': isSingleUnit};
     }
 
     // 2. TENTUKAN TARGET HARI
@@ -202,6 +205,9 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
 
     // Kiraan order dalam Carton (atau Unit jika UPC=1)
     int orderQty = (shortage > 0) ? (shortage / upc).ceil() : 0;
+
+    // Removed infoStr variable
+    // Removed 'info' keys from return maps
 
     if (orderQty > 0) {
       return {
@@ -403,7 +409,7 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
                       ]),
                       const SizedBox(height: 8),
                       Text("${expiry['days']} Days", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: expiry['color'])),
-                      Text(expiry['label'], style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey.shade600)),
+                      // Removed Text widget for label
                     ]),
                   ),
                 ),
@@ -432,7 +438,7 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
                           Padding(padding: const EdgeInsets.only(bottom: 3, left: 2), child: Text(subLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
                         ],
                       ),
-                      Text(restock['info'], style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey.shade700)),
+                      // Removed Text widget for restock['info']
                     ]),
                   ),
                 ),
