@@ -104,6 +104,15 @@ class AdminDashboardPage extends StatelessWidget {
                     icon: Icons.local_shipping_outlined,
                     page: const SupplierListPage(),
                   ),
+                  const SizedBox(height: 15),
+                  _buildLargeButton(
+                    context,
+                    title: "AI Restock Advisor",
+                    subtitle: "Smart Order Suggestions (Forecast)",
+                    icon: Icons.psychology_rounded,
+                    page: const AIAdvisorPage(),
+                  ),
+                  const SizedBox(height: 15),
 
                   // --- [RESTRICTED ACCESS: CMD & ADVISOR] ---
                   const SizedBox(height: 15),
@@ -144,19 +153,6 @@ class AdminDashboardPage extends StatelessWidget {
                               icon: Icons.access_time_filled_rounded,
                               page: const ExpiryAdvisor(),
                               colorOverride: Colors.orange.shade800, // Warna oren utk Alert/Masa
-                            ),
-
-                            const SizedBox(height: 15),
-
-                            // 3. [NEW] AI Restock Advisor
-                            // Page ini yang buat suggestion order (Weekly/Monthly) tadi
-                            _buildLargeButton(
-                              context,
-                              title: "AI Restock Advisor",
-                              subtitle: "Smart Order Suggestions (Forecast)",
-                              icon: Icons.psychology_rounded,
-                              page: const AIAdvisorPage(),
-                              colorOverride: Colors.indigo.shade700, // Warna biru utk AI/Otak
                             ),
                           ],
                         );

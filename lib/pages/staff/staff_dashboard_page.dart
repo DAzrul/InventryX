@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../Features_app/barcode_scanner_page.dart';
+import '../admin/AI_advisor_page.dart';
 import 'daily_sales.dart';
 import '../notifications/notification_page.dart';
 // ADD THIS IMPORT
@@ -399,6 +400,14 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
               icon: Icons.receipt_long_rounded,
               color: const Color(0xFF1E3A8A),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DailySalesPage()))
+          ),
+          const SizedBox(height: 16),
+          _buildQuickActionButton(
+              title: "AI Restock Advisor",
+              subtitle: "Check forecast & shelf life suggestions",
+              icon: Icons.psychology_rounded,
+              color: const Color(0xFF1E3A8A),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AIAdvisorPage()))
           ),
           const SizedBox(height: 30),
           Row(

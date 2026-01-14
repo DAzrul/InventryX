@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../admin/AI_advisor_page.dart';
 import '../notifications/notification_page.dart';
-// [PENTING] Import page low stock
 import '../staff/low_stock_page.dart';
 
 class ManagerDashboardPage extends StatelessWidget {
@@ -24,6 +24,12 @@ class ManagerDashboardPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _HeaderSection(),
+            const SizedBox(height: 25),
+
+            // --- [BARU] AI ADVISOR SHORTCUT ---
+            // Letak di sini supaya Manager terus nampak benda ni penting
+            _buildAiAdvisorCard(context),
+
             const SizedBox(height: 30),
 
             _buildSectionTitle("Business Overview"),
@@ -63,6 +69,74 @@ class ManagerDashboardPage extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: Colors.indigo,
           letterSpacing: 1.2
+      ),
+    );
+  }
+
+  // --- WIDGET BARU: AI ADVISOR CARD ---
+  Widget _buildAiAdvisorCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AIAdvisorPage()),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)], // Biru Professional
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF3B82F6).withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 30),
+            ),
+            const SizedBox(width: 15),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "AI Restock Advisor",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Check forecast & shelf life suggestions",
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
+          ],
+        ),
       ),
     );
   }

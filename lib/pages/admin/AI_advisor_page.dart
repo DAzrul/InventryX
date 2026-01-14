@@ -133,7 +133,7 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
 
     if (_historyExpiryDays.containsKey(pid)) {
       int avgDays = _historyExpiryDays[pid]!;
-      return {'date': today.add(Duration(days: avgDays)), 'days': avgDays, 'label': 'History Learned', 'color': Colors.indigo};
+      return {'date': today.add(Duration(days: avgDays)), 'days': avgDays, 'label': '', 'color': Colors.indigo};
     }
 
     String pName = productName.toUpperCase();
@@ -203,15 +203,12 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
     // Kiraan order dalam Carton (atau Unit jika UPC=1)
     int orderQty = (shortage > 0) ? (shortage / upc).ceil() : 0;
 
-    String infoStr = "Targeting: $targetDays Days";
-
     if (orderQty > 0) {
       return {
         'qty': orderQty,
         'status': '$modeLabel Restock',
         'color': statusColor,
         'msg': 'Shortage: $shortage units.$warningMsg',
-        'info': infoStr,
         'isSingle': isSingleUnit
       };
     } else {
@@ -220,7 +217,6 @@ class _AIAdvisorPageState extends State<AIAdvisorPage> {
         'status': 'OPTIMAL',
         'color': Colors.green,
         'msg': 'Stock sufficient for $targetDays days.',
-        'info': infoStr,
         'isSingle': isSingleUnit
       };
     }
