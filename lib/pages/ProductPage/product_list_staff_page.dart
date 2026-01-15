@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // [PENTING] Import StaffPage (Bapak Page)
 import '../staff/staff_page.dart';
-
 import '../Features_app/barcode_scanner_page.dart';
 import '../staff/utils/staff_features_modal.dart';
 import '../Profile/User_profile_page.dart';
@@ -122,6 +121,7 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     return Column(children: [_buildTopHeader(), _buildCategoryFilters(), _buildProductList()]);
   }
 
+  // --- UPDATED TOP HEADER ---
   Widget _buildTopHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 25),
@@ -132,7 +132,45 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
         Row(children: [
           Expanded(child: Container(decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(18)), child: TextField(controller: _searchController, onChanged: (v) => setState(() => _searchText = v.trim().toLowerCase()), decoration: InputDecoration(hintText: "Search items...", prefixIcon: Icon(Icons.search_rounded, color: primaryColor), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 15))))),
           const SizedBox(width: 12),
-          GestureDetector(onTap: () async { final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage())); if (scanned != null) setState(() { _searchText = scanned; _searchController.text = scanned; }); }, child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white))),
+          GestureDetector(
+            onTap: () async {
+              final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+              if (scanned != null) {
+                setState(() {
+                  _searchText = scanned;
+                  _searchController.text = scanned;
+                });
+
+                // Auto-search and show dialog
+                var result = await FirebaseFirestore.instance
+                    .collection('products')
+                    .where('barcodeNo', isEqualTo: scanned)
+                    .limit(1)
+                    .get();
+
+                // Check for Int if String search fails
+                if (result.docs.isEmpty) {
+                  int? numCode = int.tryParse(scanned);
+                  if (numCode != null) {
+                    result = await FirebaseFirestore.instance
+                        .collection('products')
+                        .where('barcodeNo', isEqualTo: numCode)
+                        .limit(1)
+                        .get();
+                  }
+                }
+
+                if (result.docs.isNotEmpty) {
+                  _showProductDetailDialog(result.docs.first.data() as Map<String, dynamic>);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Product not found")),
+                  );
+                }
+              }
+            },
+            child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white)),
+          ),
         ]),
       ]),
     );
@@ -142,8 +180,16 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
     return Container(height: 60, margin: const EdgeInsets.symmetric(vertical: 10), child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 20), itemCount: _categories.length, itemBuilder: (context, index) { final cat = _categories[index]; final isSel = _selectedCategory == cat; return GestureDetector(onTap: () => setState(() => _selectedCategory = cat), child: Container(margin: const EdgeInsets.only(right: 10, top: 10, bottom: 10), padding: const EdgeInsets.symmetric(horizontal: 20), decoration: BoxDecoration(color: isSel ? primaryColor : Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: isSel ? Colors.transparent : Colors.grey.shade200)), child: Center(child: Text(cat, style: TextStyle(color: isSel ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold, fontSize: 12))))); }));
   }
 
+  // --- UPDATED PRODUCT LIST (FILTER BY NAME OR BARCODE) ---
   Widget _buildProductList() {
-    return Expanded(child: StreamBuilder<QuerySnapshot>(stream: (_selectedCategory == 'ALL') ? FirebaseFirestore.instance.collection("products").snapshots() : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(), builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator()); final docs = snapshot.data!.docs.where((d) => d['productName'].toString().toLowerCase().contains(_searchText)).toList(); return ListView.builder(padding: const EdgeInsets.fromLTRB(20, 0, 20, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; return _buildProductCard(data); }); }));
+    return Expanded(child: StreamBuilder<QuerySnapshot>(stream: (_selectedCategory == 'ALL') ? FirebaseFirestore.instance.collection("products").snapshots() : FirebaseFirestore.instance.collection("products").where('category', isEqualTo: _selectedCategory).snapshots(), builder: (context, snapshot) { if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+    final docs = snapshot.data!.docs.where((d) {
+      final data = d.data() as Map<String, dynamic>;
+      final name = data['productName'].toString().toLowerCase();
+      final barcode = data['barcodeNo'].toString().toLowerCase();
+      return name.contains(_searchText) || barcode.contains(_searchText);
+    }).toList();
+    return ListView.builder(padding: const EdgeInsets.fromLTRB(20, 0, 20, 100), physics: const BouncingScrollPhysics(), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; return _buildProductCard(data); }); }));
   }
 
   Widget _buildProductCard(Map<String, dynamic> data) {
@@ -154,8 +200,6 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
 
     double price = double.tryParse(data['price']?.toString() ?? '0') ?? 0.0;
     int stock = int.tryParse(data['currentStock']?.toString() ?? '0') ?? 0;
-
-    // --- [NEW LOGIC] REORDER LEVEL ---
     int reorderLevel = int.tryParse(data['reorderLevel']?.toString() ?? '10') ?? 10;
     bool isLowStock = stock <= reorderLevel;
 
@@ -202,7 +246,6 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
                       Text('RM ${price.toStringAsFixed(2)}',
                           style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.bold, color: Colors.grey[700])),
                       const SizedBox(width: 8),
-                      // --- [UPDATED UI] DYNAMIC COLOR LOGIC ---
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
@@ -283,7 +326,6 @@ class _ProductListViewPageState extends State<ProductListStaffPage> {
                     const SizedBox(height: 12),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                       _buildStatusChip("Price", "RM ${price.toStringAsFixed(2)}", Colors.blue),
-                      // --- [UPDATED UI] IN STOCK COLOR ---
                       _buildStatusChip("In Stock", "$stock ${data['unit'] ?? 'pcs'}", stock <= reorderLevel ? Colors.red : Colors.green),
                     ]),
                   ]),

@@ -528,17 +528,150 @@ class _StaffDashboardPageState extends State<StaffDashboardPage> {
     return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]), child: Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: trailingColor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: trailingColor, size: 20)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)), const SizedBox(height: 2), Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w600))])), Text(trailingText, style: TextStyle(color: trailingColor, fontWeight: FontWeight.w900, fontSize: 15))]));
   }
 
+  // --- ADD THIS HELPER METHOD ---
+  Widget _buildDetailChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _scanAndShowDetails() async {
-    final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+    final scanned = await Navigator.push<String>(
+        context, MaterialPageRoute(builder: (_) => const BarcodeScannerPage()));
+
     if (scanned != null) {
-      var snapshot = await FirebaseFirestore.instance.collection('products').where('barcodeNo', isEqualTo: scanned).limit(1).get();
+      var snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where('barcodeNo', isEqualTo: scanned)
+          .limit(1)
+          .get();
+
       if (snapshot.docs.isEmpty) {
         int? num = int.tryParse(scanned);
-        if (num != null) snapshot = await FirebaseFirestore.instance.collection('products').where('barcodeNo', isEqualTo: num).limit(1).get();
+        if (num != null) {
+          snapshot = await FirebaseFirestore.instance
+              .collection('products')
+              .where('barcodeNo', isEqualTo: num)
+              .limit(1)
+              .get();
+        }
       }
+
       if (snapshot.docs.isNotEmpty) {
         final data = snapshot.docs.first.data();
-        showModalBottomSheet(context: context, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))), builder: (_) => Container(padding: const EdgeInsets.all(24), height: 400, child: Column(children: [Text(data['productName'] ?? 'Unknown', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), const SizedBox(height: 20), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Barcode"), Text(data['barcodeNo'].toString())]), const SizedBox(height: 10), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Stock"), Text(data['currentStock'].toString())]), const SizedBox(height: 10), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Price"), Text("RM ${data['price']}")]), const Spacer(), SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), child: const Text("Close", style: TextStyle(color: Colors.white))))])));
+        final String imageUrl = data['imageUrl'] ?? "";
+
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => Container(
+            padding: const EdgeInsets.only(bottom: 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Dialog size adjusts to content
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                const SizedBox(height: 20),
+
+                // --- UPDATED IMAGE SECTION ---
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4, // Limits max height to 40% of screen
+                    minWidth: double.infinity,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: imageUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.contain, // Shows full image without cropping
+                        placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                        errorWidget: (context, url, error) => const Icon(Icons.broken_image_rounded, size: 50, color: Colors.grey),
+                      )
+                          : Container(
+                        height: 150,
+                        color: Colors.grey[100],
+                        child: const Icon(Icons.inventory_2_rounded, size: 60, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    children: [
+                      Text(
+                        data['productName'] ?? 'Unknown Product',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1A1C1E)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Barcode: ${data['barcodeNo']}",
+                        style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildDetailChip(Icons.storage_rounded, "${data['currentStock']} left", Colors.blue),
+                          const SizedBox(width: 12),
+                          _buildDetailChip(Icons.payments_rounded, "RM ${data['price']}", Colors.green),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 30),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF203288),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        elevation: 0,
+                      ),
+                      child: const Text("Done", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
   }
